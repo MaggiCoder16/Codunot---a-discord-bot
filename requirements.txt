@@ -1,2 +1,6 @@
 discord.py
 google-genai
+gunicorn
+pandas
+numpy
+python-dotenv
