@@ -36,13 +36,18 @@ DEAD_CHAT_CHANNELS = {
     "OPEN TO ALL": ["general"]
 }
 
+# ---------- BOT MODES ----------
+bot_modes = {
+    "roast": False,
+    "serious": False
+}
+
 # ---------- send messages (instant) ----------
 async def send_human_reply(channel, reply_text, original_message: Message = None):
     await channel.send(reply_text)
 
 # ---------- dead channel check ----------
 async def dead_channel_check():
-    """Checks dead channels every hour and sends a message if no activity in 1h."""
     await client.wait_until_ready()
     while True:
         now = datetime.utcnow()
@@ -58,7 +63,7 @@ async def dead_channel_check():
                         ])
                         await send_human_reply(channel, msg)
                         memory.add_message(str(channel.id), BOT_NAME, msg)
-        await asyncio.sleep(3600)  # check every 1 hour
+        await asyncio.sleep(3600)  # every 1 hour
 
 # ---------- start conversation in channels immediately ----------
 async def initiate_conversations():
@@ -76,23 +81,14 @@ async def initiate_conversations():
                     await send_human_reply(channel, msg)
                     memory.add_message(str(channel.id), BOT_NAME, msg)
 
-# ---------- on_ready ----------
-@client.event
-async def on_ready():
-    print(f"{BOT_NAME} is ready!")
-    asyncio.create_task(dead_channel_check())
-    asyncio.create_task(initiate_conversations())
-
 # ---------- prompt builders ----------
 def build_general_prompt(mem_manager: MemoryManager, channel_id: str) -> str:
     recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
     history_text = "\n".join(recent)
-    persona = (
-        "You are Codunot, a normal human friend in a Discord chat. "
-        "Never say you are a bot. Keep replies short, casual, with slang, emojis, and occasional typos. "
-        "Sometimes use 'idk', 'nvm', 'lol', 'bruh'."
-    )
-    return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot (one short message):"
+    persona = "You are Codunot, a normal human friend in a Discord chat. Keep replies short, casual, with slang, emojis, and occasional typos."
+    if bot_modes["serious"]:
+        persona = "You are Codunot, friendly and helpful. Use proper grammar, no slang, no emojis. Be concise."
+    return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name: str | None):
     recent = mem_manager.get_recent_flat(channel_id, n=12)
@@ -112,32 +108,58 @@ def humanize_and_safeify(text: str) -> str:
         t = random.choice(["lol", "bruh", "ngl"]) + " " + t
     return t
 
-# ---------- message handler ----------
+# ---------- on_ready ----------
+@client.event
+async def on_ready():
+    print(f"{BOT_NAME} is ready!")
+    asyncio.create_task(dead_channel_check())
+    asyncio.create_task(initiate_conversations())
+
+# ---------- commands to toggle modes ----------
 @client.event
 async def on_message(message: Message):
     if message.author == client.user or message.author.bot:
         return
 
     chan_id = str(message.channel.id)
-    memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # Check roast trigger
-    roast_target = is_roast_trigger(message.content)
-    if roast_target:
-        memory.set_roast_target(chan_id, roast_target)
-
-    target = getattr(memory, "get_roast_target", lambda x: None)(chan_id)
-    if target:
-        roast_prompt = build_roast_prompt(memory, chan_id, target)
-        raw = await call_gemini(roast_prompt)
-        roast_text = humanize_and_safeify(raw)
-        if len(roast_text) > 200:
-            roast_text = roast_text[:200] + "..."
-        await send_human_reply(message.channel, roast_text, message)
-        memory.add_message(chan_id, BOT_NAME, roast_text)
+    # --- Commands ---
+    content = message.content.lower().strip()
+    if content.startswith("!roastmode"):
+        bot_modes["roast"] = True
+        await send_human_reply(message.channel, "😂 Roast/funny mode activated!")
+        return
+    if content.startswith("!seriousmode"):
+        bot_modes["serious"] = True
+        bot_modes["roast"] = False
+        await send_human_reply(message.channel, "🤓 Serious/helpful mode activated!")
+        return
+    if content.startswith("!funmode"):
+        bot_modes["serious"] = False
+        bot_modes["roast"] = False
+        await send_human_reply(message.channel, "😎 Fun mode back on!")
         return
 
-    # Normal conversation
+    # --- Memory ---
+    memory.add_message(chan_id, message.author.display_name, message.content)
+
+    # --- Roast ---
+    if bot_modes["roast"]:
+        roast_target = is_roast_trigger(message.content)
+        if roast_target:
+            memory.set_roast_target(chan_id, roast_target)
+        target = getattr(memory, "get_roast_target", lambda x: None)(chan_id)
+        if target:
+            roast_prompt = build_roast_prompt(memory, chan_id, target)
+            raw = await call_gemini(roast_prompt)
+            roast_text = humanize_and_safeify(raw)
+            if len(roast_text) > 200:
+                roast_text = roast_text[:200] + "..."
+            await send_human_reply(message.channel, roast_text, message)
+            memory.add_message(chan_id, BOT_NAME, roast_text)
+            return
+
+    # --- Normal conversation ---
     prompt = build_general_prompt(memory, chan_id)
     raw_resp = await call_gemini(prompt)
     reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
