@@ -1,17 +1,15 @@
 import discord
 import asyncio
-import random
 from google import genai
 from config import GEMINI_API_KEY, DISCORD_TOKEN
 from memory import add_message_to_memory, add_topic, update_mood, memory
 from humanizer import humanize, detect_mood, human_delay, is_roast_trigger, generate_safe_roast
+import random
 
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents)
-
+client = discord.Client(intents=discord.Intents.all())
 gen = genai.Client(api_key=GEMINI_API_KEY)
-MAX_REPLY_LEN = 67
+MAX_CHAR = 67
+OWNER_ID = "aarav-2022"
 
 def build_prompt(channel_id):
     channel_mem = memory.get(channel_id, {})
@@ -20,12 +18,11 @@ def build_prompt(channel_id):
     moods = channel_mem.get("user_moods", {})
     mood_lines = "\n".join([f"{u} feels {m}" for u, m in moods.items()])
     personality = """
-You are Codunot. A tired human teen in Discord chats.
-Talk casually, lazy, sometimes sarcastic.
-Keep messages short, max 67 chars.
-Never say you're a bot or AI.
+You are Codunot. A human teen, casual, short, not always GenZ slang.
+Talk tired but interested, short messages max 67 chars.
+Never say you're AI.
 """
-    return f"{personality}\nTopics: {topics}\nMoods:\n{mood_lines}\nChat:\n{msgs}\nReply like a real human teen."
+    return f"{personality}\nTopics: {topics}\nMoods:\n{mood_lines}\nChat:\n{msgs}\nReply like a human teen."
 
 @client.event
 async def on_message(message):
@@ -40,31 +37,45 @@ async def on_message(message):
     update_mood(cid, user, detect_mood(msg))
 
     if is_roast_trigger(msg):
-        roast = generate_safe_roast(user)[:MAX_REPLY_LEN]
-        roast = humanize(roast)
+        roast = generate_safe_roast(user)
+        roast = humanize(roast)[:MAX_CHAR]
         await asyncio.sleep(human_delay())
-        if random.random() < 0.5:
-            await message.reply(roast)
-        else:
-            await message.channel.send(roast)
+        await message.channel.send(roast)
         add_message_to_memory(cid, "Codunot", roast)
         return
 
     if any(word in msg.lower() for word in ["today", "topic", "talk"]):
         add_topic(cid, msg)
 
-    prompt = build_prompt(cid)
-    response = gen.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-    reply = (response.text or "").strip()[:MAX_REPLY_LEN]
-    reply = humanize(reply)
-    await asyncio.sleep(human_delay())
-    if random.random() < 0.5:
-        await message.reply(reply)
+    lower_msg = msg.lower()
+    reply = ""
+    if "who made you" in lower_msg:
+        if str(message.author) == OWNER_ID:
+            reply = "You made me, buddy. Ty for making me enter this world"
+        else:
+            reply = f"<@{OWNER_ID}> made me"
     else:
+        prompt = build_prompt(cid)
+        try:
+            response = gen.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            reply = (response.text or "").strip()
+        except:
+            reply = "uuhh idk lol"
+    
+    reply = humanize(reply)[:MAX_CHAR]
+
+    await asyncio.sleep(human_delay())
+    try:
+        if random.random() < 0.6 and message.reference is None:
+            await message.reply(reply)
+        else:
+            await message.channel.send(reply)
+    except:
         await message.channel.send(reply)
+
     add_message_to_memory(cid, "Codunot", reply)
 
 client.run(DISCORD_TOKEN)
