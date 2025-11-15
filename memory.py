@@ -4,26 +4,17 @@ class MemoryManager:
     def __init__(self, limit=60, file_path=None):
         self.limit = limit
         self.file_path = file_path
-        self.memory = {}  # {channel_id: {"messages":[], "timestamps":[], "user_moods":{}, "roast_target":None}}
+        self.memory = {}  # {channel_id: {"messages":[], "timestamps":[], "user_moods":{}}}
+        self.roast_targets = {}  # {channel_id: target_name}
 
     def add_message(self, channel_id, user, message):
         if channel_id not in self.memory:
-            self.memory[channel_id] = {"messages": [], "timestamps": [], "user_moods": {}, "roast_target": None}
+            self.memory[channel_id] = {"messages": [], "timestamps": [], "user_moods": {}}
         entry = f"{user}: {message}"
         self.memory[channel_id]["messages"].append(entry)
         self.memory[channel_id]["messages"] = self.memory[channel_id]["messages"][-self.limit:]
         self.memory[channel_id]["timestamps"].append(datetime.utcnow())
         self.memory[channel_id]["timestamps"] = self.memory[channel_id]["timestamps"][-self.limit:]
-
-    def update_mood(self, channel_id, user, mood):
-        if channel_id not in self.memory:
-            self.memory[channel_id] = {"messages": [], "timestamps": [], "user_moods": {}, "roast_target": None}
-        self.memory[channel_id]["user_moods"][user] = mood
-
-    def get_mood(self, channel_id, user):
-        if channel_id in self.memory:
-            return self.memory[channel_id]["user_moods"].get(user, None)
-        return None
 
     def get_recent_flat(self, channel_id, n):
         if channel_id in self.memory:
@@ -35,18 +26,17 @@ class MemoryManager:
             return self.memory[channel_id]["timestamps"][-1]
         return None
 
-    # ---------- roast target methods ----------
+    # ---------- Roast target ----------
     def set_roast_target(self, channel_id, target_name):
-        if channel_id not in self.memory:
-            self.memory[channel_id] = {"messages": [], "timestamps": [], "user_moods": {}, "roast_target": None}
-        self.memory[channel_id]["roast_target"] = target_name
+        self.roast_targets[channel_id] = target_name
 
     def get_roast_target(self, channel_id):
-        if channel_id in self.memory:
-            return self.memory[channel_id].get("roast_target", None)
-        return None
+        return self.roast_targets.get(channel_id, None)
 
-    # ---------- persistence ----------
+    def clear_roast_target(self, channel_id):
+        if channel_id in self.roast_targets:
+            del self.roast_targets[channel_id]
+
     def persist(self):
         pass
 
