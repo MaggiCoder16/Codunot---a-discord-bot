@@ -7,9 +7,10 @@ from google import genai
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
+intents.guilds = True
+intents.members = True
 
 client = discord.Client(intents=intents)
-
 gen = genai.GenAI(api_key=GEMINI_API_KEY)
 
 last_active = {}
@@ -21,7 +22,7 @@ async def idle_check():
             if isinstance(channel, discord.TextChannel):
                 now = asyncio.get_event_loop().time()
                 last = last_active.get(channel.id, now)
-                if now - last > 180:  # 3 minutes
+                if now - last > 180:  # 3 mins
                     await channel.send("hi!!!! where is everybody? anyone wanna talk?")
                     last_active[channel.id] = now
         await asyncio.sleep(60)
@@ -30,13 +31,19 @@ def is_roast(msg):
     roast_keywords = ["stupid", "dumb", "bot", "trash", "useless"]
     return any(word in msg.lower() for word in roast_keywords)
 
+def get_server_context(message):
+    guild = message.guild
+    admins = [role.name for role in guild.roles if role.permissions.administrator]
+    mods = [role.name for role in guild.roles if role.permissions.kick_members or role.permissions.ban_members]
+    context = f"server name - {guild.name}\ncreator - @Realboy9000\nadmins - {', '.join(admins)}\nmods - {', '.join(mods)}"
+    return context
+
 @client.event
 async def on_message(message):
     if message.author.bot:
         return
 
     last_active[message.channel.id] = asyncio.get_event_loop().time()
-
     content = message.content.lower()
     reply = ""
 
@@ -53,9 +60,10 @@ async def on_message(message):
         ]
         reply = random.choice(roast_lines)
     else:
+        server_context = get_server_context(message)
         prompts = [
-            "full energetic response, 67 chars max",
-            "casual witty reply, short and coherent"
+            f"server context: {server_context}\nfull energetic response, 67 chars max",
+            f"server context: {server_context}\ncasual witty reply, short and coherent"
         ]
         try:
             resp = gen.models.generate_content(
