@@ -1,9 +1,8 @@
 # gemini_client.py
-import os
 import aiohttp
 from config import GEMINI_API_KEY
 
-API_URL = "https://api.genai.google/v1beta2/models/text-bison-001:generate"  # example
+API_URL = "https://api.genai.google/v1beta2/models/text-bison-001:generate"
 
 async def call_gemini(prompt: str) -> str:
     headers = {
@@ -16,4 +15,12 @@ async def call_gemini(prompt: str) -> str:
         "max_output_tokens": 150
     }
 
-    async with aio
+    async with aiohttp.ClientSession() as session:
+        async with session.post(API_URL, headers=headers, json=json_data) as resp:
+            if resp.status != 200:
+                return "(api error)"
+            data = await resp.json()
+            # The exact response field depends on Gemini API version
+            # Usually: data['candidates'][0]['content'] or data['output_text']
+            return data.get("candidates", [{}])[0].get("content", "")
+
