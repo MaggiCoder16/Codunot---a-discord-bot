@@ -1,41 +1,21 @@
 print("Starting bot.py...")
 
 import os
-print("Imported os")
-
 import asyncio
-print("Imported asyncio")
-
 import random
-print("Imported random")
-
 import re
-print("Imported re")
-
 from datetime import datetime, timedelta
-print("Imported datetime")
 
 import discord
-print("Imported discord")
-
 from discord import Message
-print("Imported Message")
-
 from dotenv import load_dotenv
-print("Imported dotenv")
 
 from memory import MemoryManager
-print("Imported MemoryManager")
-
 from humanizer import humanize_response, random_typing_delay, maybe_typo
-print("Imported humanizer functions")
-
 from gemini_client import call_gemini
-print("Imported gemini_client")
-
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-print("Imported VADER")
 
+print("Imports done")
 
 load_dotenv()
 
@@ -62,7 +42,7 @@ DEAD_CHAT_CHANNELS = {
 
 # ---------- send messages ----------
 async def send_human_reply(channel, reply_text, original_message: Message = None):
-    delay = random_typing_delay(len(reply_text))
+    delay = min(random_typing_delay(len(reply_text)), 0.5)  # max 0.5s
     try:
         async with channel.typing():
             await asyncio.sleep(delay)
@@ -73,7 +53,7 @@ async def send_human_reply(channel, reply_text, original_message: Message = None
         parts = re.split(r'(?<=[.!?])\s+', reply_text, maxsplit=1)
         if len(parts) == 2:
             await channel.send(parts[0].strip())
-            await asyncio.sleep(random.uniform(0.4, 1.8))
+            await asyncio.sleep(random.uniform(0.05, 0.15))  # short pause
             await channel.send(parts[1].strip())
             return
 
@@ -107,9 +87,20 @@ async def on_message(message: Message):
     chan_id = str(message.channel.id)
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # Roast logic
-    is_roast = bool(re.search(r"\broast\b", message.content, re.I) or "ardunot" in message.content.lower())
-    if is_roast:
+    # ---------- Roast logic ----------
+    roast_match = re.search(r"\broast\b", message.content, re.I)
+    target_match = re.search(r"@(\w+)", message.content)  # roast someone mentioned
+    if roast_match and target_match:
+        roast_target = target_match.group(1)
+        roast_prompt = build_roast_prompt(memory, chan_id, roast_target)
+        raw = await call_gemini(roast_prompt)
+        roast_text = humanize_and_safeify(raw)
+        if len(roast_text) > 200:
+            roast_text = roast_text[:200] + "..."
+        await send_human_reply(message.channel, roast_text, message)
+        memory.add_message(chan_id, BOT_NAME, roast_text)
+        return
+    elif roast_match:  # if no mention, default to Ardunot
         roast_target = "Ardunot"
         roast_prompt = build_roast_prompt(memory, chan_id, roast_target)
         raw = await call_gemini(roast_prompt)
@@ -120,7 +111,7 @@ async def on_message(message: Message):
         memory.add_message(chan_id, BOT_NAME, roast_text)
         return
 
-    # Normal conversation
+    # ---------- Normal conversation ----------
     prompt = build_general_prompt(memory, chan_id)
     raw_resp = await call_gemini(prompt)
     reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
