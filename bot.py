@@ -1,80 +1,74 @@
-import discord
-import asyncio
-import time
-from config import GEMINI_API_KEY, DISCORD_TOKEN, OWNER_ID
-from google.genai import models
+import discord  
+import asyncio  
+import random  
+import time  
+from google.genai import Client as GenAIClient  
+from config import GEMINI_API_KEY, DISCORD_TOKEN, OWNER_ID  
 
-intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True
-intents.members = True
+intents = discord.Intents.default()  
+intents.message_content = True  
+client = discord.Client(intents=intents)  
+gen = GenAIClient(api_key=GEMINI_API_KEY)  
 
-client = discord.Client(intents=intents)
+last_activity = {}  
+IDLE_TIMEOUT = 180  
+MAX_LEN = 80  
 
-last_message_time = {}
-IDLE_SECONDS = 180
+async def idle_loop():  
+    await client.wait_until_ready()  
+    while not client.is_closed():  
+        now = time.time()  
+        for cid, ts in list(last_activity.items()):  
+            if now - ts > IDLE_TIMEOUT:  
+                ch = client.get_channel(int(cid))  
+                if isinstance(ch, discord.TextChannel):  
+                    await ch.send("It's dead in here... anyone wanna talk?")  
+                    last_activity[cid] = now  
+        await asyncio.sleep(20)  
 
-async def generate_dynamic_reply(prompt: str) -> str:
-    prompt = (
-        f"Server name - RoyalRacer Fans\n"
-        f"Creator - @Realboy9000\n"
-        f"Admins & Mods - see from roles\n"
-        f"Message: {prompt}\n"
-        f"Bot should respond naturally, sometimes roast back if insulted, sometimes just talk. "
-        f"Max 67 chars."
-    )
-    try:
-        response = models.TextGenerationModel().generate(
-            model="gemini-2.5-flash",
-            prompt=prompt,
-            temperature=0.7,
-            max_output_tokens=30
-        )
-        return response.output_text[:67]
-    except Exception:
-        return "ugh nvm I don't like it 😑"
+def build_prompt(msg_content):  
+    return (  
+        f"server name - RoyalRacer Fans\n"  
+        f"creator - @Realboy9000\n"  
+        f"bot creator - @aarav-2022\n"  
+        f"Message: {msg_content}\n"  
+        "If someone insults me, roast them hard, especially @Ardunot. "  
+        "Sometimes I start roasting him too. Otherwise reply energetic or tired. "  
+        "Max 67 characters."  
+    )  
 
-async def send_reply(message, content):
-    if random.random() < 0.6:
-        await message.reply(content)
-    else:
-        await message.channel.send(content)
+async def gen_reply(msg_content):  
+    prompt = build_prompt(msg_content)  
+    try:  
+        def call():  
+            return gen.models.generate_content(  
+                model="gemini-2.5-flash",  
+                contents=prompt  
+            ).text or ""  
+        text = await asyncio.wait_for(asyncio.to_thread(call), timeout=5)  
+    except:  
+        text = "ugh, can't brain rn 😑"  
+    return text.strip()[:MAX_LEN]  
 
-@client.event
-async def on_ready():
-    print(f"Logged in as {client.user}")
+@client.event  
+async def on_message(message):  
+    if message.author.bot:  
+        return  
+    last_activity[message.channel.id] = time.time()  
+    lower = message.content.lower()  
+    reply = None  
 
-@client.event
-async def on_message(message):
-    global last_message_time
-    if message.author == client.user:
-        return
-    last_message_time[message.channel.id] = time.time()
-    lower = message.content.lower()
-    reply = ""
-    if "who made you" in lower:
-        if message.author.id == OWNER_ID:
-            reply = "You made me, buddy. Ty for creating me 🙏"
-        else:
-            reply = f"<@{OWNER_ID}> made me 😎"
-    else:
-        reply = await generate_dynamic_reply(message.content)
-    if reply:
-        await send_reply(message, reply)
+    if "who made you" in lower:  
+        if message.author.id == OWNER_ID:  
+            reply = "You made me, buddy. Ty for making me real 😎"  
+        else:  
+            reply = f"<@{OWNER_ID}> made me"  
+    else:  
+        reply = await gen_reply(message.content)  
 
-async def idle_check():
-    await client.wait_until_ready()
-    while not client.is_closed():
-        now = time.time()
-        for channel in client.get_all_channels():
-            if isinstance(channel, discord.TextChannel):
-                last = last_message_time.get(channel.id, now)
-                if now - last > IDLE_SECONDS:
-                    await channel.send("Hi!!!! Where is everybody? Anyone wanna talk?")
-                    last_message_time[channel.id] = now
-        await asyncio.sleep(10)
+    await message.channel.send(reply)  
 
-async def runner():
-    await asyncio.gather(client.start(DISCORD_TOKEN), idle_check())
+async def main():  
+    await asyncio.gather(client.start(DISCORD_TOKEN), idle_loop())  
 
-asyncio.run(runner())
+asyncio.run(main())  
