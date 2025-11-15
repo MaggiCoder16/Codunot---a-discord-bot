@@ -1,15 +1,3 @@
-# bot.py
-"""
-Codunot - Fully human-like Discord bot with safe Roast Mode.
-Run: python bot.py
-
-Environment variables:
-  DISCORD_TOKEN   - Discord bot token
-  GEN_API_KEY     - Gemini API key
-  BOT_NAME        - optional, default "Codunot"
-  CONTEXT_LENGTH  - optional, default 18
-"""
-
 import os
 import asyncio
 import random
@@ -33,13 +21,12 @@ BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
 if not DISCORD_TOKEN or not GEN_API_KEY:
-    raise SystemExit("Set DISCORD_TOKEN and GEN_API_KEY environment variables before running.")
+    raise SystemExit("Set DISCORD_TOKEN and GEN_API_KEY before running.")
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.messages = True
-
 client = discord.Client(intents=intents)
+
 analyzer = SentimentIntensityAnalyzer()
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 
@@ -77,9 +64,8 @@ async def dead_channel_check():
                     last_msg_time = memory.get_last_timestamp(str(channel.id))
                     if not last_msg_time or datetime.utcnow() - last_msg_time > timedelta(minutes=3):
                         msg = "its dead in here... anyone wanna talk?"
-                        await channel.send(msg)
-                        memory.add_message(str(channel.id), BOT_NAME, msg)
-        await asyncio.sleep(180)  # check every 3 minutes
+                        await send_human_reply(channel, msg)
+        await asyncio.sleep(180)
 
 # ---------- message handler ----------
 @client.event
@@ -90,13 +76,15 @@ async def on_message(message: Message):
     chan_id = str(message.channel.id)
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # Roast logic
-    is_roast = "ardunot" in message.content.lower() or re.search(r"roast", message.content, re.I)
+    # Roast logic: almost always roast Ardunot if mentioned
+    is_roast = bool(re.search(r"\broast\b", message.content, re.I) or "ardunot" in message.content.lower())
     if is_roast:
         roast_target = "Ardunot"
         roast_prompt = build_roast_prompt(memory, chan_id, roast_target)
         raw = await call_gemini(roast_prompt)
         roast_text = humanize_and_safeify(raw)
+        if len(roast_text) > 200:
+            roast_text = roast_text[:200] + "..."
         await send_human_reply(message.channel, roast_text, message)
         memory.add_message(chan_id, BOT_NAME, roast_text)
         return
@@ -104,7 +92,9 @@ async def on_message(message: Message):
     # Normal conversation
     prompt = build_general_prompt(memory, chan_id)
     raw_resp = await call_gemini(prompt)
-    reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true"])
+    reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
+    if len(reply) > 200:
+        reply = reply[:200] + "..."
     await send_human_reply(message.channel, reply, message)
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
