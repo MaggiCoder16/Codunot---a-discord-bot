@@ -1,82 +1,80 @@
 import discord
 import asyncio
-import random
-from google.genai import Client as GenAIClient
+import time
 from config import GEMINI_API_KEY, DISCORD_TOKEN, OWNER_ID
+from google.genai import models
 
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
-intents.guilds = True
+intents.members = True
 
 client = discord.Client(intents=intents)
-gen = GenAIClient(api_key=GEMINI_API_KEY)
 
-SERVER_NAME = "RoyalRacer Fans"
-CREATOR = "@Realboy9000"
+last_message_time = {}
+IDLE_SECONDS = 180
 
-last_activity = {}
+async def generate_dynamic_reply(prompt: str) -> str:
+    prompt = (
+        f"Server name - RoyalRacer Fans\n"
+        f"Creator - @Realboy9000\n"
+        f"Admins & Mods - see from roles\n"
+        f"Message: {prompt}\n"
+        f"Bot should respond naturally, sometimes roast back if insulted, sometimes just talk. "
+        f"Max 67 chars."
+    )
+    try:
+        response = models.TextGenerationModel().generate(
+            model="gemini-2.5-flash",
+            prompt=prompt,
+            temperature=0.7,
+            max_output_tokens=30
+        )
+        return response.output_text[:67]
+    except Exception:
+        return "ugh nvm I don't like it 😑"
+
+async def send_reply(message, content):
+    if random.random() < 0.6:
+        await message.reply(content)
+    else:
+        await message.channel.send(content)
+
+@client.event
+async def on_ready():
+    print(f"Logged in as {client.user}")
+
+@client.event
+async def on_message(message):
+    global last_message_time
+    if message.author == client.user:
+        return
+    last_message_time[message.channel.id] = time.time()
+    lower = message.content.lower()
+    reply = ""
+    if "who made you" in lower:
+        if message.author.id == OWNER_ID:
+            reply = "You made me, buddy. Ty for creating me 🙏"
+        else:
+            reply = f"<@{OWNER_ID}> made me 😎"
+    else:
+        reply = await generate_dynamic_reply(message.content)
+    if reply:
+        await send_reply(message, reply)
 
 async def idle_check():
     await client.wait_until_ready()
     while not client.is_closed():
-        now = asyncio.get_event_loop().time()
-        for channel_id, last_time in list(last_activity.items()):
-            if now - last_time > 180:
-                channel = client.get_channel(channel_id)
-                if channel:
-                    await channel.send("hi!!!! where is everybody? anyone wanna talk?")
-                    last_activity[channel_id] = now
-        await asyncio.sleep(30)
+        now = time.time()
+        for channel in client.get_all_channels():
+            if isinstance(channel, discord.TextChannel):
+                last = last_message_time.get(channel.id, now)
+                if now - last > IDLE_SECONDS:
+                    await channel.send("Hi!!!! Where is everybody? Anyone wanna talk?")
+                    last_message_time[channel.id] = now
+        await asyncio.sleep(10)
 
-def create_prompt(user_name, msg_content):
-    return f"""
-Server name: {SERVER_NAME}
-Creator: {CREATOR}
-User: {user_name}
-Message: {msg_content}
-Admins: see from roles
-Mods: see from roles
-Respond like a bot that is mostly energetic, sometimes tired, always keeps the conversation, roasts back if roasted, sometimes starts roasting, short replies max 67 chars.
-"""
+async def runner():
+    await asyncio.gather(client.start(DISCORD_TOKEN), idle_check())
 
-async def generate_reply(user_name, msg_content):
-    prompt = create_prompt(user_name, msg_content)
-    try:
-        response = gen.responses.create(
-            model="gemini-2.5-flash",
-            input=prompt,
-            max_output_tokens=50
-        )
-        reply = response.output_text.strip()
-        return reply if reply else "..."
-    except:
-        return "huh?"
-
-@client.event
-async def on_ready():
-    print(f"{client.user} connected to Discord!")
-
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
-    last_activity[message.channel.id] = asyncio.get_event_loop().time()
-    lower = message.content.lower()
-    if "who made you" in lower:
-        reply = f"<@{OWNER_ID}> made me, buddy. ty for bringing me to this world!"
-        await message.reply(reply)
-        return
-    chance = random.random()
-    if chance < 0.7:
-        try:
-            await message.reply(await generate_reply(message.author.display_name, message.content))
-        except:
-            await message.channel.send(await generate_reply(message.author.display_name, message.content))
-    else:
-        await message.channel.send(await generate_reply(message.author.display_name, message.content))
-
-async def main():
-    await client.start(DISCORD_TOKEN)
-
-asyncio.run(asyncio.gather(main(), idle_check()))
+asyncio.run(runner())
