@@ -68,6 +68,12 @@ async def dead_channel_check():
                         await send_human_reply(channel, msg)
         await asyncio.sleep(180)
 
+# ---------- on_ready ----------
+@client.event
+async def on_ready():
+    print(f"{BOT_NAME} is ready!")
+    asyncio.create_task(dead_channel_check())
+
 # ---------- message handler ----------
 @client.event
 async def on_message(message: Message):
@@ -134,12 +140,9 @@ async def _cleanup():
     await memory.close()
     await asyncio.sleep(0.1)
 
+# ---------- run bot ----------
 def run():
-    try:
-        asyncio.create_task(dead_channel_check())
-        client.run(DISCORD_TOKEN)
-    finally:
-        asyncio.run(_cleanup())
+    client.run(DISCORD_TOKEN)
 
 if __name__ == "__main__":
     run()
