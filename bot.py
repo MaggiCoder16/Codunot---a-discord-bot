@@ -47,8 +47,14 @@ async def on_message(message):
         add_topic(cid, msg)
 
     prompt = build_prompt(cid)
-    response = gen.models.generate_content(model="gemini-1.5-flash", contents=prompt)
-    reply = response.text.strip()
+
+    response = gen.models.generate_content(
+        model="gemini-1.5-flash-latest",
+        contents=prompt
+    )
+
+    reply = response.text or ""
+    reply = reply.strip()
     reply = humanize(reply)
 
     await asyncio.sleep(human_delay())
