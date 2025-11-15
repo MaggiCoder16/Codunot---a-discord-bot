@@ -1,89 +1,82 @@
 import discord
-import random
 import asyncio
-from config import DISCORD_TOKEN, GEMINI_API_KEY, OWNER_ID
-from google import genai
+import random
+from google.genai import Client as GenAIClient
+from config import GEMINI_API_KEY, DISCORD_TOKEN, OWNER_ID
 
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.guilds = True
-intents.members = True
 
 client = discord.Client(intents=intents)
-gen = genai.GenAI(api_key=GEMINI_API_KEY)
+gen = GenAIClient(api_key=GEMINI_API_KEY)
 
-last_active = {}
+SERVER_NAME = "RoyalRacer Fans"
+CREATOR = "@Realboy9000"
+
+last_activity = {}
 
 async def idle_check():
     await client.wait_until_ready()
     while not client.is_closed():
-        for channel in client.get_all_channels():
-            if isinstance(channel, discord.TextChannel):
-                now = asyncio.get_event_loop().time()
-                last = last_active.get(channel.id, now)
-                if now - last > 180:  # 3 mins
+        now = asyncio.get_event_loop().time()
+        for channel_id, last_time in list(last_activity.items()):
+            if now - last_time > 180:
+                channel = client.get_channel(channel_id)
+                if channel:
                     await channel.send("hi!!!! where is everybody? anyone wanna talk?")
-                    last_active[channel.id] = now
-        await asyncio.sleep(60)
+                    last_activity[channel_id] = now
+        await asyncio.sleep(30)
 
-def is_roast(msg):
-    roast_keywords = ["stupid", "dumb", "bot", "trash", "useless"]
-    return any(word in msg.lower() for word in roast_keywords)
+def create_prompt(user_name, msg_content):
+    return f"""
+Server name: {SERVER_NAME}
+Creator: {CREATOR}
+User: {user_name}
+Message: {msg_content}
+Admins: see from roles
+Mods: see from roles
+Respond like a bot that is mostly energetic, sometimes tired, always keeps the conversation, roasts back if roasted, sometimes starts roasting, short replies max 67 chars.
+"""
 
-def get_server_context(message):
-    guild = message.guild
-    admins = [role.name for role in guild.roles if role.permissions.administrator]
-    mods = [role.name for role in guild.roles if role.permissions.kick_members or role.permissions.ban_members]
-    context = f"server name - {guild.name}\ncreator - @Realboy9000\nadmins - {', '.join(admins)}\nmods - {', '.join(mods)}"
-    return context
+async def generate_reply(user_name, msg_content):
+    prompt = create_prompt(user_name, msg_content)
+    try:
+        response = gen.responses.create(
+            model="gemini-2.5-flash",
+            input=prompt,
+            max_output_tokens=50
+        )
+        reply = response.output_text.strip()
+        return reply if reply else "..."
+    except:
+        return "huh?"
+
+@client.event
+async def on_ready():
+    print(f"{client.user} connected to Discord!")
 
 @client.event
 async def on_message(message):
-    if message.author.bot:
+    if message.author == client.user:
         return
-
-    last_active[message.channel.id] = asyncio.get_event_loop().time()
-    content = message.content.lower()
-    reply = ""
-
-    if "who made you" in content:
-        if str(message.author.id) == OWNER_ID:
-            reply = "you made me, buddy. ty for making me enter this world"
-        else:
-            reply = f"<@{OWNER_ID}> made me"
-    elif is_roast(content):
-        roast_lines = [
-            "lol u tryna roast me? pls, try harder 😏",
-            "ha, weak roast. I expected more",
-            "bro, ur brain got lagged mid-roast? 😂",
-        ]
-        reply = random.choice(roast_lines)
+    last_activity[message.channel.id] = asyncio.get_event_loop().time()
+    lower = message.content.lower()
+    if "who made you" in lower:
+        reply = f"<@{OWNER_ID}> made me, buddy. ty for bringing me to this world!"
+        await message.reply(reply)
+        return
+    chance = random.random()
+    if chance < 0.7:
+        try:
+            await message.reply(await generate_reply(message.author.display_name, message.content))
+        except:
+            await message.channel.send(await generate_reply(message.author.display_name, message.content))
     else:
-        server_context = get_server_context(message)
-        prompts = [
-            f"server context: {server_context}\nfull energetic response, 67 chars max",
-            f"server context: {server_context}\ncasual witty reply, short and coherent"
-        ]
-        try:
-            resp = gen.models.generate_content(
-                model="gemini-2.5",
-                prompt=random.choice(prompts) + f"\nUser: {message.content}\nBot:",
-                temperature=0.7,
-                max_output_tokens=50
-            )
-            reply = resp.output_text.strip()[:67]
-        except:
-            reply = "uhh idk what to say 😅"
+        await message.channel.send(await generate_reply(message.author.display_name, message.content))
 
-    if reply:
-        try:
-            if random.random() < 0.5:
-                await message.reply(reply)
-            else:
-                await message.channel.send(reply)
-        except:
-            pass
+async def main():
+    await client.start(DISCORD_TOKEN)
 
-client.loop.create_task(idle_check())
-client.run(DISCORD_TOKEN)
+asyncio.run(asyncio.gather(main(), idle_check()))
