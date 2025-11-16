@@ -170,15 +170,16 @@ async def on_message(message: Message):
     if is_dm:
         allowed_channel = True
     else:
-        # Always talk in talk-with-bots
-        if message.channel.name == ALWAYS_TALK_CHANNEL:
+        # Always talk in #talk-with-bots
+        if message.channel.name.lower() == ALWAYS_TALK_CHANNEL.lower():
             allowed_channel = True
         # Only talk in #general under OPEN TO ALL if pinged
         elif (
             message.guild
-            and message.guild.name == ALLOWED_SERVER
-            and message.channel.name == ALLOWED_OPEN_GENERAL
-            and (message.channel.category is None or message.channel.category.name.upper() == ALLOWED_OPEN_CATEGORY.upper())
+            and message.guild.name.lower() == ALLOWED_SERVER.lower()
+            and message.channel.name.lower() == ALLOWED_OPEN_GENERAL.lower()
+            and message.channel.category
+            and message.channel.category.name.lower() == ALLOWED_OPEN_CATEGORY.lower()
             and (
                 client.user in message.mentions
                 or f"<@{client.user.id}>" in message.content
@@ -227,10 +228,6 @@ async def on_message(message: Message):
             owner_mute_until = None
             await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         return  # non-owner ignored
-
-        owner_mute_until = None
-        await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
-        return
 
     # MODE SWITCHING
     if "!roastmode" in message.content:
