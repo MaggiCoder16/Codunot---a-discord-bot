@@ -32,10 +32,10 @@ client = discord.Client(intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 
 # ---------------- BOT MODES ----------------
-MAX_MSG_LEN = 3000  # serious mode
-channel_modes = {}  # per-channel: funny, roast, serious
-channel_mutes = {}  # per-channel mute datetime
-channel_chess = {}  # per-channel chess mode
+MAX_MSG_LEN = 3000
+channel_modes = {}
+channel_mutes = {}
+channel_chess = {}
 chess_engine = OnlineChessEngine()
 
 # ---------- allowed channels ----------
@@ -44,6 +44,17 @@ GENERAL_CHANNEL_ID = 1436339326509383820
 TALK_WITH_BOTS_ID = 1439269712373485589
 
 message_queue = asyncio.Queue()
+
+# ---------- API safe call ----------
+API_DELAY = 0.5  # seconds; small delay to avoid rate limits
+
+async def safe_call_gemini(prompt):
+    await asyncio.sleep(API_DELAY)
+    try:
+        return await call_gemini(prompt)
+    except Exception as e:
+        print("Gemini API skipped:", e)  # console only
+        return None
 
 # ---------- helpers ----------
 def format_duration(num: int, unit: str) -> str:
@@ -67,7 +78,7 @@ async def process_queue():
             await channel.send(content)
         except:
             pass
-        await asyncio.sleep(0.02)  # near-instant
+        await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text, limit=None):
     if limit:
@@ -145,7 +156,7 @@ async def on_message(message: Message):
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
 
-    # per-channel defaults
+    # defaults
     if chan_id not in channel_modes:
         channel_modes[chan_id] = "funny"
     if chan_id not in channel_mutes:
@@ -246,26 +257,20 @@ async def on_message(message: Message):
         memory.set_roast_target(chan_id, roast_target)
     target = memory.get_roast_target(chan_id)
     if target:
-        try:
-            raw = await call_gemini(build_roast_prompt(memory, chan_id, target, mode))
+        raw = await safe_call_gemini(build_roast_prompt(memory, chan_id, target, mode))
+        if raw:
             reply = humanize_and_safeify(raw, short=short_mode)
             await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
             memory.add_message(chan_id, BOT_NAME, reply)
-            await asyncio.sleep(0.1)  # slight pause to prevent rate limits
-        except Exception:
-            pass  # silently ignore API errors
         return
 
     # ---------- GENERAL ----------
-    try:
-        raw_resp = await call_gemini(build_general_prompt(memory, chan_id, mode))
+    raw_resp = await safe_call_gemini(build_general_prompt(memory, chan_id, mode))
+    if raw_resp:
         reply = humanize_and_safeify(raw_resp, short=short_mode)
         await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
-        await asyncio.sleep(0.1)  # slight pause to prevent rate limits
-    except Exception:
-        pass  # silently ignore API errors
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
