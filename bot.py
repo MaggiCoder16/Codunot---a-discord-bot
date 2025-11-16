@@ -18,7 +18,7 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEN_API_KEY = os.getenv("GEMINI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
-BOT_USER_ID = 1435987186502733878  # <<<<<<<<<<<<<< ADDED BY REQUEST
+BOT_USER_ID = 1435987186502733878
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
 if not DISCORD_TOKEN or not GEN_API_KEY:
@@ -76,7 +76,7 @@ async def process_queue():
             await channel.send(content)
         except Exception:
             pass
-        await asyncio.sleep(0.02)  # faster replies
+        await asyncio.sleep(0.02)
 
 
 async def send_human_reply(channel, reply_text):
@@ -100,7 +100,6 @@ async def dead_channel_check():
                     if (not last_msg_time or now - last_msg_time > timedelta(hours=3)) and count < 2:
                         await send_human_reply(channel, "its dead in here... anyone wanna talk?")
                         dead_message_count[key] = count + 1
-
         await asyncio.sleep(3600)
 
 
@@ -199,15 +198,16 @@ async def on_ready():
 # ---------- on_message ----------
 @client.event
 async def on_message(message: Message):
-    global owner_mute_until  # <- FIXED: moved to top
+    global owner_mute_until
     if message.author == client.user:
         return
 
     now = datetime.utcnow()
 
-    # respect quiet mode (except owner)
-    if owner_mute_until and now < owner_mute_until and message.author.id != OWNER_ID:
-        return
+    # respect quiet mode
+    if owner_mute_until and now < owner_mute_until:
+        if message.author.id != OWNER_ID:
+            return  # bot does NOT respond while muted
 
     chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
@@ -221,14 +221,14 @@ async def on_message(message: Message):
         return
 
     # OWNER COMMANDS
-    if message.content.startswith("!quiet"):
+    if "!quiet" in message.content:
         if message.author.id != OWNER_ID:
             await send_human_reply(
                 message.channel,
                 f"Only my owner can shush me up, not you, bozo! My owner - @aarav_2022. Owner ID - {OWNER_ID}"
             )
             return
-        quiet_match = re.match(r"!quiet (\d+)([smhd])", message.content.lower())
+        quiet_match = re.search(r"!quiet (\d+)([smhd])", message.content.lower())
         if quiet_match:
             num, unit = int(quiet_match.group(1)), quiet_match.group(2)
             seconds = num * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
@@ -239,7 +239,7 @@ async def on_message(message: Message):
             )
             return
 
-    if message.content.lower().startswith("!speak"):
+    if "!speak" in message.content.lower():
         if message.author.id != OWNER_ID:
             await send_human_reply(
                 message.channel,
@@ -281,15 +281,16 @@ async def on_message(message: Message):
             return
 
     # GENERAL MESSAGE
-    try:
-        prompt = build_general_prompt(memory, chan_id)
-        raw_resp = await call_gemini(prompt)
-        reply = humanize_and_safeify(raw_resp)
-        await send_human_reply(message.channel, reply)
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
-    except Exception:
-        pass
+    if not owner_mute_until or message.author.id == OWNER_ID:
+        try:
+            prompt = build_general_prompt(memory, chan_id)
+            raw_resp = await call_gemini(prompt)
+            reply = humanize_and_safeify(raw_resp)
+            await send_human_reply(message.channel, reply)
+            memory.add_message(chan_id, BOT_NAME, reply)
+            memory.persist()
+        except Exception:
+            pass
 
 
 # ---------- owner mute checker ----------
