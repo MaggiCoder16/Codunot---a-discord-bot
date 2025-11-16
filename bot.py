@@ -246,26 +246,26 @@ async def on_message(message: Message):
         memory.set_roast_target(chan_id, roast_target)
     target = memory.get_roast_target(chan_id)
     if target:
-        roast_prompt = build_roast_prompt(memory, chan_id, target, mode)
         try:
-            raw = await call_gemini(roast_prompt)
+            raw = await call_gemini(build_roast_prompt(memory, chan_id, target, mode))
             reply = humanize_and_safeify(raw, short=short_mode)
             await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
             memory.add_message(chan_id, BOT_NAME, reply)
-        except:
-            pass
+            await asyncio.sleep(0.1)  # slight pause to prevent rate limits
+        except Exception:
+            pass  # silently ignore API errors
         return
 
     # ---------- GENERAL ----------
     try:
-        prompt = build_general_prompt(memory, chan_id, mode)
-        raw_resp = await call_gemini(prompt)
+        raw_resp = await call_gemini(build_general_prompt(memory, chan_id, mode))
         reply = humanize_and_safeify(raw_resp, short=short_mode)
         await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
-    except:
-        pass
+        await asyncio.sleep(0.1)  # slight pause to prevent rate limits
+    except Exception:
+        pass  # silently ignore API errors
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
