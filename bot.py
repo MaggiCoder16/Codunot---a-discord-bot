@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
 from gemini_client import call_gemini
-from chess import OnlineChessEngine  # chess engine
+from bot_chess import OnlineChessEngine  # chess engine
 
 load_dotenv()
 
