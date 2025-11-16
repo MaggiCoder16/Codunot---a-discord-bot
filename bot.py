@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini  # your Gemini API wrapper
+from gemini_client import call_gemini
 
 load_dotenv()
 
@@ -38,13 +38,9 @@ MAX_MSG_LEN = 3000
 OWNER_ID = 1220934047794987048
 owner_mute_until = None
 
-# ---------- dead chat channels ----------
-DEAD_CHAT_CHANNELS = {
-    "ROYALRACER FANS": ["testing", "coders", "general"],
-    "OPEN TO ALL": ["general"]
-}
-dead_message_count = {}
-dm_dead_count = {}
+# ---------- allowed channels ----------
+ALWAYS_TALK_CHANNELS = {"OPEN TO ALL": ["talk-with-bots"]}
+MENTION_ONLY_CHANNELS = {"OPEN TO ALL": ["general"]}
 
 message_queue = asyncio.Queue()
 
@@ -84,37 +80,6 @@ async def send_human_reply(channel, reply_text):
         await send_long_message(channel, reply_text)
     else:
         await message_queue.put((channel, reply_text))
-
-
-# ---------- dead channel checks ----------
-async def dead_channel_check():
-    await client.wait_until_ready()
-    while True:
-        now = datetime.utcnow()
-        for guild in client.guilds:
-            for channel in guild.text_channels:
-                if guild.name in DEAD_CHAT_CHANNELS and channel.name in DEAD_CHAT_CHANNELS[guild.name]:
-                    key = (guild.id, channel.id)
-                    last_msg_time = memory.get_last_timestamp(str(channel.id))
-                    count = dead_message_count.get(key, 0)
-                    if (not last_msg_time or now - last_msg_time > timedelta(hours=3)) and count < 2:
-                        await send_human_reply(channel, "its dead in here... anyone wanna talk?")
-                        dead_message_count[key] = count + 1
-        await asyncio.sleep(3600)
-
-
-# ---------- conversation initiation ----------
-async def initiate_conversation():
-    await client.wait_until_ready()
-    for guild in client.guilds:
-        for channel in guild.text_channels:
-            if guild.name in DEAD_CHAT_CHANNELS and channel.name in DEAD_CHAT_CHANNELS[guild.name]:
-                msg = random.choice([
-                    "heyyy anyone up for a chat? 😎",
-                    "sup guys, what's up?",
-                    "bruh, let's talk a bit lol"
-                ])
-                await send_human_reply(channel, msg)
 
 
 # ---------- PROMPTS ----------
@@ -189,8 +154,6 @@ def humanize_and_safeify(text):
 @client.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
-    asyncio.create_task(dead_channel_check())
-    asyncio.create_task(initiate_conversation())
     asyncio.create_task(process_queue())
     asyncio.create_task(check_owner_mute())
 
@@ -204,23 +167,7 @@ async def on_message(message: Message):
 
     now = datetime.utcnow()
 
-    # respect quiet mode
-    if owner_mute_until and now < owner_mute_until:
-        if message.author.id != OWNER_ID:
-            return  # bot does NOT respond while muted
-
-    chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
-    memory.add_message(chan_id, message.author.display_name, message.content)
-
-    # Special creator question
-    if "who made you" in message.content.lower():
-        await send_human_reply(
-            message.channel,
-            "@aarav_2022, Discord user ID **1220934047794987048**, made me."
-        )
-        return
-
-    # OWNER COMMANDS
+    # OWNER COMMANDS anywhere
     if "!quiet" in message.content:
         if message.author.id != OWNER_ID:
             await send_human_reply(
@@ -248,6 +195,42 @@ async def on_message(message: Message):
             return
         owner_mute_until = None
         await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+        return
+
+    # RESPECT QUIET
+    if owner_mute_until and now < owner_mute_until and message.author.id != OWNER_ID:
+        return
+
+    # ONLY TALK in allowed channels
+    def channel_allowed():
+        if isinstance(message.channel, discord.DMChannel):
+            return False
+        # always-talk channels
+        for guild_name, channels in ALWAYS_TALK_CHANNELS.items():
+            guild = discord.utils.get(client.guilds, name=guild_name)
+            if guild and message.channel.name in channels and message.channel.guild == guild:
+                return True
+        # mention-only channels
+        for guild_name, channels in MENTION_ONLY_CHANNELS.items():
+            guild = discord.utils.get(client.guilds, name=guild_name)
+            if guild and message.channel.name in channels and message.channel.guild == guild:
+                # respond only if bot is mentioned
+                if client.user in message.mentions:
+                    return True
+        return False
+
+    if not channel_allowed():
+        return
+
+    chan_id = str(message.channel.id)
+    memory.add_message(chan_id, message.author.display_name, message.content)
+
+    # Special creator question
+    if "who made you" in message.content.lower():
+        await send_human_reply(
+            message.channel,
+            "@aarav_2022, Discord user ID **1220934047794987048**, made me."
+        )
         return
 
     # MODE SWITCHING
@@ -281,16 +264,15 @@ async def on_message(message: Message):
             return
 
     # GENERAL MESSAGE
-    if not owner_mute_until or message.author.id == OWNER_ID:
-        try:
-            prompt = build_general_prompt(memory, chan_id)
-            raw_resp = await call_gemini(prompt)
-            reply = humanize_and_safeify(raw_resp)
-            await send_human_reply(message.channel, reply)
-            memory.add_message(chan_id, BOT_NAME, reply)
-            memory.persist()
-        except Exception:
-            pass
+    try:
+        prompt = build_general_prompt(memory, chan_id)
+        raw_resp = await call_gemini(prompt)
+        reply = humanize_and_safeify(raw_resp)
+        await send_human_reply(message.channel, reply)
+        memory.add_message(chan_id, BOT_NAME, reply)
+        memory.persist()
+    except Exception:
+        pass
 
 
 # ---------- owner mute checker ----------
@@ -303,12 +285,6 @@ async def check_owner_mute():
                 for channel in guild.text_channels:
                     await send_human_reply(channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         await asyncio.sleep(1)
-
-
-# ---------- graceful shutdown ----------
-async def _cleanup():
-    await memory.close()
-    await asyncio.sleep(0.1)
 
 
 # ---------- run ----------
