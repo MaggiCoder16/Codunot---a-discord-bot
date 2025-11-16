@@ -16,7 +16,7 @@ from humanizer import humanize_response, maybe_typo, is_roast_trigger
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # new key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
@@ -49,6 +49,14 @@ dm_dead_count = {}  # {user_id: count}
 
 # ---------- message queue for throttling ----------
 message_queue = asyncio.Queue()
+
+# ---------- helper to format human-readable durations ----------
+def format_duration(num: int, unit: str) -> str:
+    unit_map = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
+    name = unit_map.get(unit, "unknown")
+    if num != 1:
+        name += "s"
+    return f"{num} {name}"
 
 # ---------- helper to send long messages ----------
 async def send_long_message(channel, text):
@@ -137,10 +145,9 @@ def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name:
     history_text = "\n".join(recent)
     target_line = f"Target: {target_name}\n" if target_name else ""
     persona = (
-        "You are Codunot, a witty human friend who can roast playfully. "
-        "Write a short, funny, hard-hitting roast. "
-        "Never attack protected classes or someone's identity. "
-        "Use slang and emoji. Keep it short (1-2 lines)."
+        "You are Codunot, a witty human friend who can roast HARD. "
+        "Write short, brutally funny, creative roasts with slang and emoji. "
+        "Never attack protected classes or identity."
     )
     return f"{persona}\n{target_line}\nRecent chat:\n{history_text}\n\nGive one roast as Codunot:"
 
@@ -150,18 +157,18 @@ def humanize_and_safeify(text: str) -> str:
         t = random.choice(["lol", "bruh", "ngl"]) + " " + t
     return t
 
-# ---------- OpenAI call ----------
+# ---------- GPT call ----------
 async def call_openai(prompt: str) -> str:
     try:
-        response = await openai.ChatCompletion.acreate(
-            model="gpt-4",
-            messages=[{"role": "system", "content": prompt}],
-            temperature=0.7,
-            max_tokens=200
+        resp = await openai.ChatCompletion.acreate(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.8
         )
-        return response.choices[0].message.content.strip()
+        return resp.choices[0].message.content.strip()
     except Exception:
-        return ""  # silent on errors
+        return ""  # silent on API errors
 
 # ---------- on_ready ----------
 @client.event
@@ -198,7 +205,8 @@ async def on_message(message: Message):
             num, unit = int(quiet_match.group(1)), quiet_match.group(2)
             seconds = num * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
             owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
-            await send_human_reply(message.channel, f"I'll be quiet for {quiet_match.group(1)}{unit} as my owner muted me. Cyu soon, guys!")
+            human_time = format_duration(num, unit)
+            await send_human_reply(message.channel, f"I'll be quiet for {human_time} as my owner muted me. Cyu soon, guys!")
             return
         if message.content.lower().startswith("!speak"):
             owner_mute_until = None
