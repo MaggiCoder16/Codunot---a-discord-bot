@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini
+from gemini_client import call_gemini  # your Gemini API wrapper
 
 load_dotenv()
 
@@ -38,9 +38,13 @@ MAX_MSG_LEN = 3000
 OWNER_ID = 1220934047794987048
 owner_mute_until = None
 
-# ---------- allowed channels ----------
-ALWAYS_TALK_CHANNELS = {"OPEN TO ALL": ["talk-with-bots"]}
-MENTION_ONLY_CHANNELS = {"OPEN TO ALL": ["general"]}
+# ---------------- CHANNEL CONFIG ----------------
+ALWAYS_TALK_CHANNELS = {
+    "OPEN TO ALL": ["talk-with-bots"]
+}
+MENTION_ONLY_CHANNELS = {
+    "OPEN TO ALL": ["general"]
+}
 
 message_queue = asyncio.Queue()
 
@@ -53,6 +57,22 @@ def format_duration(num: int, unit: str) -> str:
         return f"1 {name}"
     else:
         return f"{num} {name}s"
+
+
+def channel_allowed(message):
+    # Always-talk channels
+    for guild_name, channels in ALWAYS_TALK_CHANNELS.items():
+        if message.guild and message.guild.name == guild_name:
+            if message.channel.name in channels:
+                return True
+
+    # Mention-only channels
+    for guild_name, channels in MENTION_ONLY_CHANNELS.items():
+        if message.guild and message.guild.name == guild_name:
+            if message.channel.name in channels and client.user in message.mentions:
+                return True
+
+    return False
 
 
 async def send_long_message(channel, text):
@@ -141,12 +161,9 @@ def build_roast_prompt(mem_manager, channel_id, target_name):
 def humanize_and_safeify(text):
     if not isinstance(text, str):
         text = str(text)
-
     text = text.replace(" idk", "").replace(" *nvm", "")
-
     if random.random() < 0.1 and not MODES["serious"]:
         text = maybe_typo(text)
-
     return text
 
 
@@ -167,7 +184,26 @@ async def on_message(message: Message):
 
     now = datetime.utcnow()
 
-    # OWNER COMMANDS anywhere
+    # respect quiet mode
+    if owner_mute_until and now < owner_mute_until and message.author.id != OWNER_ID:
+        return
+
+    # only respond in allowed channels
+    if not channel_allowed(message):
+        return
+
+    chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
+    memory.add_message(chan_id, message.author.display_name, message.content)
+
+    # special creator question
+    if "who made you" in message.content.lower():
+        await send_human_reply(
+            message.channel,
+            "@aarav_2022, Discord user ID **1220934047794987048**, made me."
+        )
+        return
+
+    # OWNER COMMANDS
     if "!quiet" in message.content:
         if message.author.id != OWNER_ID:
             await send_human_reply(
@@ -195,42 +231,6 @@ async def on_message(message: Message):
             return
         owner_mute_until = None
         await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
-        return
-
-    # RESPECT QUIET
-    if owner_mute_until and now < owner_mute_until and message.author.id != OWNER_ID:
-        return
-
-    # ONLY TALK in allowed channels
-    def channel_allowed():
-        if isinstance(message.channel, discord.DMChannel):
-            return False
-        # always-talk channels
-        for guild_name, channels in ALWAYS_TALK_CHANNELS.items():
-            guild = discord.utils.get(client.guilds, name=guild_name)
-            if guild and message.channel.name in channels and message.channel.guild == guild:
-                return True
-        # mention-only channels
-        for guild_name, channels in MENTION_ONLY_CHANNELS.items():
-            guild = discord.utils.get(client.guilds, name=guild_name)
-            if guild and message.channel.name in channels and message.channel.guild == guild:
-                # respond only if bot is mentioned
-                if client.user in message.mentions:
-                    return True
-        return False
-
-    if not channel_allowed():
-        return
-
-    chan_id = str(message.channel.id)
-    memory.add_message(chan_id, message.author.display_name, message.content)
-
-    # Special creator question
-    if "who made you" in message.content.lower():
-        await send_human_reply(
-            message.channel,
-            "@aarav_2022, Discord user ID **1220934047794987048**, made me."
-        )
         return
 
     # MODE SWITCHING
@@ -264,15 +264,16 @@ async def on_message(message: Message):
             return
 
     # GENERAL MESSAGE
-    try:
-        prompt = build_general_prompt(memory, chan_id)
-        raw_resp = await call_gemini(prompt)
-        reply = humanize_and_safeify(raw_resp)
-        await send_human_reply(message.channel, reply)
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
-    except Exception:
-        pass
+    if not owner_mute_until or message.author.id == OWNER_ID:
+        try:
+            prompt = build_general_prompt(memory, chan_id)
+            raw_resp = await call_gemini(prompt)
+            reply = humanize_and_safeify(raw_resp)
+            await send_human_reply(message.channel, reply)
+            memory.add_message(chan_id, BOT_NAME, reply)
+            memory.persist()
+        except Exception:
+            pass
 
 
 # ---------- owner mute checker ----------
@@ -283,8 +284,16 @@ async def check_owner_mute():
             owner_mute_until = None
             for guild in client.guilds:
                 for channel in guild.text_channels:
-                    await send_human_reply(channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+                    # Only send back to always-talk channels
+                    if guild.name in ALWAYS_TALK_CHANNELS and channel.name in ALWAYS_TALK_CHANNELS[guild.name]:
+                        await send_human_reply(channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         await asyncio.sleep(1)
+
+
+# ---------- graceful shutdown ----------
+async def _cleanup():
+    await memory.close()
+    await asyncio.sleep(0.1)
 
 
 # ---------- run ----------
