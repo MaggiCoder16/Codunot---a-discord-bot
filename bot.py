@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini  # your Gemini API wrapper
+from gemini_client import call_gemini
+from chess import OnlineChessEngine  # chess engine
 
 load_dotenv()
 
@@ -31,9 +32,11 @@ client = discord.Client(intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 
 # ---------------- BOT MODES ----------------
-MAX_MSG_LEN = 3000  # used in serious mode
-channel_modes = {}  # per-channel mode: "funny", "roast", "serious"
-channel_mutes = {}  # per-channel mute: datetime
+MAX_MSG_LEN = 3000  # serious mode
+channel_modes = {}  # per-channel: funny, roast, serious
+channel_mutes = {}  # per-channel mute datetime
+channel_chess = {}  # per-channel chess mode
+chess_engine = OnlineChessEngine()
 
 # ---------- allowed channels ----------
 ALLOWED_SERVER_ID = 1435926772972519446
@@ -42,13 +45,11 @@ TALK_WITH_BOTS_ID = 1439269712373485589
 
 message_queue = asyncio.Queue()
 
-
 # ---------- helpers ----------
 def format_duration(num: int, unit: str) -> str:
     unit_map = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
     name = unit_map.get(unit, "minute")
     return f"{num} {name}s" if num > 1 else f"1 {name}"
-
 
 async def send_long_message(channel, text):
     while len(text) > 0:
@@ -59,16 +60,14 @@ async def send_long_message(channel, text):
             text = "..." + text
         await message_queue.put((channel, chunk))
 
-
 async def process_queue():
     while True:
         channel, content = await message_queue.get()
         try:
             await channel.send(content)
-        except Exception:
+        except:
             pass
-        await asyncio.sleep(0.02)
-
+        await asyncio.sleep(0.02)  # near-instant
 
 async def send_human_reply(channel, reply_text, limit=None):
     if limit:
@@ -78,7 +77,6 @@ async def send_human_reply(channel, reply_text, limit=None):
     else:
         await message_queue.put((channel, reply_text))
 
-
 def humanize_and_safeify(text, short=False):
     if not isinstance(text, str):
         text = str(text)
@@ -86,12 +84,10 @@ def humanize_and_safeify(text, short=False):
     if random.random() < 0.1:
         text = maybe_typo(text)
     if short:
-        # keep ~100 chars max for fun/roast mode; sentence completes naturally
         text = text.strip()[:100]
         if not text.endswith(('.', '!', '?')):
             text += '.'
     return text
-
 
 # ---------- PROMPTS ----------
 def build_general_prompt(mem_manager, channel_id, mode):
@@ -118,7 +114,6 @@ def build_general_prompt(mem_manager, channel_id, mode):
         f"My user ID is {BOT_USER_ID}.\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
     )
 
-
 def build_roast_prompt(mem_manager, channel_id, target_name, mode):
     if str(target_name).lower() in ["codunot", str(BOT_USER_ID)]:
         return "Refuse to roast yourself in a funny way."
@@ -134,13 +129,11 @@ def build_roast_prompt(mem_manager, channel_id, target_name, mode):
         persona = "Friendly, playful one-line roast with emojis (max 100 characters)."
     return f"{persona}\nTarget: {target_name}\nRecent chat:\n{history_text}\nRoast:"
 
-
 # ---------- on_ready ----------
 @client.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
-
 
 # ---------- on_message ----------
 @client.event
@@ -152,11 +145,13 @@ async def on_message(message: Message):
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
 
-    # Initialize per-channel defaults
+    # per-channel defaults
     if chan_id not in channel_modes:
         channel_modes[chan_id] = "funny"
     if chan_id not in channel_mutes:
         channel_mutes[chan_id] = None
+    if chan_id not in channel_chess:
+        channel_chess[chan_id] = False
     mode = channel_modes[chan_id]
 
     # ---------- OWNER COMMANDS ----------
@@ -187,7 +182,6 @@ async def on_message(message: Message):
         return
 
     memory.add_message(chan_id, message.author.display_name, message.content)
-
     content_lower = message.content.lower()
 
     # ---------- MODE SWITCH ----------
@@ -203,7 +197,6 @@ async def on_message(message: Message):
         channel_modes[chan_id] = "serious"
         await send_human_reply(message.channel, "🤓 Serious mode activated!")
         return
-
     mode = channel_modes[chan_id]
 
     # ---------- MODE HELP ----------
@@ -217,6 +210,29 @@ async def on_message(message: Message):
             "Use the commands above to switch modes in this channel!"
         )
         await send_human_reply(message.channel, help_text)
+        return
+
+    # ---------- CHESS MODE ----------
+    if message.content.lower().startswith("!chessmode"):
+        channel_chess[chan_id] = True
+        chess_engine.new_board(chan_id)
+        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. I’m god-level now! Make your move with standard algebraic notation (e.g., e4, Nf3).")
+        return
+
+    if channel_chess.get(chan_id):
+        move_text = message.content.strip()
+        board = chess_engine.get_board(chan_id)
+        try:
+            move = board.parse_san(move_text)
+            board.push(move)
+            bot_move = chess_engine.get_best_move(chan_id)
+            if bot_move:
+                chess_engine.push_uci(chan_id, bot_move)
+                await send_human_reply(message.channel, f"My move: `{bot_move}`")
+            else:
+                await send_human_reply(message.channel, "Couldn't calculate best move. 😅")
+        except ValueError:
+            await send_human_reply(message.channel, "Invalid move! Use standard algebraic notation like e4, Nf3, Bb5.")
         return
 
     # ---------- ROAST/FUN ----------
@@ -247,17 +263,14 @@ async def on_message(message: Message):
     except:
         pass
 
-
 # ---------- graceful shutdown ----------
 async def _cleanup():
     await memory.close()
     await asyncio.sleep(0.1)
 
-
 # ---------- run ----------
 def run():
     client.run(DISCORD_TOKEN)
-
 
 if __name__ == "__main__":
     run()
