@@ -5,6 +5,7 @@ class MemoryManager:
         self.limit = limit
         self.file_path = file_path
         self.memory = {}  # {channel_id: {"messages":[], "timestamps":[], "roast_target":None}}
+        self.flags = {}   # new dictionary to store simple boolean flags
 
     def add_message(self, channel_id, user, message):
         if channel_id not in self.memory:
@@ -39,6 +40,13 @@ class MemoryManager:
     def remove_roast_target(self, channel_id):
         if channel_id in self.memory:
             self.memory[channel_id]["roast_target"] = None
+
+    # ----- Flags for things like DM intro -----
+    def get_flag(self, key):
+        return self.flags.get(key, False)
+
+    def set_flag(self, key, value=True):
+        self.flags[key] = value
 
     # ----- Dummy persist for now -----
     def persist(self):
