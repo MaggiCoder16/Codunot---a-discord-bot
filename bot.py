@@ -51,7 +51,7 @@ message_queue = asyncio.Queue()
 def format_duration(num: int, unit: str) -> str:
     unit_map = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
     name = unit_map.get(unit, "minute")
-    return f"{num} {unit_map.get(unit, 'minute')}s" if num > 1 else f"1 {unit_map.get(unit, 'minute')}"
+    return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 
 async def send_long_message(channel, text):
@@ -163,14 +163,14 @@ async def on_message(message: Message):
         if message.author.id != OWNER_ID:
             return  # bot does NOT respond while muted
 
-    # --------- SERVER / CHANNEL LOGIC FIX ---------
+    # ---------------- SERVER LOGIC FIX ----------------
     is_dm = isinstance(message.channel, discord.DMChannel)
     allowed_channel = False
 
     if is_dm:
         allowed_channel = True
     else:
-        # Always talk in #talk-with-bots
+        # Always talk in talk-with-bots
         if message.channel.name == ALWAYS_TALK_CHANNEL:
             allowed_channel = True
         # Only talk in #general under OPEN TO ALL if pinged
@@ -178,13 +178,18 @@ async def on_message(message: Message):
             message.guild
             and message.guild.name == ALLOWED_SERVER
             and message.channel.name == ALLOWED_OPEN_GENERAL
-            and (message.channel.category is None or message.channel.category.name == ALLOWED_OPEN_CATEGORY)
-            and (client.user in message.mentions or f"<@{client.user.id}>" in message.content)
+            and (message.channel.category is None or message.channel.category.name.upper() == ALLOWED_OPEN_CATEGORY.upper())
+            and (
+                client.user in message.mentions
+                or f"<@{client.user.id}>" in message.content
+                or f"<@!{client.user.id}>" in message.content
+            )
         ):
             allowed_channel = True
 
     if not allowed_channel:
         return  # do not respond
+    # ---------------------------------------------------
 
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
