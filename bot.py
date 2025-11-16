@@ -45,6 +45,9 @@ DEAD_CHAT_CHANNELS = {
 dead_message_count = {}  # {(guild_id, channel_id): count}
 dm_dead_count = {}  # {user_id: count}
 
+# ---------- DM intro tracking ----------
+dm_intro_sent = set()  # store user_ids that already got intro
+
 # ---------- message queue for throttling ----------
 message_queue = asyncio.Queue()
 
@@ -73,7 +76,7 @@ async def process_queue():
             await channel.send(content)
         except Exception:
             pass
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)  # slight delay between messages
 
 # ---------- send messages ----------
 async def send_human_reply(channel, reply_text):
@@ -97,6 +100,7 @@ async def dead_channel_check():
                         msg = "its dead in here... anyone wanna talk?"
                         await send_human_reply(channel, msg)
                         dead_message_count[key] = count + 1
+        # DM dead messages
         for user_id, count in dm_dead_count.items():
             if count >= 2:
                 continue
@@ -106,24 +110,20 @@ async def dead_channel_check():
                 msg = "hey bro, wannna talk? im lowk bored rn"
                 await send_human_reply(user, msg)
                 dm_dead_count[user_id] = count + 1
-        await asyncio.sleep(3600)
+        await asyncio.sleep(3600)  # check every hour
 
 # ---------- start conversation ----------
 async def initiate_conversation():
     await client.wait_until_ready()
     for guild in client.guilds:
         for channel in guild.text_channels:
-            try:
-                if not channel.permissions_for(guild.me).send_messages:
-                    continue
+            if guild.name in DEAD_CHAT_CHANNELS and channel.name in DEAD_CHAT_CHANNELS[guild.name]:
                 msg = random.choice([
                     "heyyy anyone up for a chat? 😎",
                     "sup guys, what's up?",
                     "bruh, let's talk a bit lol"
                 ])
                 await send_human_reply(channel, msg)
-            except Exception:
-                continue
 
 # ---------- build prompts ----------
 def build_general_prompt(mem_manager: MemoryManager, channel_id: str) -> str:
@@ -170,29 +170,20 @@ async def on_ready():
 @client.event
 async def on_message(message: Message):
     global owner_mute_until
+
     if message.author == client.user:
         return
 
     now = datetime.utcnow()
-    if owner_mute_until and now < owner_mute_until:
-        return
 
-    chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
-    memory.add_message(chan_id, message.author.display_name, message.content)
+    # Automatically unmute if time expired
+    if owner_mute_until and now >= owner_mute_until:
+        owner_mute_until = None
+        await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
 
-    # DM intro, only send once per user
-    if isinstance(message.channel, discord.DMChannel):
-        intro_sent_key = f"intro_{message.author.id}"
-        if not memory.memory.get(intro_sent_key):
-            intro_msg = (
-                "Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
-                "I have 3 modes - !roastmode, !funmode, and !seriousmode. They're pretty self-explanatory, you know? Try them all!"
-            )
-            await send_human_reply(message.channel, intro_msg)
-            memory.memory[intro_sent_key] = True
-
-    # Owner mute commands
+    # Owner commands
     if message.author.id == OWNER_ID:
+        # !quiet command
         quiet_match = re.match(r"!quiet (\d+)([smhd])", message.content.lower())
         if quiet_match:
             num, unit = int(quiet_match.group(1)), quiet_match.group(2)
@@ -201,22 +192,47 @@ async def on_message(message: Message):
             human_time = format_duration(num, unit)
             await send_human_reply(message.channel, f"I'll be quiet for {human_time} as my owner muted me. Cyu soon, guys!")
             return
+
+        # !speak command
         if message.content.lower().startswith("!speak"):
-            owner_mute_until = None
-            await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+            if owner_mute_until:
+                owner_mute_until = None
+                await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+            else:
+                await send_human_reply(message.channel, "I’m already talking! 😎")
             return
 
-    # Mode commands
+    # Ignore messages while muted
+    if owner_mute_until and now < owner_mute_until:
+        return
+
+    chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
+    memory.add_message(chan_id, message.author.display_name, message.content)
+
+    # DM intro only once
+    if isinstance(message.channel, discord.DMChannel) and message.author.id not in dm_intro_sent:
+        intro = ("Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
+                 "I have 3 modes - !roastmode, !funmode, and !seriousmode. They're pretty self-explanatory, you know? Try them all!")
+        await send_human_reply(message.channel, intro)
+        dm_intro_sent.add(message.author.id)
+
+    # Modes commands
     if message.content.startswith("!roastmode"):
-        MODES.update({"roast": True, "serious": False, "funny": False})
+        MODES["roast"] = True
+        MODES["serious"] = False
+        MODES["funny"] = False
         await send_human_reply(message.channel, "😂 Roast/funny mode activated!")
         return
     elif message.content.startswith("!seriousmode"):
-        MODES.update({"serious": True, "roast": False, "funny": False})
+        MODES["serious"] = True
+        MODES["roast"] = False
+        MODES["funny"] = False
         await send_human_reply(message.channel, "🤓 Serious/helpful mode activated!")
         return
     elif message.content.startswith("!funmode"):
-        MODES.update({"funny": True, "roast": False, "serious": False})
+        MODES["funny"] = True
+        MODES["roast"] = False
+        MODES["serious"] = False
         await send_human_reply(message.channel, "😎 Fun casual mode activated!")
         return
 
@@ -227,26 +243,29 @@ async def on_message(message: Message):
             memory.set_roast_target(chan_id, roast_target)
         target = memory.get_roast_target(chan_id)
         if target:
-            roast_prompt = build_roast_prompt(memory, chan_id, target)
             try:
+                roast_prompt = build_roast_prompt(memory, chan_id, target)
                 raw = await call_gemini(roast_prompt)
                 roast_text = humanize_and_safeify(raw)
                 await send_human_reply(message.channel, roast_text)
                 memory.add_message(chan_id, BOT_NAME, roast_text)
             except Exception:
-                pass
+                await send_human_reply(message.channel, "Hmm, API is acting up!")
             return
 
     # GENERAL conversation
     try:
         prompt = build_general_prompt(memory, chan_id)
         raw_resp = await call_gemini(prompt)
-        reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
+        if not raw_resp.strip():
+            reply = random.choice(["lol", "huh?", "true", "omg", "bruh"])
+        else:
+            reply = humanize_response(raw_resp)
         await send_human_reply(message.channel, reply)
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
     except Exception:
-        pass
+        await send_human_reply(message.channel, "Hmm, API is acting up!")
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
