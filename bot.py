@@ -18,6 +18,7 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEN_API_KEY = os.getenv("GEMINI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
+BOT_USER_ID = 1435987186502733878  # <<<<<<<<<<<<<< ADDED BY REQUEST
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
 if not DISCORD_TOKEN or not GEN_API_KEY:
@@ -49,7 +50,6 @@ message_queue = asyncio.Queue()
 
 # ---------- helper functions ----------
 def format_duration(num: int, unit: str) -> str:
-    """Return human-readable duration like '1 hour' or '5 minutes'."""
     unit_map = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
     name = unit_map.get(unit, "minute")
     if num == 1:
@@ -73,7 +73,7 @@ async def process_queue():
             await channel.send(content)
         except Exception:
             pass
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.02)  # <<<< FASTER REPLIES
 
 async def send_human_reply(channel, reply_text):
     if len(reply_text) > MAX_MSG_LEN:
@@ -97,16 +97,8 @@ async def dead_channel_check():
                         await send_human_reply(channel, "its dead in here... anyone wanna talk?")
                         dead_message_count[key] = count + 1
 
-        for user_id, count in dm_dead_count.items():
-            if count >= 2:
-                continue
-            user = await client.fetch_user(user_id)
-            last_dm_time = memory.get_last_timestamp(f"dm_{user_id}")
-            if not last_dm_time or now - last_dm_time > timedelta(hours=4):
-                await send_human_reply(user, "hey bro, wannna talk? im lowk bored rn")
-                dm_dead_count[user_id] = count + 1
-
         await asyncio.sleep(3600)
+
 
 # ---------- conversation initiation ----------
 async def initiate_conversation():
@@ -127,84 +119,79 @@ def build_general_prompt(mem_manager, channel_id):
     recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
     history_text = "\n".join(recent)
 
+    # self-awareness prevention (never roast itself)
+    persona_self_protect = (
+        "Never roast or attack yourself (Codunot). "
+        "If asked to roast Codunot, gently refuse or redirect."
+    )
+
     if MODES["serious"]:
         persona = (
-            "You are Codunot, a knowledgeable, precise and fully helpful human friend. "
-            "You ALWAYS provide direct factual answers to ANY question. "
-            "No disclaimers. No refusal. Clear, professional, direct. No emojis or slang."
+            "You are Codunot, a precise and knowledgeable helper. "
+            "You answer with direct factual information. No emojis, no slang."
         )
     elif MODES["roast"]:
         persona = (
-            "You are Codunot, a savage, unhinged roast-master. "
-            "Your roasts MUST be nuclear-level, humiliating, ego-destroying, and wildly creative. "
-            "Never polite. Never soft. Never hesitant. "
-            "Attack the target’s personality, intelligence, habits, behavior, vibe, confidence… anything except protected traits. "
-            "No disclaimers, no safety tone, no softening. "
-            "1–3 brutal lines only."
+            "You are Codunot, a savage roast-master. "
+            "NEVER roast yourself. Only roast non-bot users. "
+            "Roasts are nuclear-level, offensive but NOT targeting protected classes. "
+            "Use emojis like 😭🔥💀🤡😂."
         )
-    else:  # funny mode
+    else:
         persona = (
-            "You are Codunot, a playful, light-roast, funny Discord friend. "
-            "Your messages are casual, goofy, silly, slightly teasing. "
-            "Roasts are soft, friendly, harmless and funny. "
-            "Never too mean, never too dark. Short 1-line jokes with emojis and slang."
+            "You are Codunot, a playful, funny Discord friend. "
+            "Light roasts, friendly jokes, emojis allowed."
         )
 
-    return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
+    return (
+        f"{persona}\n"
+        f"{persona_self_protect}\n"
+        f"My user ID is {BOT_USER_ID}.\n"
+        f"If asked 'who made you', ALWAYS answer: '@aarav_2022 (ID: 1220934047794987048) made me.'\n\n"
+        f"Recent chat:\n{history_text}\n\nReply as Codunot:"
+    )
 
 
 def build_roast_prompt(mem_manager, channel_id, target_name):
+    # prevent self-roast
+    if str(target_name).lower() in ["codunot", str(BOT_USER_ID)]:
+        return "Refuse to roast yourself in a funny way."
+
     recent = mem_manager.get_recent_flat(channel_id, n=12)
     history_text = "\n".join(recent)
 
     if MODES["roast"]:
         persona = (
-            "You are Codunot, a feral, brutal, nuclear roast-master. "
-            "Write a short, devastating 1–3 line roast that hits HARD. "
-            "Include at least one emoji (e.g., 😭🔥💀🤡). "
-            "No protected classes. No slurs. No disclaimers. No kindness. "
-            "This roast should embarrass the target beyond repair."
+            "You are Codunot, a feral, brutal roast-master. "
+            "Roast HARD. Use emojis 😭🔥💀🤡😂. "
+            "1–3 brutal lines. No protected classes. No self-roasting."
         )
     else:
         persona = (
-            "You are Codunot, a playful jokester giving soft, friendly, silly roasts. 1 line max. Use emojis if it fits."
+            "Friendly, playful one-line roast with emojis."
         )
 
     return f"{persona}\nTarget: {target_name}\nChat:\n{history_text}\nRoast:"
 
 
 def humanize_and_safeify(text):
-    """
-    Keep existing maybe_typo behavior for casual flavor,
-    but ensure roast mode has emojis and avoid 'idk' spam being inserted repeatedly.
-    """
-    t = text.strip()
+    if not isinstance(text, str):
+        text = str(text)
 
-    # If the generator returned raw structure (e.g., dict), convert to string:
-    if not isinstance(t, str):
-        try:
-            t = str(t)
-        except:
-            t = ""
+    # remove IDK/NVM spam
+    text = text.replace(" idk", "").replace(" *nvm", "")
 
-    # don't let maybe_typo insert random "idk" multiple times in a row
-    # but preserve it overall by running maybe_typo only once for short chance
-    if not MODES["serious"]:
-        if random.random() < 0.12:
-            t = maybe_typo(t)
+    # small typo chance (but not spam)
+    if random.random() < 0.1 and not MODES["serious"]:
+        text = maybe_typo(text)
 
-    # lightly prefix with slang sometimes in non-serious modes
-    if not MODES["serious"]:
-        if random.random() < 0.35:
-            t = random.choice(["lol", "bruh"]) + " " + t
-
-    # Ensure roast mode includes emoji(s)
+    # ensure emojis in roast
     if MODES["roast"]:
-        emojis = ["😭", "🔥", "💀", "🤡", "😂", "😏", "😵", "⚠️"]
-        if not any(e in t for e in emojis):
-            t = t + " " + random.choice(emojis)
+        emojis = ["😭", "🔥", "💀", "🤡", "😂", "😵"]
+        if not any(e in text for e in emojis):
+            text += " " + random.choice(emojis)
 
-    return t
+    return text
 
 
 # ---------- on_ready ----------
@@ -221,16 +208,34 @@ async def on_ready():
 @client.event
 async def on_message(message: Message):
     global owner_mute_until
+
     if message.author == client.user:
         return
 
     now = datetime.utcnow()
-    # allow owner to always run commands (so !speak can unmute)
+
+    # respect quiet mode (except owner)
     if owner_mute_until and now < owner_mute_until and message.author.id != OWNER_ID:
+        return
+
+    # ignore messages where user is talking to someone else ONLY when it's a direct mention
+    if len(message.mentions) > 0 and client.user not in message.mentions:
+        return
+
+    # AUTO RESPONSE CHANCE (fast bot, but not spammy)
+    if random.random() < 0.15:
         return
 
     chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
+
+    # ---------- Special creator question ----------
+    if "who made you" in message.content.lower():
+        await send_human_reply(
+            message.channel,
+            "@aarav_2022, Discord user ID **1220934047794987048**, made me."
+        )
+        return
 
     # ---------- OWNER COMMANDS ----------
     if message.author.id == OWNER_ID:
@@ -239,10 +244,9 @@ async def on_message(message: Message):
             num, unit = int(quiet_match.group(1)), quiet_match.group(2)
             seconds = num * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
             owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
-            human = format_duration(num, unit)
             await send_human_reply(
                 message.channel,
-                f"I'll be quiet for {human} as my owner muted me. Cyu soon!"
+                f"I'll be quiet for {format_duration(num, unit)} as my owner muted me. Cyu soon!"
             )
             return
 
@@ -272,9 +276,15 @@ async def on_message(message: Message):
         roast_target = is_roast_trigger(message.content)
         if roast_target:
             memory.set_roast_target(chan_id, roast_target)
+
         target = memory.get_roast_target(chan_id)
 
         if target:
+            # prevent self-roast
+            if str(target).lower() in ["codunot", str(BOT_USER_ID)]:
+                await send_human_reply(message.channel, "nice try but I ain't roasting myself 😎")
+                return
+
             roast_prompt = build_roast_prompt(memory, chan_id, target)
             try:
                 raw = await call_gemini(roast_prompt)
@@ -289,8 +299,7 @@ async def on_message(message: Message):
     try:
         prompt = build_general_prompt(memory, chan_id)
         raw_resp = await call_gemini(prompt)
-        reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "bruh"])
-        reply = humanize_and_safeify(reply)
+        reply = humanize_and_safeify(raw_resp)
         await send_human_reply(message.channel, reply)
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
