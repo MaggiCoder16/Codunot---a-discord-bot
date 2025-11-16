@@ -221,13 +221,6 @@ async def on_message(message: Message):
             )
             return
 
-    if "!speak" in message.content.lower():
-        if message.author.id != OWNER_ID:
-            await send_human_reply(
-                message.channel,
-                f"Only my owner can make me speak, not you, bozo! My owner - @aarav_2022. Owner ID - {OWNER_ID}"
-            )
-            return
         owner_mute_until = None
         await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         return
