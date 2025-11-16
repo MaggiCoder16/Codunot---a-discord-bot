@@ -38,12 +38,13 @@ MAX_MSG_LEN = 3000
 OWNER_ID = 1220934047794987048
 owner_mute_until = None
 
-# ---------------- CHANNEL CONFIG ----------------
+# ---------- channel rules for "RoyalRacer Fans" ----------
 ALWAYS_TALK_CHANNELS = {
-    "OPEN TO ALL": ["talk-with-bots"]
+    "RoyalRacer Fans": ["talk-with-bots"]
 }
+
 MENTION_ONLY_CHANNELS = {
-    "OPEN TO ALL": ["general"]
+    "RoyalRacer Fans": ["general"]
 }
 
 message_queue = asyncio.Queue()
@@ -57,22 +58,6 @@ def format_duration(num: int, unit: str) -> str:
         return f"1 {name}"
     else:
         return f"{num} {name}s"
-
-
-def channel_allowed(message):
-    # Always-talk channels
-    for guild_name, channels in ALWAYS_TALK_CHANNELS.items():
-        if message.guild and message.guild.name == guild_name:
-            if message.channel.name in channels:
-                return True
-
-    # Mention-only channels
-    for guild_name, channels in MENTION_ONLY_CHANNELS.items():
-        if message.guild and message.guild.name == guild_name:
-            if message.channel.name in channels and client.user in message.mentions:
-                return True
-
-    return False
 
 
 async def send_long_message(channel, text):
@@ -100,6 +85,26 @@ async def send_human_reply(channel, reply_text):
         await send_long_message(channel, reply_text)
     else:
         await message_queue.put((channel, reply_text))
+
+
+def channel_allowed(message):
+    # Always allow DMs
+    if isinstance(message.channel, discord.DMChannel):
+        return True
+
+    # Only restrict channels for "RoyalRacer Fans" server
+    if not message.guild or message.guild.name != "RoyalRacer Fans":
+        return True  # other servers: unrestricted
+
+    # Always-talk channels in the server
+    if message.channel.name in ALWAYS_TALK_CHANNELS.get("RoyalRacer Fans", []):
+        return True
+
+    # Mention-only channels
+    if message.channel.name in MENTION_ONLY_CHANNELS.get("RoyalRacer Fans", []) and client.user in message.mentions:
+        return True
+
+    return False
 
 
 # ---------- PROMPTS ----------
@@ -161,9 +166,12 @@ def build_roast_prompt(mem_manager, channel_id, target_name):
 def humanize_and_safeify(text):
     if not isinstance(text, str):
         text = str(text)
+
     text = text.replace(" idk", "").replace(" *nvm", "")
+
     if random.random() < 0.1 and not MODES["serious"]:
         text = maybe_typo(text)
+
     return text
 
 
@@ -185,17 +193,18 @@ async def on_message(message: Message):
     now = datetime.utcnow()
 
     # respect quiet mode
-    if owner_mute_until and now < owner_mute_until and message.author.id != OWNER_ID:
-        return
+    if owner_mute_until and now < owner_mute_until:
+        if message.author.id != OWNER_ID:
+            return  # bot does NOT respond while muted
 
-    # only respond in allowed channels
+    # only respond if channel allowed
     if not channel_allowed(message):
         return
 
     chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # special creator question
+    # Special creator question
     if "who made you" in message.content.lower():
         await send_human_reply(
             message.channel,
@@ -284,16 +293,9 @@ async def check_owner_mute():
             owner_mute_until = None
             for guild in client.guilds:
                 for channel in guild.text_channels:
-                    # Only send back to always-talk channels
-                    if guild.name in ALWAYS_TALK_CHANNELS and channel.name in ALWAYS_TALK_CHANNELS[guild.name]:
+                    if channel_allowed(channel):
                         await send_human_reply(channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         await asyncio.sleep(1)
-
-
-# ---------- graceful shutdown ----------
-async def _cleanup():
-    await memory.close()
-    await asyncio.sleep(0.1)
 
 
 # ---------- run ----------
