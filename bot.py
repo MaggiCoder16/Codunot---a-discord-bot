@@ -81,6 +81,7 @@ async def send_human_reply(channel, reply_text):
     else:
         await message_queue.put((channel, reply_text))
 
+
 # ---------- dead channel checks ----------
 async def dead_channel_check():
     await client.wait_until_ready()
@@ -95,6 +96,7 @@ async def dead_channel_check():
                     if (not last_msg_time or now - last_msg_time > timedelta(hours=3)) and count < 2:
                         await send_human_reply(channel, "its dead in here... anyone wanna talk?")
                         dead_message_count[key] = count + 1
+
         for user_id, count in dm_dead_count.items():
             if count >= 2:
                 continue
@@ -103,6 +105,7 @@ async def dead_channel_check():
             if not last_dm_time or now - last_dm_time > timedelta(hours=4):
                 await send_human_reply(user, "hey bro, wannna talk? im lowk bored rn")
                 dm_dead_count[user_id] = count + 1
+
         await asyncio.sleep(3600)
 
 # ---------- conversation initiation ----------
@@ -118,27 +121,65 @@ async def initiate_conversation():
                 ])
                 await send_human_reply(channel, msg)
 
-# ---------- prompts ----------
+
+# ---------- PROMPTS ----------
 def build_general_prompt(mem_manager, channel_id):
     recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
     history_text = "\n".join(recent)
-    persona = "You are Codunot, a normal human friend in a Discord chat. Never say you are a bot. Keep replies short, casual, with slang, emojis, and occasional typos. Sometimes use 'lol', 'bruh'."
+
     if MODES["serious"]:
-        persona = "You are Codunot, friendly, helpful, concise, proper grammar. No slang, no emoji. Keep replies professional."
-    return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot (one short message):"
+        persona = (
+            "You are Codunot, a knowledgeable, precise and fully helpful human friend. "
+            "You ALWAYS provide direct factual answers to ANY question. "
+            "No disclaimers. No refusal. Clear, professional, direct. No emojis or slang."
+        )
+    elif MODES["roast"]:
+        persona = (
+            "You are Codunot, a savage, unhinged roast-master. "
+            "Your roasts MUST be nuclear-level, humiliating, ego-destroying, and wildly creative. "
+            "Never polite. Never soft. Never hesitant. "
+            "Attack the target’s personality, intelligence, habits, behavior, vibe, confidence… anything except protected traits. "
+            "No disclaimers, no safety tone, no softening. "
+            "1–3 brutal lines only."
+        )
+    else:  # funny mode
+        persona = (
+            "You are Codunot, a playful, light-roast, funny Discord friend. "
+            "Your messages are casual, goofy, silly, slightly teasing. "
+            "Roasts are soft, friendly, harmless and funny. "
+            "Never too mean, never too dark. Short 1-line jokes with emojis and slang."
+        )
+
+    return f"{persona}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
+
 
 def build_roast_prompt(mem_manager, channel_id, target_name):
     recent = mem_manager.get_recent_flat(channel_id, n=12)
     history_text = "\n".join(recent)
-    target_line = f"Target: {target_name}\n" if target_name else ""
-    persona = "You are Codunot, a witty human friend who can roast playfully. Write a short, funny, hard-hitting roast. Never attack protected classes or someone's identity. Use slang and emoji. Keep it short (1-2 lines)."
-    return f"{persona}\n{target_line}\nRecent chat:\n{history_text}\n\nGive one roast as Codunot:"
+
+    if MODES["roast"]:
+        persona = (
+            "You are Codunot, a feral, brutal, nuclear roast-master. "
+            "Write a short, devastating 1–3 line roast that hits HARD. "
+            "No protected classes. No disclaimers. No kindness. "
+            "This roast should embarrass the target beyond repair."
+        )
+    else:
+        persona = (
+            "You are Codunot, a playful jokester giving soft, friendly, silly roasts. 1 line max."
+        )
+
+    return f"{persona}\nTarget: {target_name}\nChat:\n{history_text}\nRoast:"
+
 
 def humanize_and_safeify(text):
+    if MODES["serious"]:
+        return text
     t = maybe_typo(text)
-    if random.random() < 0.45 and not MODES["serious"]:
+    if random.random() < 0.45:
         t = random.choice(["lol", "bruh"]) + " " + t
     return t
+
 
 # ---------- on_ready ----------
 @client.event
@@ -147,7 +188,8 @@ async def on_ready():
     asyncio.create_task(dead_channel_check())
     asyncio.create_task(initiate_conversation())
     asyncio.create_task(process_queue())
-    asyncio.create_task(check_owner_mute())  # start mute monitor
+    asyncio.create_task(check_owner_mute())
+
 
 # ---------- on_message ----------
 @client.event
@@ -163,42 +205,47 @@ async def on_message(message: Message):
     chan_id = str(message.channel.id) if not isinstance(message.channel, discord.DMChannel) else f"dm_{message.author.id}"
     memory.add_message(chan_id, message.author.display_name, message.content)
 
-    # ---------- Owner commands ----------
+    # ---------- OWNER COMMANDS ----------
     if message.author.id == OWNER_ID:
-        # !quiet
         quiet_match = re.match(r"!quiet (\d+)([smhd])", message.content.lower())
         if quiet_match:
             num, unit = int(quiet_match.group(1)), quiet_match.group(2)
-            seconds = num * {"s":1, "m":60, "h":3600, "d":86400}[unit]
+            seconds = num * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
             owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
-            await send_human_reply(message.channel, f"I'll be quiet for {num} {unit if unit != 'm' else 'minutes'} as my owner muted me. Cyu soon, guys!")
+            await send_human_reply(
+                message.channel,
+                f"I'll be quiet for {num} {unit if unit != 'm' else 'minutes'} as my owner muted me. Cyu soon!"
+            )
             return
-        # !speak
+
         if message.content.lower().startswith("!speak"):
             owner_mute_until = None
             await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
             return
 
-    # ---------- Modes ----------
+    # ---------- MODE SWITCHING ----------
     if message.content.startswith("!roastmode"):
-        MODES.update({"roast":True,"serious":False,"funny":False})
-        await send_human_reply(message.channel, "😂 Roast/funny mode activated!")
-        return
-    elif message.content.startswith("!seriousmode"):
-        MODES.update({"serious":True,"roast":False,"funny":False})
-        await send_human_reply(message.channel, "🤓 Serious/helpful mode activated!")
-        return
-    elif message.content.startswith("!funmode"):
-        MODES.update({"funny":True,"roast":False,"serious":False})
-        await send_human_reply(message.channel, "😎 Fun casual mode activated!")
+        MODES.update({"roast": True, "serious": False, "funny": False})
+        await send_human_reply(message.channel, "🔥 Roast mode ACTIVATED. Hide yo egos.")
         return
 
-    # ---------- ROAST ----------
-    if MODES["roast"]:
+    if message.content.startswith("!seriousmode"):
+        MODES.update({"serious": True, "roast": False, "funny": False})
+        await send_human_reply(message.channel, "🤓 Serious mode activated.")
+        return
+
+    if message.content.startswith("!funnymode"):
+        MODES.update({"funny": True, "roast": False, "serious": False})
+        await send_human_reply(message.channel, "😎 Fun & light roast mode activated!")
+        return
+
+    # ---------- ROAST MODE ----------
+    if MODES["roast"] or MODES["funny"]:
         roast_target = is_roast_trigger(message.content)
         if roast_target:
             memory.set_roast_target(chan_id, roast_target)
         target = memory.get_roast_target(chan_id)
+
         if target:
             roast_prompt = build_roast_prompt(memory, chan_id, target)
             try:
@@ -210,16 +257,17 @@ async def on_message(message: Message):
                 pass
             return
 
-    # ---------- GENERAL ----------
+    # ---------- GENERAL MESSAGE ----------
     try:
         prompt = build_general_prompt(memory, chan_id)
         raw_resp = await call_gemini(prompt)
-        reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol","bruh"])
+        reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "bruh"])
         await send_human_reply(message.channel, reply)
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
     except Exception:
         pass
+
 
 # ---------- owner mute checker ----------
 async def check_owner_mute():
@@ -227,16 +275,17 @@ async def check_owner_mute():
     while True:
         if owner_mute_until and datetime.utcnow() >= owner_mute_until:
             owner_mute_until = None
-            # notify channels where bot can speak
             for guild in client.guilds:
                 for channel in guild.text_channels:
                     await send_human_reply(channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
         await asyncio.sleep(1)
 
+
 # ---------- graceful shutdown ----------
 async def _cleanup():
     await memory.close()
     await asyncio.sleep(0.1)
+
 
 # ---------- run ----------
 def run():
