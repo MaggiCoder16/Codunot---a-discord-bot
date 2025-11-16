@@ -8,22 +8,20 @@ from datetime import datetime, timedelta
 import discord
 from discord import Message
 from dotenv import load_dotenv
-import openai
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
+from gemini_client import call_gemini  # your Gemini API client
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEN_API_KEY = os.getenv("GEMINI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 
-if not DISCORD_TOKEN or not OPENAI_API_KEY:
-    raise SystemExit("Set DISCORD_TOKEN and OPENAI_API_KEY before running.")
-
-openai.api_key = OPENAI_API_KEY
+if not DISCORD_TOKEN or not GEN_API_KEY:
+    raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
 
 intents = discord.Intents.all()
 intents.message_content = True
@@ -49,7 +47,6 @@ dm_dead_count = {}  # {user_id: count}
 
 # ---------- message queue for throttling ----------
 message_queue = asyncio.Queue()
-api_lock = asyncio.Lock()  # ensure only one API request at a time
 
 # ---------- helper to format human-readable durations ----------
 def format_duration(num: int, unit: str) -> str:
@@ -100,13 +97,14 @@ async def dead_channel_check():
                         msg = "its dead in here... anyone wanna talk?"
                         await send_human_reply(channel, msg)
                         dead_message_count[key] = count + 1
+        # DM dead messages
         for user_id, count in dm_dead_count.items():
             if count >= 2:
                 continue
             user = await client.fetch_user(user_id)
             last_dm_time = memory.get_last_timestamp(f"dm_{user_id}")
             if not last_dm_time or now - last_dm_time > timedelta(hours=4):
-                msg = "hey bro, wanna talk? I'm bored rn"
+                msg = "hey bro, wannna talk? im lowk bored rn"
                 await send_human_reply(user, msg)
                 dm_dead_count[user_id] = count + 1
         await asyncio.sleep(3600)
@@ -145,9 +143,9 @@ def build_roast_prompt(mem_manager: MemoryManager, channel_id: str, target_name:
     history_text = "\n".join(recent)
     target_line = f"Target: {target_name}\n" if target_name else ""
     persona = (
-        "You are Codunot, a witty human friend who can roast HARD. "
-        "Write short, funny, creative roasts with slang and emoji. "
-        "Never attack protected classes or identity."
+        "You are Codunot, a witty human who can roast HARD. "
+        "Write a creative, funny, savage roast for the target. "
+        "Use slang, emojis, casual language, full length — no restrictions. Go all out!"
     )
     return f"{persona}\n{target_line}\nRecent chat:\n{history_text}\n\nGive one roast as Codunot:"
 
@@ -156,20 +154,6 @@ def humanize_and_safeify(text: str) -> str:
     if random.random() < 0.45 and not MODES["serious"]:
         t = random.choice(["lol", "bruh", "ngl"]) + " " + t
     return t
-
-# ---------- GPT call using GPT-3.5-turbo ----------
-async def call_openai(prompt: str) -> str:
-    async with api_lock:
-        try:
-            resp = await openai.ChatCompletion.acreate(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=600,
-                temperature=0.8
-            )
-            return resp.choices[0].message.content.strip()
-        except Exception:
-            return "Hmm, API is acting up!"
 
 # ---------- on_ready ----------
 @client.event
@@ -196,7 +180,7 @@ async def on_message(message: Message):
     # DM intro
     if isinstance(message.channel, discord.DMChannel) and len(memory.get_recent_flat(chan_id, 1)) == 1:
         intro = ("Hi! I'm Codunot, a bot who yaps like a human, but is AI! "
-                 "I have 3 modes - !roastmode, !funmode, and !seriousmode. Try them all!")
+                 "I have 3 modes - !roastmode, !funmode, and !seriousmode. They're pretty self-explanatory, you know? Try them all!")
         await send_human_reply(message.channel, intro)
 
     # Owner mute commands
@@ -206,8 +190,7 @@ async def on_message(message: Message):
             num, unit = int(quiet_match.group(1)), quiet_match.group(2)
             seconds = num * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
             owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
-            human_time = format_duration(num, unit)
-            await send_human_reply(message.channel, f"I'll be quiet for {human_time} as my owner muted me. Cyu soon!")
+            await send_human_reply(message.channel, f"I'll be quiet for {num}{unit} as my owner muted me. Cyu soon, guys!")
             return
         if message.content.lower().startswith("!speak"):
             owner_mute_until = None
@@ -216,15 +199,21 @@ async def on_message(message: Message):
 
     # Modes commands
     if message.content.startswith("!roastmode"):
-        MODES.update({"roast": True, "serious": False, "funny": False})
+        MODES["roast"] = True
+        MODES["serious"] = False
+        MODES["funny"] = False
         await send_human_reply(message.channel, "😂 Roast/funny mode activated!")
         return
     elif message.content.startswith("!seriousmode"):
-        MODES.update({"roast": False, "serious": True, "funny": False})
+        MODES["serious"] = True
+        MODES["roast"] = False
+        MODES["funny"] = False
         await send_human_reply(message.channel, "🤓 Serious/helpful mode activated!")
         return
     elif message.content.startswith("!funmode"):
-        MODES.update({"roast": False, "serious": False, "funny": True})
+        MODES["funny"] = True
+        MODES["roast"] = False
+        MODES["serious"] = False
         await send_human_reply(message.channel, "😎 Fun casual mode activated!")
         return
 
@@ -236,20 +225,28 @@ async def on_message(message: Message):
         target = memory.get_roast_target(chan_id)
         if target:
             roast_prompt = build_roast_prompt(memory, chan_id, target)
-            raw = await call_openai(roast_prompt)
-            if raw:
+            try:
+                raw = await call_gemini(roast_prompt)
                 roast_text = humanize_and_safeify(raw)
                 await send_human_reply(message.channel, roast_text)
                 memory.add_message(chan_id, BOT_NAME, roast_text)
+            except Exception:
+                pass
             return
 
     # GENERAL conversation
-    prompt = build_general_prompt(memory, chan_id)
-    raw_resp = await call_openai(prompt)
-    reply = humanize_response(raw_resp) if raw_resp.strip() else random.choice(["lol", "huh?", "true", "omg", "bruh"])
-    await send_human_reply(message.channel, reply)
-    memory.add_message(chan_id, BOT_NAME, reply)
-    memory.persist()
+    try:
+        prompt = build_general_prompt(memory, chan_id)
+        raw_resp = await call_gemini(prompt)
+        if not raw_resp.strip():
+            reply = random.choice(["lol", "huh?", "true", "omg", "bruh"])
+        else:
+            reply = humanize_response(raw_resp)
+        await send_human_reply(message.channel, reply)
+        memory.add_message(chan_id, BOT_NAME, reply)
+        memory.persist()
+    except Exception:
+        pass
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
