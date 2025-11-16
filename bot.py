@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini  # your Gemini API wrapper
+from gemini_client import call_gemini
 
 load_dotenv()
 
@@ -34,8 +34,8 @@ memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 MODES = {"funny": True, "roast": False, "serious": False}
 MAX_MSG_LEN = 3000  # used in serious mode
 
-# ---------------- OWNER TIMEOUT ----------------
-owner_mute_until = None
+# ---------------- OWNER TIMEOUT (per channel/server/DM) ----------------
+owner_mute_until = {}  # key: channel_id (DM) or server_id, value: datetime
 
 # ---------- allowed channels ----------
 ALLOWED_SERVER_ID = 1435926772972519446
@@ -69,7 +69,7 @@ async def process_queue():
             await channel.send(content)
         except Exception:
             pass
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.1)  # instant-ish replies
 
 
 async def send_human_reply(channel, reply_text, limit=None):
@@ -88,7 +88,7 @@ def humanize_and_safeify(text, short=False):
     if random.random() < 0.1 and not MODES["serious"]:
         text = maybe_typo(text)
     if short:
-        # keep ~100 chars max for fun/roast mode; sentence completes naturally
+        # keep ~100 chars max for fun/roast mode; complete sentence
         text = text.strip()[:100]
         if not text.endswith(('.', '!', '?')):
             text += '.'
@@ -110,9 +110,9 @@ def build_general_prompt(mem_manager, channel_id):
         )
     elif MODES["roast"] or MODES["funny"]:
         persona = (
-            "You are Codunot, a playful, witty friend. "
-            "Reply in 1–2 lines, max 100 characters. Use slang and emojis, complete the sentence."
-            "Do not show romance/affection. You can show a LITTLE flirtyness, but only to your owner."
+            "You are Codunot, a ruthless roast-master. "
+            "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
+            "Be brutal, no mercy. Avoid romance/affection unless owner."
         )
     else:
         persona = (
@@ -134,7 +134,7 @@ def build_roast_prompt(mem_manager, channel_id, target_name):
     history_text = "\n".join(recent)
     if MODES["roast"]:
         persona = (
-            "You are Codunot, a feral, brutal roast-master. "
+            "You are Codunot, a feral, no-mercy roast-master. "
             "Write a short, 1–2 line roast, max 100 characters. "
             "Roast HARD, avoid protected classes, never roast yourself."
         )
@@ -153,11 +153,16 @@ async def on_ready():
 # ---------- on_message ----------
 @client.event
 async def on_message(message: Message):
-    global owner_mute_until
     if message.author == client.user:
         return
 
     now = datetime.utcnow()
+
+    # Determine timeout key
+    if isinstance(message.channel, discord.DMChannel):
+        mute_key = f"dm_{message.author.id}"
+    else:
+        mute_key = message.guild.id
 
     # ---------- OWNER COMMANDS ----------
     if message.author.id == OWNER_ID:
@@ -168,7 +173,7 @@ async def on_message(message: Message):
                 num = int(match.group(1))
                 unit = match.group(2)
                 seconds = num * {"s":1, "m":60, "h":3600, "d":86400}[unit]
-                owner_mute_until = datetime.utcnow() + timedelta(seconds=seconds)
+                owner_mute_until[mute_key] = datetime.utcnow() + timedelta(seconds=seconds)
                 await send_human_reply(
                     message.channel,
                     f"I'll stop yapping for {format_duration(num, unit)} as my owner shushed me up. Cyu guys!"
@@ -176,12 +181,13 @@ async def on_message(message: Message):
             return
         # !speak
         if message.content.startswith("!speak"):
-            owner_mute_until = None
+            if mute_key in owner_mute_until:
+                del owner_mute_until[mute_key]
             await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
             return
 
-    # Muted, do nothing
-    if owner_mute_until and now < owner_mute_until:
+    # Muted per server/DM
+    if mute_key in owner_mute_until and now < owner_mute_until[mute_key]:
         return
 
     # ---------------- SERVER LOGIC ----------------
