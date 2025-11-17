@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
 from bot_chess import OnlineChessEngine
-from huggingface_client import call_hf  # async HF client
 
 load_dotenv()
 
@@ -21,11 +20,11 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 BOT_USER_ID = 1435987186502733878
 OWNER_ID = 1220934047794987048
-CONTEXT_LENGTH = 18
 MAX_MEMORY = 30
 MAX_MSG_LEN = 3000
 RATE_LIMIT = 6  # msgs per 60 seconds per guild
 
+# ---------------- CLIENT ----------------
 intents = discord.Intents.all()
 intents.message_content = True
 client = discord.Client(intents=intents)
@@ -93,7 +92,6 @@ def is_admin(member: discord.Member):
 async def can_send_in_guild(guild_id: int) -> bool:
     now = datetime.now(timezone.utc)
     bucket = rate_buckets.setdefault(guild_id, deque())
-    # purge old timestamps
     while bucket and (now - bucket[0]).total_seconds() > 60:
         bucket.popleft()
     if len(bucket) < RATE_LIMIT:
@@ -101,24 +99,57 @@ async def can_send_in_guild(guild_id: int) -> bool:
         return True
     return False
 
+# ---------------- HUGGING FACE ----------------
+import aiohttp
+
+HF_SESSION = None
+
+async def get_hf_session():
+    global HF_SESSION
+    if HF_SESSION is None:
+        HF_SESSION = aiohttp.ClientSession()
+    return HF_SESSION
+
+async def call_hf_safe(prompt: str) -> str:
+    session = await get_hf_session()
+    url = "https://router.huggingface.co/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "meta-llama/Llama-3.2-3B-Instruct",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 200
+    }
+
+    retries = 3
+    for attempt in range(retries):
+        try:
+            async with session.post(url, headers=headers, json=payload, timeout=15) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data["choices"][0]["message"]["content"].replace("@", "")
+                else:
+                    print(f"[HF API ERROR {resp.status}] attempt {attempt+1}: {await resp.text()}")
+        except asyncio.TimeoutError:
+            print(f"[HF API] Timeout attempt {attempt+1}")
+        except Exception as e:
+            print(f"[HF API] Exception attempt {attempt+1}: {e}")
+        await asyncio.sleep(1)
+    return "Sorry, I couldn't think of a response right now 😅"
+
 # ---------------- PROMPTS ----------------
 def build_general_prompt(chan_id, mode):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
-    persona_self_protect = (
-        "Never roast or attack yourself (Codunot). "
-        "If asked to roast Codunot, gently refuse or redirect."
+    persona_self_protect = "Never roast or attack yourself (Codunot). If asked to roast Codunot, gently refuse."
+    persona = (
+        "You are Codunot, a playful, witty friend. "
+        "Reply in 1–2 lines, max 100 characters. Use slang and emojis."
+        if mode != "serious" else
+        "You are Codunot, a precise and knowledgeable helper. No emojis, no slang."
     )
-    if mode == "serious":
-        persona = (
-            "You are Codunot, a precise and knowledgeable helper. "
-            "You answer with direct factual information. No emojis, no slang."
-        )
-    else:
-        persona = (
-            "You are Codunot, a playful, witty friend. "
-            "Reply in 1–2 lines, max 100 characters. Use slang and emojis."
-        )
     return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(chan_id, target, mode):
@@ -126,14 +157,12 @@ def build_roast_prompt(chan_id, target, mode):
         return "Refuse to roast yourself in a funny way."
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
-    if mode == "roast":
-        persona = (
-            "You are Codunot, a feral, brutal roast-master. "
-            "Write a short, 1–2 line roast, max 100 characters. "
-            "Roast HARD, never roast yourself."
-        )
-    else:
-        persona = "Friendly, playful one-line roast with emojis (max 100 characters)."
+    persona = (
+        "You are Codunot, a feral, brutal roast-master. "
+        "Write a short, 1–2 line roast, max 100 characters. Roast HARD."
+        if mode == "roast" else
+        "Friendly, playful one-line roast with emojis (max 100 characters)."
+    )
     return f"{persona}\nTarget: {target}\nRecent chat:\n{history_text}\nRoast:"
 
 # ---------------- EVENTS ----------------
@@ -180,10 +209,7 @@ async def on_message(message: Message):
                 unit = match.group(2)
                 seconds = num * {"s":1, "m":60, "h":3600, "d":86400}[unit]
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=seconds)
-                await send_human_reply(
-                    message.channel,
-                    f"I'll stop yapping for {format_duration(num, unit)}. Cyu guys!"
-                )
+                await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, unit)}. Cyu guys!")
             return
         if content_lower.startswith("!speak"):
             channel_mutes[chan_id] = None
@@ -231,9 +257,8 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, "Couldn't calculate best move. 😅")
             return
         except ValueError:
-            # general chess question
             if guild_id is not None and await can_send_in_guild(guild_id):
-                raw_resp = await call_hf(f"You are a chess expert. Answer briefly: {content}")
+                raw_resp = await call_hf_safe(f"You are a chess expert. Answer briefly: {content}")
                 if raw_resp:
                     reply = humanize_and_safeify(raw_resp, short=True)
                     await send_human_reply(message.channel, reply, limit=150)
@@ -247,7 +272,7 @@ async def on_message(message: Message):
     if target and guild_id is not None:
         if await can_send_in_guild(guild_id):
             roast_prompt = build_roast_prompt(chan_id, target, mode)
-            raw = await call_hf(roast_prompt)
+            raw = await call_hf_safe(roast_prompt)
             if raw:
                 reply = humanize_and_safeify(raw, short=short_mode)
                 await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
@@ -257,7 +282,7 @@ async def on_message(message: Message):
     # ---------------- GENERAL ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
-        raw_resp = await call_hf(prompt)
+        raw_resp = await call_hf_safe(prompt)
         if raw_resp:
             reply = humanize_and_safeify(raw_resp, short=short_mode)
             await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
