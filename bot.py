@@ -38,12 +38,14 @@ channel_mutes = {}  # per-channel mute datetime
 channel_chess = {}  # per-channel chess mode
 chess_engine = OnlineChessEngine()
 
+message_queue = asyncio.Queue()
+channel_last_sent = {}
+RATE_DELAY = 0.3  # seconds between messages per channel
+
 # ---------- allowed channels ----------
 ALLOWED_SERVER_ID = 1435926772972519446
 GENERAL_CHANNEL_ID = 1436339326509383820
 TALK_WITH_BOTS_ID = 1439269712373485589
-
-message_queue = asyncio.Queue()
 
 # ---------- helpers ----------
 def format_duration(num: int, unit: str) -> str:
@@ -63,11 +65,18 @@ async def send_long_message(channel, text):
 async def process_queue():
     while True:
         channel, content = await message_queue.get()
+        now = datetime.utcnow()
+        last_time = channel_last_sent.get(channel.id, None)
+        if last_time:
+            elapsed = (now - last_time).total_seconds()
+            if elapsed < RATE_DELAY:
+                await asyncio.sleep(RATE_DELAY - elapsed)
         try:
             await channel.send(content)
+            channel_last_sent[channel.id] = datetime.utcnow()
         except:
             pass
-        await asyncio.sleep(0.02)  # near-instant
+        await asyncio.sleep(0.01)
 
 async def send_human_reply(channel, reply_text, limit=None):
     if limit:
@@ -89,20 +98,14 @@ def humanize_and_safeify(text, short=False):
             text += '.'
     return text
 
-# ---------- SAFE GEMINI CALL ----------
-async def safe_call_gemini(prompt, retries=3, delay_sec=1):
-    for attempt in range(retries):
+# ---------- Safe Gemini call ----------
+async def safe_call_gemini(prompt):
+    for attempt in range(3):
         try:
-            return await call_gemini(prompt)
-        except Exception as e:
-            msg = str(e)
-            if "429" in msg:
-                # API rate limited, wait a bit
-                await asyncio.sleep(delay_sec)
-                delay_sec *= 2  # exponential backoff
-                continue
-            else:
-                return None
+            resp = await call_gemini(prompt)
+            return resp
+        except Exception:
+            await asyncio.sleep(0.5)
     return None
 
 # ---------- PROMPTS ----------
@@ -220,10 +223,10 @@ async def on_message(message: Message):
     if any(kw in message.content.lower() for kw in help_keywords):
         help_text = (
             "I have 4 modes:\n"
-            "1️⃣ Fun mode: `!funmode` — playful, light roasts, emojis allowed.\n"
-            "2️⃣ Roast mode: `!roastmode` — savage 1–2 line roasts, no mercy.\n"
-            "3️⃣ Serious mode: `!seriousmode` — factual, direct, no slang or emojis.\n"
-            "4️⃣ Chess mode: `!chessmode` — play chess or ask about rules, strategies, players.\n"
+            "1️⃣ Fun mode: !funmode — playful, light roasts, emojis allowed.\n"
+            "2️⃣ Roast mode: !roastmode — savage 1–2 line roasts, no mercy.\n"
+            "3️⃣ Serious mode: !seriousmode — factual, direct, no slang or emojis.\n"
+            "4️⃣ Chess mode: !chessmode — play chess & ask chess questions.\n"
             "Use the commands above to switch modes in this channel!"
         )
         await send_human_reply(message.channel, help_text)
@@ -235,15 +238,14 @@ async def on_message(message: Message):
         chess_engine.new_board(chan_id)
         await send_human_reply(
             message.channel,
-            "♟️ Chess mode ACTIVATED! Make a move (e.g., e4, Nf3) or ask me about chess rules, strategies, players."
+            "♟️ Chess mode ACTIVATED! Make moves (e4, Nf3) or ask about chess rules, players, and strategies."
         )
         return
 
     if channel_chess.get(chan_id):
         move_text = message.content.strip()
+        # If message looks like a move
         board = chess_engine.get_board(chan_id)
-
-        # Check if valid chess move
         try:
             move = board.parse_san(move_text)
             board.push(move)
@@ -253,18 +255,16 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, f"My move: `{bot_move}`")
             else:
                 await send_human_reply(message.channel, "Couldn't calculate best move. 😅")
+            return
         except ValueError:
-            # Treat as chess question
-            chess_prompt = (
-                "You are Codunot, an expert chess player and teacher. "
-                "Answer questions about chess rules, strategies, famous players, openings, tournaments, etc. "
-                f"Question: {move_text}\nAnswer concisely as Codunot:"
-            )
-            answer = await safe_call_gemini(chess_prompt)
-            if answer:
-                reply = humanize_and_safeify(answer)
+            # Treat as chess knowledge question
+            prompt = f"You are Codunot, a chess expert. Answer this question concisely:\n{message.content}"
+            raw_resp = await safe_call_gemini(prompt)
+            if raw_resp:
+                reply = humanize_and_safeify(raw_resp)
                 await send_human_reply(message.channel, reply)
-        return
+                memory.add_message(chan_id, BOT_NAME, reply)
+            return
 
     # ---------- ROAST/FUN ----------
     short_mode = mode in ["funny", "roast"]
@@ -282,13 +282,16 @@ async def on_message(message: Message):
         return
 
     # ---------- GENERAL ----------
-    prompt = build_general_prompt(memory, chan_id, mode)
-    raw_resp = await safe_call_gemini(prompt)
-    if raw_resp:
-        reply = humanize_and_safeify(raw_resp, short=short_mode)
-        await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
+    try:
+        prompt = build_general_prompt(memory, chan_id, mode)
+        raw_resp = await safe_call_gemini(prompt)
+        if raw_resp:
+            reply = humanize_and_safeify(raw_resp, short=short_mode)
+            await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
+            memory.add_message(chan_id, BOT_NAME, reply)
+            memory.persist()
+    except:
+        pass
 
 # ---------- graceful shutdown ----------
 async def _cleanup():
