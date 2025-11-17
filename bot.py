@@ -1,48 +1,50 @@
-print("Starting bot.py...")
-
 import os
 import asyncio
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from collections import deque
+
 import discord
 from discord import Message
+from discord.ext import commands
 from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from huggingface_client import call_hf  # <-- UPDATED CLIENT
-from bot_chess import OnlineChessEngine  # chess engine
+from bot_chess import OnlineChessEngine
+from huggingface_client import call_hf  # async HF client
 
 load_dotenv()
 
+# ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 BOT_USER_ID = 1435987186502733878
-CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 OWNER_ID = 1220934047794987048
-
-if not DISCORD_TOKEN:
-    raise SystemExit("Set DISCORD_TOKEN before running.")
+CONTEXT_LENGTH = 18
+MAX_MEMORY = 30
+MAX_MSG_LEN = 3000
+RATE_LIMIT = 6  # msgs per 60 seconds per guild
 
 intents = discord.Intents.all()
 intents.message_content = True
 client = discord.Client(intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
-
-# ---------------- BOT MODES ----------------
-MAX_MSG_LEN = 3000
-channel_modes = {}   # per-channel: funny, roast, serious
-channel_mutes = {}   # per-channel mute datetime
-channel_chess = {}   # per-channel chess mode
 chess_engine = OnlineChessEngine()
 
+# ---------------- STATES ----------------
 message_queue = asyncio.Queue()
+channel_modes = {}     # channel_id -> mode
+channel_mutes = {}     # channel_id -> mute_until datetime
+channel_chess = {}     # channel_id -> bool
+channel_memory = {}    # channel_id -> deque(maxlen=MAX_MEMORY)
+rate_buckets = {}      # guild_id -> deque of timestamps for rate-limiting
 
-# ---------- helpers ----------
+# ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
-    unit_map = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
-    name = unit_map.get(unit, "minute")
+    units = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
+    name = units.get(unit, "minute")
     return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
@@ -83,10 +85,27 @@ def humanize_and_safeify(text, short=False):
             text += '.'
     return text
 
-# ---------- PROMPTS ----------
-def build_general_prompt(mem_manager, channel_id, mode):
-    recent = mem_manager.get_recent_flat(channel_id, n=CONTEXT_LENGTH)
-    history_text = "\n".join(recent)
+def is_admin(member: discord.Member):
+    try:
+        return member.id == OWNER_ID or any(role.permissions.administrator for role in member.roles)
+    except:
+        return member.id == OWNER_ID
+
+async def can_send_in_guild(guild_id: int) -> bool:
+    now = datetime.now(timezone.utc)
+    bucket = rate_buckets.setdefault(guild_id, deque())
+    # purge old timestamps
+    while bucket and (now - bucket[0]).total_seconds() > 60:
+        bucket.popleft()
+    if len(bucket) < RATE_LIMIT:
+        bucket.append(now)
+        return True
+    return False
+
+# ---------------- PROMPTS ----------------
+def build_general_prompt(chan_id, mode):
+    mem = channel_memory.get(chan_id, deque())
+    history_text = "\n".join(mem)
     persona_self_protect = (
         "Never roast or attack yourself (Codunot). "
         "If asked to roast Codunot, gently refuse or redirect."
@@ -99,37 +118,31 @@ def build_general_prompt(mem_manager, channel_id, mode):
     else:
         persona = (
             "You are Codunot, a playful, witty friend. "
-            "Reply in 1–2 lines, max 100 characters. "
-            "Do not show romance/affection to anyone except the owner. "
-            "Use slang, emojis, and complete sentences."
+            "Reply in 1–2 lines, max 100 characters. Use slang and emojis."
         )
-    return (
-        f"{persona}\n{persona_self_protect}\n"
-        f"My user ID is {BOT_USER_ID}.\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
-    )
+    return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
-def build_roast_prompt(mem_manager, channel_id, target_name, mode):
-    if str(target_name).lower() in ["codunot", str(BOT_USER_ID)]:
+def build_roast_prompt(chan_id, target, mode):
+    if str(target).lower() in ["codunot", str(BOT_USER_ID)]:
         return "Refuse to roast yourself in a funny way."
-    recent = mem_manager.get_recent_flat(channel_id, n=12)
-    history_text = "\n".join(recent)
+    mem = channel_memory.get(chan_id, deque())
+    history_text = "\n".join(mem)
     if mode == "roast":
         persona = (
             "You are Codunot, a feral, brutal roast-master. "
             "Write a short, 1–2 line roast, max 100 characters. "
-            "Roast HARD, avoid protected classes, never roast yourself."
+            "Roast HARD, never roast yourself."
         )
     else:
         persona = "Friendly, playful one-line roast with emojis (max 100 characters)."
-    return f"{persona}\nTarget: {target_name}\nRecent chat:\n{history_text}\nRoast:"
+    return f"{persona}\nTarget: {target}\nRecent chat:\n{history_text}\nRoast:"
 
-# ---------- on_ready ----------
+# ---------------- EVENTS ----------------
 @client.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
 
-# ---------- on_message ----------
 @client.event
 async def on_message(message: Message):
     if message.author == client.user:
@@ -139,26 +152,26 @@ async def on_message(message: Message):
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = str(message.channel.id) if not is_dm else f"dm_{message.author.id}"
 
-    # respond in servers only if pinged
-    is_mentioned = client.user in message.mentions
-    if not is_dm and not is_mentioned:
+    # Only respond if mentioned or DM
+    if not is_dm and client.user not in message.mentions:
         return
 
-    # remove mention for easier command processing
+    # remove mention
     content = message.content.replace(f"<@{BOT_USER_ID}>", "").strip()
-    memory.add_message(chan_id, message.author.display_name, content)
     content_lower = content.lower()
 
-    # per-channel defaults
+    # Init defaults
     if chan_id not in channel_modes:
         channel_modes[chan_id] = "funny"
     if chan_id not in channel_mutes:
         channel_mutes[chan_id] = None
     if chan_id not in channel_chess:
         channel_chess[chan_id] = False
+    if chan_id not in channel_memory:
+        channel_memory[chan_id] = deque(maxlen=MAX_MEMORY)
     mode = channel_modes[chan_id]
 
-    # ---------- OWNER COMMANDS ----------
+    # Owner commands
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -169,19 +182,19 @@ async def on_message(message: Message):
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=seconds)
                 await send_human_reply(
                     message.channel,
-                    f"I'll stop yapping for {format_duration(num, unit)} as my owner shushed me up. Cyu guys!"
+                    f"I'll stop yapping for {format_duration(num, unit)}. Cyu guys!"
                 )
             return
         if content_lower.startswith("!speak"):
             channel_mutes[chan_id] = None
-            await send_human_reply(message.channel, "YOOO I'M BACK FROM MY TIMEOUT WASSUP GUYS!!!!")
+            await send_human_reply(message.channel, "YOOO I'M BACK! WASSUP GUYS!!!!")
             return
 
-    # ---------- CHECK MUTE ----------
+    # Check mute
     if channel_mutes[chan_id] and now < channel_mutes[chan_id]:
         return
 
-    # ---------- MODE SWITCH ----------
+    # Mode switches
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         await send_human_reply(message.channel, "🔥 Roast mode ACTIVATED. Hide yo egos.")
@@ -197,28 +210,14 @@ async def on_message(message: Message):
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
-        await send_human_reply(
-            message.channel,
-            "♟️ Chess mode ACTIVATED. I’m god-level now! Make your move or ask me chess questions!"
-        )
+        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED! Make your move!")
         return
     mode = channel_modes[chan_id]
 
-    # ---------- MODE HELP ----------
-    help_keywords = ["mode", "modes", "commands", "what can you do", "how to use"]
-    if any(kw in content_lower for kw in help_keywords):
-        help_text = (
-            "I have 4 modes:\n"
-            "1️⃣ Fun mode: `!funmode` — playful, light roasts, emojis allowed.\n"
-            "2️⃣ Roast mode: `!roastmode` — savage 1–2 line roasts, no mercy.\n"
-            "3️⃣ Serious mode: `!seriousmode` — factual, direct, no slang or emojis.\n"
-            "4️⃣ Chess mode: `!chessmode` — play chess & ask chess questions.\n"
-            "Use the commands above to switch modes in this channel or DM!"
-        )
-        await send_human_reply(message.channel, help_text)
-        return
+    # Save memory
+    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # ---------- CHESS MODE ----------
+    # Chess mode
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
@@ -232,50 +231,45 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, "Couldn't calculate best move. 😅")
             return
         except ValueError:
-            # Treat as general chess knowledge question
+            # treat as general chess question
             prompt = f"You are a chess expert. Answer briefly: {content}"
-            try:
-                raw_resp = await call_hf(prompt, retry_delay=2)
-                reply = humanize_and_safeify(raw_resp, short=True)
-                await send_human_reply(message.channel, reply, limit=150)
-            except:
-                pass
+            if await can_send_in_guild(message.guild.id):
+                raw_resp = await call_hf(prompt)
+                if raw_resp:
+                    reply = humanize_and_safeify(raw_resp, short=True)
+                    await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # ---------- ROAST/FUN ----------
+    # Roast/Fun triggers
     short_mode = mode in ["funny", "roast"]
     roast_target = is_roast_trigger(content)
     if roast_target:
-        memory.set_roast_target(chan_id, roast_target)
-    target = memory.get_roast_target(chan_id)
+        target = roast_target
+    else:
+        target = None
+
     if target:
-        roast_prompt = build_roast_prompt(memory, chan_id, target, mode)
-        try:
-            raw = await call_hf(roast_prompt, retry_delay=2)
-            reply = humanize_and_safeify(raw, short=short_mode)
-            await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
-            memory.add_message(chan_id, BOT_NAME, reply)
-        except:
-            pass
+        roast_prompt = build_roast_prompt(chan_id, target, mode)
+        if await can_send_in_guild(message.guild.id):
+            raw = await call_hf(roast_prompt)
+            if raw:
+                reply = humanize_and_safeify(raw, short=short_mode)
+                await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
+                channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         return
 
-    # ---------- GENERAL ----------
-    try:
-        prompt = build_general_prompt(memory, chan_id, mode)
-        raw_resp = await call_hf(prompt, retry_delay=2)
-        reply = humanize_and_safeify(raw_resp, short=short_mode)
-        await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
-    except:
-        pass
+    # General response
+    if await can_send_in_guild(message.guild.id):
+        prompt = build_general_prompt(chan_id, mode)
+        raw_resp = await call_hf(prompt)
+        if raw_resp:
+            reply = humanize_and_safeify(raw_resp, short=short_mode)
+            await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
+            channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+            memory.add_message(chan_id, BOT_NAME, reply)
+            memory.persist()
 
-# ---------- graceful shutdown ----------
-async def _cleanup():
-    await memory.close()
-    await asyncio.sleep(0.1)
-
-# ---------- run ----------
+# ---------------- RUN ----------------
 def run():
     client.run(DISCORD_TOKEN)
 
