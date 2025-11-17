@@ -25,7 +25,7 @@ BOT_USER_ID = 1435987186502733878
 OWNER_ID = 1220934047794987048
 MAX_MEMORY = 30
 MAX_MSG_LEN = 3000
-RATE_LIMIT = 6  # msgs per 60 seconds per guild
+RATE_LIMIT = 900  # msgs per 60 seconds per guild
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
