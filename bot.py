@@ -11,20 +11,19 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo, is_roast_trigger
-from gemini_client import call_gemini
+from huggingface_client import call_hf  # <-- UPDATED CLIENT
 from bot_chess import OnlineChessEngine  # chess engine
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GEN_API_KEY = os.getenv("GEMINI_API_KEY")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 BOT_USER_ID = 1435987186502733878
 CONTEXT_LENGTH = int(os.getenv("CONTEXT_LENGTH", "18"))
 OWNER_ID = 1220934047794987048
 
-if not DISCORD_TOKEN or not GEN_API_KEY:
-    raise SystemExit("Set DISCORD_TOKEN and GEMINI_API_KEY before running.")
+if not DISCORD_TOKEN:
+    raise SystemExit("Set DISCORD_TOKEN before running.")
 
 intents = discord.Intents.all()
 intents.message_content = True
@@ -236,7 +235,7 @@ async def on_message(message: Message):
             # Treat as general chess knowledge question
             prompt = f"You are a chess expert. Answer briefly: {content}"
             try:
-                raw_resp = await call_gemini(prompt, retry_delay=2)  # automatic retry for 429
+                raw_resp = await call_hf(prompt, retry_delay=2)
                 reply = humanize_and_safeify(raw_resp, short=True)
                 await send_human_reply(message.channel, reply, limit=150)
             except:
@@ -252,7 +251,7 @@ async def on_message(message: Message):
     if target:
         roast_prompt = build_roast_prompt(memory, chan_id, target, mode)
         try:
-            raw = await call_gemini(roast_prompt, retry_delay=2)
+            raw = await call_hf(roast_prompt, retry_delay=2)
             reply = humanize_and_safeify(raw, short=short_mode)
             await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
             memory.add_message(chan_id, BOT_NAME, reply)
@@ -263,7 +262,7 @@ async def on_message(message: Message):
     # ---------- GENERAL ----------
     try:
         prompt = build_general_prompt(memory, chan_id, mode)
-        raw_resp = await call_gemini(prompt, retry_delay=2)
+        raw_resp = await call_hf(prompt, retry_delay=2)
         reply = humanize_and_safeify(raw_resp, short=short_mode)
         await send_human_reply(message.channel, reply, limit=100 if short_mode else None)
         memory.add_message(chan_id, BOT_NAME, reply)
