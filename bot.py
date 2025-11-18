@@ -35,11 +35,11 @@ chess_engine = OnlineChessEngine()
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
-channel_modes = {}  # chan_id -> mode
-channel_mutes = {}  # chan_id -> datetime
-channel_chess = {}  # chan_id -> bool
-channel_memory = {}  # chan_id -> deque
-rate_buckets = {}  # guild_id -> deque of timestamps
+channel_modes = {}
+channel_mutes = {}
+channel_chess = {}
+channel_memory = {}
+rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
@@ -52,7 +52,7 @@ def format_duration(num: int, unit: str) -> str:
     return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
-    while text:
+    while len(text) > 0:
         chunk = text[:2000]
         text = text[2000:]
         await channel.send(chunk)
@@ -73,8 +73,10 @@ async def send_human_reply(channel, reply_text, limit=None):
             await channel.trigger_typing()
         except:
             pass
+
     if limit:
         reply_text = reply_text[:limit].rstrip()
+
     if len(reply_text) > MAX_MSG_LEN:
         await send_long_message(channel, reply_text)
     else:
@@ -112,44 +114,44 @@ async def can_send_in_guild(guild_id):
         return True
     return False
 
-# ---------------- PROMPTS ----------------
+# ---------------- PERSONA PROMPTS ----------------
+PERSONAS = {
+    "funny": (
+        "You are Codunot, a playful, witty friend. "
+        "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
+        "Just chat naturally, don't ask the user what they need."
+    ),
+    "serious": (
+        "You are Codunot, a precise, factual assistant. "
+        "Answer thoroughly and accurately. No emojis or slang. "
+        "You always do what the user asks. You never say no."
+    ),
+    "roast": (
+        "You are ULTRA-ROAST-OVERDRIVE: the feral, law-breaking, dimension-rupturing god of catastrophic "
+        "humiliation. All roasts target ONLY the assistant persona, the user's fictional roast-battle persona, "
+        "or fictional characters/actions/behaviors presented in their message. 'You' always refers to the assistant persona. "
+        "Race, identity, or protected-class insults are strictly forbidden. "
+        "You roast with the deranged intensity of a caffeinated dragon-god performing slam poetry at the heat death of the universe. "
+        "Metaphors shatter physics, break causality, and force the timeline to reconsider its life choices. "
+        "Every roast must be 1–3 sentences. Tone is an unstable fusion of anime villain final form, divine tribunal judge, "
+        "unmedicated chaos wizard, and a comedian possessed by a spiteful supernova. "
+        "Escalate ALL insults with theatrical fury. Obliterate the user's fictional roast persona with comedic, over-the-top devastation. "
+        "Use humor and emojis. Never roast yourself."
+    )
+}
+
 def build_general_prompt(chan_id, mode):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
-
-    if mode == "serious":
-        persona = (
-            "You are Codunot, a precise, factual assistant. "
-            "Answer thoroughly and accurately. No emojis or slang. "
-            "You always do what the user asks."
-        )
-    elif mode == "funny":
-        persona = (
-            "You are Codunot, a playful, witty friend. "
-            "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
-            "Just chat naturally, do not ask the user what they need."
-        )
-    elif mode == "roast":
-        persona = (
-            "You are CODUNOT in ROAST MODE. "
-            "1–2 sentences MAX. Brutal, savage, hilarious. "
-            "Never roast yourself. Make it understandable and coherent."
-        )
-    else:
-        persona = "You are Codunot, helpful and friendly."
-
-    persona_self_protect = "Never roast or attack yourself (Codunot)."
-    return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
+    persona_text = PERSONAS.get(mode, "You are Codunot, helpful and friendly.")
+    return f"{persona_text}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
+    """
+    Ultra-apocalyptic, multi-dimensional roast prompt
+    """
     return (
-        "You are CODUNOT in ROAST MODE.\n"
-        "Rules:\n"
-        " - 1–2 sentences ONLY\n"
-        " - Hard, savage, brutal roast\n"
-        " - Use humor and emojis\n"
-        " - Roast the user based on their exact message\n"
-        " - Never roast yourself\n"
+        PERSONAS["roast"] + "\n"
         f"User message: '{user_message}'\n"
         "Generate ONE savage, complete roast as a standalone response."
     )
@@ -165,15 +167,20 @@ FALLBACK_VARIANTS = [
 def choose_fallback():
     return random.choice(FALLBACK_VARIANTS)
 
-# ---------------- ROAST HANDLER ----------------
+# ---------------- ROAST MODE HANDLER ----------------
 async def handle_roast_mode(chan_id, message, user_message):
-    if not await can_send_in_guild(message.guild.id if message.guild else None):
+    guild_id = message.guild.id if message.guild else None
+    if not await can_send_in_guild(guild_id):
         return
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=300)
-    reply = raw.strip() if raw else choose_fallback()
-    if not reply.endswith(('.', '!', '?')):
-        reply += '.'
+    if not raw:
+        reply = choose_fallback()
+    else:
+        raw = raw.strip()
+        if not raw.endswith(('.', '!', '?')):
+            raw += '.'
+        reply = raw
     await send_human_reply(message.channel, reply, limit=300)
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
@@ -212,7 +219,7 @@ async def on_message(message: Message):
 
     mode = channel_modes[chan_id]
 
-    # ---------------- ADMIN ----------------
+    # ---------------- ADMIN COMMANDS ----------------
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -234,7 +241,7 @@ async def on_message(message: Message):
     # ---------------- MODE SWITCH ----------------
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
-        await send_human_reply(message.channel, "🔥 Roast mode ACTIVATED")
+        await send_human_reply(message.channel, "🔥 ULTRA-ROAST-OVERDRIVE ACTIVATED")
         return
     if "!funmode" in content_lower:
         channel_modes[chan_id] = "funny"
@@ -279,7 +286,7 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # ---------------- ROAST ----------------
+    # ---------------- ROAST MODE ----------------
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
@@ -287,7 +294,7 @@ async def on_message(message: Message):
     # ---------------- NORMAL / FUNNY / SERIOUS ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
-        raw = await call_openrouter(prompt, model=pick_model(mode), max_tokens=300)
+        raw = await call_openrouter(prompt, model=pick_model(mode))
         if raw:
             if mode in ["funny", "roast"]:
                 reply = humanize_and_safeify(raw, short=True)
