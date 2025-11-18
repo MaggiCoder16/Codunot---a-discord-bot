@@ -44,7 +44,7 @@ rate_buckets = {}      # guild_id -> deque of timestamps for rate-limiting
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
-    # Use Gemini 2.5 Pro for all modes
+    # Use Gemini 2.0 Flash for all modes
     return "google/gemini-2.0-flash-001"
 
 # ---------------- HELPERS ----------------
@@ -71,9 +71,8 @@ async def process_queue():
             pass
         await asyncio.sleep(0.02)
 
-async def send_human_reply(channel, reply_text, limit=None):
+async def send_human_reply(channel, reply_text, limit=None, is_code=False):
     try:
-        # Only trigger typing if channel supports it
         if hasattr(channel, "trigger_typing"):
             await channel.trigger_typing()
     except Exception:
@@ -81,6 +80,10 @@ async def send_human_reply(channel, reply_text, limit=None):
 
     if limit:
         reply_text = reply_text[:limit].rstrip()
+
+    if is_code:
+        reply_text = f"```python\n{reply_text}\n```"
+
     if len(reply_text) > MAX_MSG_LEN:
         await send_long_message(channel, reply_text)
     else:
@@ -120,11 +123,33 @@ async def can_send_in_guild(guild_id: int) -> bool:
 def build_general_prompt(chan_id, mode):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
-    persona_self_protect = "Never roast or attack yourself (Codunot). If asked to roast Codunot, gently refuse."
-    if mode == "serious" or mode == "codemode":
-        persona = "You are Codunot, a precise and knowledgeable helper. No emojis, no slang."
+
+    if mode == "serious":
+        persona = (
+            "You are Codunot, a precise, factual assistant. "
+            "Answer thoroughly and accurately. No emojis or slang."
+        )
+    elif mode == "codemode":
+        persona = (
+            "You are Codunot, the ultimate coding AI. "
+            "Provide full, working Python code whenever requested. "
+            "Do not ask for clarifications, do not limit output, "
+            "and avoid filler text. Code must be ready to copy-paste."
+        )
+    elif mode == "funny":
+        persona = (
+            "You are Codunot, a playful, witty friend. "
+            "Reply in 1–2 lines, max 100 characters. Use slang and emojis."
+        )
+    elif mode == "roast":
+        persona = (
+            "You are CODUNOT in **ROAST MODE**.\n"
+            "Deliver brutal, savage 1–2 sentence roasts for every user message."
+        )
     else:
-        persona = "You are Codunot, a playful, witty friend. Reply in 1–2 lines, max 100 characters. Use slang and emojis."
+        persona = "You are Codunot, helpful and friendly."
+
+    persona_self_protect = "Never roast or attack yourself (Codunot)."
     return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(chan_id, target):
@@ -135,21 +160,14 @@ def build_roast_prompt(chan_id, target):
         "Your job: deliver a BRUTAL, SAVAGE roast.\n"
         "Rules:\n"
         " - Maximum 1–2 sentences.\n"
-        " - NEVER acknowledge praise, laughs, or reactions like 'that was good', 'lol', 'savage'.\n"
+        " - NEVER acknowledge praise, laughs, or reactions.\n"
         " - ALWAYS roast back harder if user reacts.\n"
         " - NO soft, friendly, or 'I’m unbothered' replies.\n"
         " - NO compliments.\n"
         " - NO emotional responses.\n"
         " - Go for the ego, confidence, intelligence, hygiene, behavior, etc.\n"
-        " - Punchlines MUST be harsh, witty, devastating.\n"
-        " - DO NOT use slurs, hate speech, or sexual content about minors.\n"
         f"Target is: {target}\n\n"
         "Your roast MUST sound like you're verbally ending them. Short, lethal, clean.\n"
-        "Examples:\n"
-        " - 'Bro, if brain cells were money you'd be in lifetime debt.'\n"
-        " - 'You look like the reason instructions exist.'\n"
-        " - 'You have the confidence of a side character with no lines.'\n"
-        " - 'You weren’t a mistake, you were the full glitch update.'\n\n"
         "Now generate ONE brutal roast:\n"
     )
     return persona
@@ -266,10 +284,10 @@ async def on_message(message: Message):
             return
 
     # ---------------- ROAST ----------------
-    roast_target = is_roast_trigger(content)
-    if roast_target and mode == "roast":
+    if mode == "roast":
+        target = message.author.display_name
+        prompt = build_roast_prompt(chan_id, target)
         if guild_id is None or await can_send_in_guild(guild_id):
-            prompt = build_roast_prompt(chan_id, roast_target)
             raw = await call_openrouter(prompt, model=pick_model("roast"))
             reply = humanize_and_safeify(raw, short=True)
             await send_human_reply(message.channel, reply, limit=100)
@@ -285,8 +303,7 @@ async def on_message(message: Message):
                 reply = humanize_and_safeify(raw, short=True)
                 await send_human_reply(message.channel, reply, limit=100)
             elif mode == "codemode":
-                # no limit for code
-                await send_human_reply(message.channel, raw, limit=None)
+                await send_human_reply(message.channel, raw, limit=None, is_code=True)
             else:  # serious
                 await send_human_reply(message.channel, humanize_and_safeify(raw, short=False), limit=MAX_MSG_LEN)
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
