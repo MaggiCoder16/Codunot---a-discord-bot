@@ -42,11 +42,9 @@ channel_chess = {}
 channel_memory = {}
 rate_buckets = {}
 
-
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
     return "google/gemini-2.0-flash-001"
-
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
@@ -70,7 +68,7 @@ async def process_queue():
             pass
         await asyncio.sleep(0.02)
 
-async def send_human_reply(channel, reply_text, limit=None, is_code=False):
+async def send_human_reply(channel, reply_text, limit=None):
     if hasattr(channel, "trigger_typing"):
         try:
             await channel.trigger_typing()
@@ -79,9 +77,6 @@ async def send_human_reply(channel, reply_text, limit=None, is_code=False):
 
     if limit:
         reply_text = reply_text[:limit].rstrip()
-
-    if is_code and not reply_text.startswith("```"):
-        reply_text = f"```python\n{reply_text}\n```"
 
     if len(reply_text) > MAX_MSG_LEN:
         await send_long_message(channel, reply_text)
@@ -118,7 +113,6 @@ async def can_send_in_guild(guild_id):
         return True
     return False
 
-
 # ---------------- PROMPTS ----------------
 def build_general_prompt(chan_id, mode):
     mem = channel_memory.get(chan_id, deque())
@@ -129,17 +123,6 @@ def build_general_prompt(chan_id, mode):
             "You are Codunot, a precise, factual assistant. "
             "Answer thoroughly and accurately. No emojis or slang."
             "You always do what the user asks. You never say no."
-        )
-    elif mode == "codemode":
-        persona = (
-            "You are Codunot in CODEMODE. "
-            "You ONLY output code when the user explicitly asks for code. "
-            "If the user provides code, FIX or EXTEND it fully. "
-            "Always guess the correct programming language. "
-            "Always output full, working, complete code — never summaries. "
-            "Wrap final output inside proper code blocks. "
-            "Do NOT output explanations unless needed. "
-            "If the user message is NOT about code, DO NOT output code."
         )
     elif mode == "funny":
         persona = (
@@ -159,7 +142,6 @@ def build_general_prompt(chan_id, mode):
     persona_self_protect = "Never roast or attack yourself (Codunot)."
     return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
-
 def build_roast_prompt(chan_id, user_message):
     persona = (
         "You are CODUNOT in ROAST MODE.\n"
@@ -175,7 +157,6 @@ def build_roast_prompt(chan_id, user_message):
     )
     return persona
 
-
 # ---------------- FALLBACK ----------------
 FALLBACK_VARIANTS = [
     "bruh my brain crashed 🤖💀 try again?",
@@ -186,104 +167,6 @@ FALLBACK_VARIANTS = [
 
 def choose_fallback():
     return random.choice(FALLBACK_VARIANTS)
-
-
-# ---------------- CODEMODE LOGIC (FINAL & IMPROVED) ----------------
-
-def detect_language_from_code(text):
-    t = text.lower()
-
-    # strong language indicators first
-    if "```python" in t or "import " in t or "pygame" in t:
-        return "python"
-    if "```js" in t or "console.log" in t:
-        return "javascript"
-    if "```html" in t or "<!doctype html" in t or "<div" in t:
-        return "html"
-    if "```css" in t:
-        return "css"
-    if "```java" in t:
-        return "java"
-    if "#include" in t or "std::" in t:
-        return "cpp"
-    if "using system" in t or "public class" in t and "{" in t:
-        return "csharp"
-
-    # fallback
-    return "txt"
-
-
-def is_code_request(text: str) -> bool:
-    """
-    User MUST be clearly asking for code or sending code.
-    """
-    t = text.lower()
-
-    keywords = [
-        "code", "fix", "error", "bug", "script",
-        "function", "class", "write", "make",
-        "convert", "generate", "build", "program",
-        "extend", "optimize", "refactor"
-    ]
-
-    return "```" in t or any(k in t for k in keywords)
-
-
-async def handle_codemode(content, message, chan_id):
-    """
-    Codemode behavior:
-    - Any coding request generates full working code.
-    - Wraps output in proper code blocks.
-    - Sends as a file if output is too long.
-    """
-    # Detect if this is a code request (smarter NLP + keywords)
-    if not is_code_request(content):
-        await send_human_reply(
-            message.channel,
-            "⚠️ Codemode is only for coding. Use !funmode or !seriousmode for normal chat."
-        )
-        return
-
-    prompt = (
-        "You are Codunot in CODEMODE. ALWAYS generate FULL WORKING CODE.\n"
-        "- User request may be natural language or partial code.\n"
-        "- Detect the language (Python, JS, Java, C#, C++, etc.)\n"
-        "- Complete any partial code or generate requested program from scratch\n"
-        "- NEVER give explanations unless explicitly asked\n"
-        "- Wrap output in proper ```language code blocks```\n\n"
-        f"USER REQUEST:\n{content}\n"
-    )
-
-    raw = await call_openrouter(prompt, model=pick_model("codemode"))
-
-    if not raw:
-        await send_human_reply(message.channel, choose_fallback())
-        return
-
-    # Ensure proper code blocks
-    lang = detect_language_from_code(content)
-    if not raw.startswith("```"):
-        raw = f"```{lang}\n{raw}\n```"
-
-    # Auto-send as file if too long
-    if len(raw) > 1900:
-        filename = f"codunot_output.{lang}"
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(raw)
-        await message.channel.send(
-            content="📄 Code too long, sent as a file:",
-            file=discord.File(filename)
-        )
-        channel_memory[chan_id].append(f"{BOT_NAME}: [sent file {filename}]")
-        memory.add_message(chan_id, BOT_NAME, f"[sent file {filename}]")
-        memory.persist()
-        return
-
-    # Normal code reply
-    await send_human_reply(message.channel, raw, is_code=False)
-    channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
-    memory.add_message(chan_id, BOT_NAME, raw)
-    memory.persist()
 
 # ---------------- EVENTS ----------------
 @client.event
@@ -352,15 +235,15 @@ async def on_message(message: Message):
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
 
-    if "!codemode" in content_lower:
-        channel_modes[chan_id] = "codemode"
-        await send_human_reply(message.channel, "💻 Codemode ON — coding requests only.")
-        return
-
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start the game!")
+        return
+
+    # Detect if user is asking for code
+    if any(word in content_lower for word in ["code", "program", "script", "function", "class"]):
+        await send_human_reply(message.channel, "⚠️ Sorry, I don't support coding right now. Maybe in the future!")
         return
 
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
@@ -396,11 +279,6 @@ async def on_message(message: Message):
             channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         return
 
-    # CODEMODE
-    if mode == "codemode":
-        await handle_codemode(content, message, chan_id)
-        return
-
     # NORMAL / FUNNY / SERIOUS
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
@@ -410,10 +288,6 @@ async def on_message(message: Message):
             if mode == "funny" or mode == "roast":
                 reply = humanize_and_safeify(raw, short=True)
                 await send_human_reply(message.channel, reply, limit=100)
-
-            elif mode == "codemode":
-                await send_human_reply(message.channel, raw, is_code=True)
-
             else:
                 await send_human_reply(message.channel, humanize_and_safeify(raw), limit=MAX_MSG_LEN)
 
@@ -423,7 +297,6 @@ async def on_message(message: Message):
         else:
             if random.random() < 0.25:
                 await send_human_reply(message.channel, choose_fallback())
-
 
 # ---------------- RUN ----------------
 def run():
