@@ -9,7 +9,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Default fallback model
-DEFAULT_MODEL = "google/gemini-2.0-pro-001"
+DEFAULT_MODEL = "google/gemini-2.0-flash-001"
 
 SESSION: aiohttp.ClientSession | None = None
 
