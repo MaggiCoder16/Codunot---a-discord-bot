@@ -25,7 +25,7 @@ BOT_USER_ID = 1435987186502733878
 OWNER_ID = 1220934047794987048
 MAX_MEMORY = 30
 MAX_MSG_LEN = 20000
-RATE_LIMIT = 900  # msgs per 60s per guild
+RATE_LIMIT = 900  # msgs per 60 seconds per guild
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -36,15 +36,16 @@ chess_engine = OnlineChessEngine()
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
-channel_modes = {}
-channel_mutes = {}
-channel_chess = {}
-channel_memory = {}
-rate_buckets = {}
-channel_codemode = {}
+channel_modes = {}     # channel_id -> mode
+channel_mutes = {}     # channel_id -> mute_until datetime
+channel_chess = {}     # channel_id -> bool
+channel_memory = {}    # channel_id -> deque(maxlen=MAX_MEMORY)
+rate_buckets = {}      # guild_id -> deque of timestamps for rate-limiting
 
-# ---------------- MODEL ----------------
-GEMINI_MODEL = "google/gemini-2.5-pro-001"
+# ---------------- MODEL PICKER ----------------
+def pick_model(mode):
+    # Use Gemini 2.5 Pro for all modes
+    return "google/gemini-2.5-pro-001"
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
@@ -66,12 +67,18 @@ async def process_queue():
         channel, content = await message_queue.get()
         try:
             await channel.send(content)
-        except:
+        except Exception:
             pass
         await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text, limit=None):
-    await channel.trigger_typing()
+    try:
+        # Only trigger typing if channel supports it
+        if hasattr(channel, "trigger_typing"):
+            await channel.trigger_typing()
+    except Exception:
+        pass
+
     if limit:
         reply_text = reply_text[:limit].rstrip()
     if len(reply_text) > MAX_MSG_LEN:
@@ -85,14 +92,19 @@ def humanize_and_safeify(text, short=False):
     text = text.replace(" idk", "").replace(" *nvm", "")
     if random.random() < 0.1:
         text = maybe_typo(text)
-    # Short messages: finish last sentence, no mid-cut
     if short:
         text = text.strip()
         if len(text) > 100:
-            text = text[:100].rsplit(" ", 1)[0]
+            text = text[:100].rsplit(" ", 1)[0].strip()
         if not text.endswith(('.', '!', '?')):
             text += '.'
     return text
+
+def is_admin(member: discord.Member):
+    try:
+        return member.id == OWNER_ID or any(role.permissions.administrator for role in member.roles)
+    except Exception:
+        return member.id == OWNER_ID
 
 async def can_send_in_guild(guild_id: int) -> bool:
     now = datetime.now(timezone.utc)
@@ -108,16 +120,12 @@ async def can_send_in_guild(guild_id: int) -> bool:
 def build_general_prompt(chan_id, mode):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
-    persona_self_protect = "Never roast or attack yourself (Codunot)."
-    if mode == "serious":
-        persona = "You are Codunot, precise and factual. No slang, no emojis."
-    elif mode == "funny":
-        persona = "You are Codunot, playful, witty, short replies, 1–2 lines max, emojis allowed."
-    elif mode == "codemode":
-        persona = "You are Codunot, expert coder in all languages. Provide full, complete code. Never cut output."
+    persona_self_protect = "Never roast or attack yourself (Codunot). If asked to roast Codunot, gently refuse."
+    if mode == "serious" or mode == "codemode":
+        persona = "You are Codunot, a precise and knowledgeable helper. No emojis, no slang."
     else:
-        persona = "You are Codunot."
-    return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\nReply as Codunot:"
+        persona = "You are Codunot, a playful, witty friend. Reply in 1–2 lines, max 100 characters. Use slang and emojis."
+    return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(chan_id, target):
     mem = channel_memory.get(chan_id, deque())
@@ -126,7 +134,7 @@ def build_roast_prompt(chan_id, target):
         "You are CODUNOT in **ROAST MODE**.\n"
         "Your job: deliver a BRUTAL, SAVAGE roast.\n"
         "Rules:\n"
-        " - Max 1–2 sentences.\n"
+        " - Maximum 1–2 sentences.\n"
         " - NEVER acknowledge praise, laughs, or reactions like 'that was good', 'lol', 'savage'.\n"
         " - ALWAYS roast back harder if user reacts.\n"
         " - NO soft, friendly, or 'I’m unbothered' replies.\n"
@@ -134,22 +142,28 @@ def build_roast_prompt(chan_id, target):
         " - NO emotional responses.\n"
         " - Go for the ego, confidence, intelligence, hygiene, behavior, etc.\n"
         " - Punchlines MUST be harsh, witty, devastating.\n"
-        " - DO NOT use slurs or sexual content about minors.\n"
+        " - DO NOT use slurs, hate speech, or sexual content about minors.\n"
         f"Target is: {target}\n\n"
-        "Now generate ONE brutal roast:"
+        "Your roast MUST sound like you're verbally ending them. Short, lethal, clean.\n"
+        "Examples:\n"
+        " - 'Bro, if brain cells were money you'd be in lifetime debt.'\n"
+        " - 'You look like the reason instructions exist.'\n"
+        " - 'You have the confidence of a side character with no lines.'\n"
+        " - 'You weren’t a mistake, you were the full glitch update.'\n\n"
+        "Now generate ONE brutal roast:\n"
     )
-    return persona + "\nRecent chat:\n" + history_text + "\nRoast:"
+    return persona
 
 # ---------------- FALLBACK ----------------
-FALLBACKS = [
-    "bruh my brain crashed 🤖💀",
-    "i lowkey blanked out 😭",
-    "my brain lagged 💀 try again?",
-    "dang my AI neurons froze 😅"
+FALLBACK_VARIANTS = [
+    "bruh my brain crashed 🤖💀 try again?",
+    "my bad, I blanked out for a sec 😅",
+    "lol my brain lagged 💀 say that again?",
+    "oops, brain went AFK for a sec — can u repeat?"
 ]
 
 def choose_fallback():
-    return random.choice(FALLBACKS)
+    return random.choice(FALLBACK_VARIANTS)
 
 # ---------------- EVENTS ----------------
 @client.event
@@ -173,20 +187,16 @@ async def on_message(message: Message):
     content = re.sub(rf"<@!?\s*{BOT_USER_ID}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # Initialize channel state
+    # initialize channel state
     if chan_id not in channel_modes:
         channel_modes[chan_id] = "funny"
-    if chan_id not in channel_codemode:
-        channel_codemode[chan_id] = False
     if chan_id not in channel_mutes:
         channel_mutes[chan_id] = None
     if chan_id not in channel_chess:
         channel_chess[chan_id] = False
     if chan_id not in channel_memory:
         channel_memory[chan_id] = deque(maxlen=MAX_MEMORY)
-
     mode = channel_modes[chan_id]
-    codemode = channel_codemode[chan_id]
 
     # Owner commands
     if message.author.id == OWNER_ID:
@@ -204,6 +214,7 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
+    # respect mute
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
@@ -220,68 +231,70 @@ async def on_message(message: Message):
         channel_modes[chan_id] = "serious"
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
+    if "!codemode" in content_lower:
+        channel_modes[chan_id] = "codemode"
+        await send_human_reply(message.channel, "💻 Code mode ON — I can give unlimited code output!")
+        return
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start the game!")
         return
-    if "!codemode" in content_lower:
-        channel_codemode[chan_id] = True
-        await send_human_reply(message.channel, "💻 Codemode ACTIVATED — unlimited code responses!")
-        return
 
     # Save memory
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # ---------------- CHESS MODE ----------------
+    # ---------------- CHESS ----------------
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         try:
             move = board.parse_san(content)
             board.push(move)
+
             bot_move = chess_engine.get_best_move(chan_id)
             if bot_move:
                 chess_engine.push_uci(chan_id, bot_move)
                 await send_human_reply(message.channel, f"My move: `{bot_move}`")
             return
+
         except ValueError:
             if guild_id is None or await can_send_in_guild(guild_id):
-                raw = await call_openrouter(f"You are a chess expert. Answer briefly: {content}", model=GEMINI_MODEL)
+                raw = await call_openrouter(f"You are a chess expert. Answer briefly: {content}",
+                                            model=pick_model("serious"))
                 reply = humanize_and_safeify(raw, short=True)
                 await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # ---------------- ROAST MODE ----------------
-    if mode == "roast":
-        roast_target = is_roast_trigger(content)
-        if roast_target and (guild_id is None or await can_send_in_guild(guild_id)):
+    # ---------------- ROAST ----------------
+    roast_target = is_roast_trigger(content)
+    if roast_target and mode == "roast":
+        if guild_id is None or await can_send_in_guild(guild_id):
             prompt = build_roast_prompt(chan_id, roast_target)
-            raw = await call_openrouter(prompt, model=GEMINI_MODEL)
+            raw = await call_openrouter(prompt, model=pick_model("roast"))
             reply = humanize_and_safeify(raw, short=True)
-            await send_human_reply(message.channel, reply, limit=150)
+            await send_human_reply(message.channel, reply, limit=100)
             channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-            return
+        return
 
-    # ---------------- GENERAL / FUN / SERIOUS / CODE ----------------
+    # ---------------- GENERAL / CODE ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
-        if codemode:
-            prompt = build_general_prompt(chan_id, "codemode")
-            raw = await call_openrouter(prompt, model=GEMINI_MODEL, max_tokens=MAX_MSG_LEN)
-            await send_human_reply(message.channel, raw, limit=None)
+        prompt = build_general_prompt(chan_id, mode)
+        raw = await call_openrouter(prompt, model=pick_model(mode))
+        if raw:
+            if mode == "funny" or mode == "roast":
+                reply = humanize_and_safeify(raw, short=True)
+                await send_human_reply(message.channel, reply, limit=100)
+            elif mode == "codemode":
+                # no limit for code
+                await send_human_reply(message.channel, raw, limit=None)
+            else:  # serious
+                await send_human_reply(message.channel, humanize_and_safeify(raw, short=False), limit=MAX_MSG_LEN)
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
             memory.add_message(chan_id, BOT_NAME, raw)
             memory.persist()
-            return
-
-        prompt = build_general_prompt(chan_id, mode)
-        raw = await call_openrouter(prompt, model=GEMINI_MODEL, max_tokens=MAX_MSG_LEN)
-        short_flag = (mode != "serious")
-        reply = humanize_and_safeify(raw, short=short_flag)
-        limit = None if mode == "serious" else 100
-        await send_human_reply(message.channel, reply, limit=limit)
-        channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
+        else:
+            if random.random() < 0.25:
+                await send_human_reply(message.channel, choose_fallback())
 
 # ---------------- RUN ----------------
 def run():
