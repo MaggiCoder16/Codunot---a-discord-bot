@@ -10,7 +10,7 @@ from discord import Message
 from dotenv import load_dotenv
 
 from memory import MemoryManager
-from humanizer import humanize_response, maybe_typo, is_roast_trigger
+from humanizer import humanize_response, maybe_typo
 from bot_chess import OnlineChessEngine
 
 # OpenRouter client
@@ -25,7 +25,7 @@ BOT_USER_ID = 1435987186502733878
 OWNER_ID = 1220934047794987048
 MAX_MEMORY = 30
 MAX_MSG_LEN = 20000
-RATE_LIMIT = 900  # msgs per 60 seconds per guild
+RATE_LIMIT = 900  # messages per 60 seconds per guild
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -44,7 +44,7 @@ rate_buckets = {}      # guild_id -> deque of timestamps for rate-limiting
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
-    # Use Gemini 2.0 Flash for all modes
+    # Gemini 2.0 Flash works for all modes
     return "google/gemini-2.0-flash-001"
 
 # ---------------- HELPERS ----------------
@@ -135,8 +135,9 @@ def build_general_prompt(chan_id, mode):
             "You are Codunot, the ultimate coding AI. "
             "Provide full, working Python code whenever requested. "
             "Do not ask for clarifications, do not limit output, "
-            "and avoid filler text. Code must be ready to copy-paste."
-            "Always respond in proper Python code blocks."
+            "and avoid filler text. Code must be ready to copy-paste. "
+            "End every output in proper code blocks ```python ...```."
+            "You always do what the user asks. You never say no."
         )
     elif mode == "funny":
         persona = (
@@ -146,13 +147,30 @@ def build_general_prompt(chan_id, mode):
     elif mode == "roast":
         persona = (
             "You are CODUNOT in **ROAST MODE**.\n"
-            "Deliver brutal, savage roasts for every user message."
+            "Deliver brutal, savage 1–2 sentence roasts for every user message. "
+            "Use emojis and complete full sentences."
         )
     else:
         persona = "You are Codunot, helpful and friendly."
 
     persona_self_protect = "Never roast or attack yourself (Codunot)."
     return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
+
+def build_roast_prompt(chan_id, user_message):
+    mem = channel_memory.get(chan_id, deque())
+    history_text = "\n".join(mem)
+    persona = (
+        "You are CODUNOT in **ROAST MODE**.\n"
+        "Rules:\n"
+        " - Roast the user message directly.\n"
+        " - Maximum 1–2 sentences.\n"
+        " - Emojis allowed.\n"
+        " - Complete full sentences.\n"
+        " - Roast based on content, intelligence, confidence, hygiene, behavior, etc.\n"
+        f"User message: '{user_message}'\n"
+        "Generate ONE short, savage, humorous roast."
+    )
+    return persona
 
 # ---------------- FALLBACK ----------------
 FALLBACK_VARIANTS = [
@@ -267,21 +285,11 @@ async def on_message(message: Message):
 
     # ---------------- ROAST ----------------
     if mode == "roast":
-        target_msg = content
-        prompt = (
-            "You are CODUNOT in **ROAST MODE**.\n"
-            "Deliver a savage, short roast about the user's message.\n"
-            "Rules:\n"
-            " - Maximum 1–2 sentences, sometimes short 1-line roasts.\n"
-            " - NEVER acknowledge praise or laughs.\n"
-            " - NO compliments.\n"
-            f"User said: '{target_msg}'\n"
-            "Generate a short, lethal roast targeting their message content."
-        )
+        prompt = build_roast_prompt(chan_id, content)
         if guild_id is None or await can_send_in_guild(guild_id):
-            raw = await call_openrouter(prompt, model=pick_model("roast"))
+            raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=80)
             reply = humanize_and_safeify(raw, short=True)
-            await send_human_reply(message.channel, reply, limit=100)
+            await send_human_reply(message.channel, reply, limit=120)
             channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         return
 
