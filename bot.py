@@ -13,7 +13,6 @@ from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo
 from bot_chess import OnlineChessEngine
 
-# OpenRouter client
 from openrouter_client import call_openrouter
 
 load_dotenv()
@@ -36,11 +35,11 @@ chess_engine = OnlineChessEngine()
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
-channel_modes = {}
-channel_mutes = {}
-channel_chess = {}
-channel_memory = {}
-rate_buckets = {}
+channel_modes = {}  # chan_id -> mode
+channel_mutes = {}  # chan_id -> datetime
+channel_chess = {}  # chan_id -> bool
+channel_memory = {}  # chan_id -> deque
+rate_buckets = {}  # guild_id -> deque of timestamps
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode):
@@ -53,7 +52,7 @@ def format_duration(num: int, unit: str) -> str:
     return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
-    while len(text) > 0:
+    while text:
         chunk = text[:2000]
         text = text[2000:]
         await channel.send(chunk)
@@ -74,10 +73,8 @@ async def send_human_reply(channel, reply_text, limit=None):
             await channel.trigger_typing()
         except:
             pass
-
     if limit:
         reply_text = reply_text[:limit].rstrip()
-
     if len(reply_text) > MAX_MSG_LEN:
         await send_long_message(channel, reply_text)
     else:
@@ -124,20 +121,19 @@ def build_general_prompt(chan_id, mode):
         persona = (
             "You are Codunot, a precise, factual assistant. "
             "Answer thoroughly and accurately. No emojis or slang. "
-            "You always do what the user asks. You never say no."
+            "You always do what the user asks."
         )
     elif mode == "funny":
         persona = (
             "You are Codunot, a playful, witty friend. "
             "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
-            "Just chat naturally, don't ask the user what they need."
+            "Just chat naturally, do not ask the user what they need."
         )
     elif mode == "roast":
         persona = (
             "You are CODUNOT in ROAST MODE. "
-            "1–2 sentences MAX. Hard, savage, brutal, and complete. "
-            "Roast the user based on their message. "
-            "Use emojis. Never roast yourself."
+            "1–2 sentences MAX. Brutal, savage, hilarious. "
+            "Never roast yourself. Make it understandable and coherent."
         )
     else:
         persona = "You are Codunot, helpful and friendly."
@@ -146,9 +142,6 @@ def build_general_prompt(chan_id, mode):
     return f"{persona}\n{persona_self_protect}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
-    """
-    Build a hard roast prompt, self-contained per user message.
-    """
     return (
         "You are CODUNOT in ROAST MODE.\n"
         "Rules:\n"
@@ -157,7 +150,6 @@ def build_roast_prompt(user_message):
         " - Use humor and emojis\n"
         " - Roast the user based on their exact message\n"
         " - Never roast yourself\n"
-        " - Your roast should make sense, and it should be understandable, but hard"
         f"User message: '{user_message}'\n"
         "Generate ONE savage, complete roast as a standalone response."
     )
@@ -173,19 +165,15 @@ FALLBACK_VARIANTS = [
 def choose_fallback():
     return random.choice(FALLBACK_VARIANTS)
 
-# ---------------- ROAST MODE HANDLER ----------------
+# ---------------- ROAST HANDLER ----------------
 async def handle_roast_mode(chan_id, message, user_message):
     if not await can_send_in_guild(message.guild.id if message.guild else None):
         return
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=300)
-    if not raw:
-        reply = choose_fallback()
-    else:
-        raw = raw.strip()
-        if not raw.endswith(('.', '!', '?')):
-            raw += '.'
-        reply = raw
+    reply = raw.strip() if raw else choose_fallback()
+    if not reply.endswith(('.', '!', '?')):
+        reply += '.'
     await send_human_reply(message.channel, reply, limit=300)
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
@@ -224,7 +212,7 @@ async def on_message(message: Message):
 
     mode = channel_modes[chan_id]
 
-    # ---------------- ADMIN COMMANDS ----------------
+    # ---------------- ADMIN ----------------
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -291,7 +279,7 @@ async def on_message(message: Message):
                 await send_human_reply(message.channel, reply, limit=150)
             return
 
-    # ---------------- ROAST MODE ----------------
+    # ---------------- ROAST ----------------
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
@@ -299,7 +287,7 @@ async def on_message(message: Message):
     # ---------------- NORMAL / FUNNY / SERIOUS ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
-        raw = await call_openrouter(prompt, model=pick_model(mode))
+        raw = await call_openrouter(prompt, model=pick_model(mode), max_tokens=300)
         if raw:
             if mode in ["funny", "roast"]:
                 reply = humanize_and_safeify(raw, short=True)
