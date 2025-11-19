@@ -86,14 +86,14 @@ def humanize_and_safeify(text, short=False):
     if not isinstance(text, str):
         text = str(text)
     text = text.replace(" idk", "").replace(" *nvm", "")
-    if random.random() < 0.1:
-        text = maybe_typo(text)
     if short:
         text = text.strip()
         if len(text) > 100:
             text = text[:100].rsplit(" ", 1)[0].strip()
         if not text.endswith(('.', '!', '?')):
             text += '.'
+    if random.random() < 0.1:
+        text = maybe_typo(text)
     return text
 
 def is_admin(member):
@@ -172,6 +172,7 @@ async def handle_roast_mode(chan_id, message, user_message):
     guild_id = message.guild.id if message.guild else None
     if not await can_send_in_guild(guild_id):
         return
+
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=300)
     if not raw:
@@ -181,6 +182,7 @@ async def handle_roast_mode(chan_id, message, user_message):
         if not raw.endswith(('.', '!', '?')):
             raw += '.'
         reply = raw
+
     await send_human_reply(message.channel, reply, limit=300)
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
@@ -258,7 +260,8 @@ async def on_message(message: Message):
         return
 
     # ---------------- CATCH CODING ----------------
-    if any(word in content_lower for word in ["code", "program", "script", "function", "class"]):
+    # Only trigger disabled code message if "!codemode" explicitly typed in serious mode
+    if content_lower.startswith("!codemode") and mode == "serious":
         await send_human_reply(message.channel, "⚠️ Sorry, I don't support coding right now. Maybe in the future!")
         return
 
