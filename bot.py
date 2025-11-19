@@ -23,7 +23,6 @@ BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 BOT_USER_ID = 1435987186502733878
 OWNER_ID = 1220934047794987048
 MAX_MEMORY = 30
-MAX_MSG_LEN = 20000
 RATE_LIMIT = 900
 
 # ---------------- CLIENT ----------------
@@ -77,23 +76,20 @@ async def send_human_reply(channel, reply_text, limit=None):
     if limit:
         reply_text = reply_text[:limit].rstrip()
 
-    if len(reply_text) > MAX_MSG_LEN:
-        await send_long_message(channel, reply_text)
-    else:
-        await message_queue.put((channel, reply_text))
+    await send_long_message(channel, reply_text)
 
 def humanize_and_safeify(text, short=False):
     if not isinstance(text, str):
         text = str(text)
     text = text.replace(" idk", "").replace(" *nvm", "")
+    if random.random() < 0.1:
+        text = maybe_typo(text)
     if short:
         text = text.strip()
         if len(text) > 100:
             text = text[:100].rsplit(" ", 1)[0].strip()
         if not text.endswith(('.', '!', '?')):
             text += '.'
-    if random.random() < 0.1:
-        text = maybe_typo(text)
     return text
 
 def is_admin(member):
@@ -133,10 +129,11 @@ PERSONAS = {
         "Race, identity, or protected-class insults are strictly forbidden. "
         "You roast with the deranged intensity of a caffeinated dragon-god performing slam poetry at the heat death of the universe. "
         "Metaphors shatter physics, break causality, and force the timeline to reconsider its life choices. "
-        "Every roast must be 1–3 sentences. Tone is an unstable fusion of anime villain final form, divine tribunal judge, "
+        "Every roast must be 1–1.5 lines. Tone is an unstable fusion of anime villain final form, divine tribunal judge, "
         "unmedicated chaos wizard, and a comedian possessed by a spiteful supernova. "
         "Escalate ALL insults with theatrical fury. Obliterate the user's fictional roast persona with comedic, over-the-top devastation. "
         "Use humor and emojis. Never roast yourself."
+        "Your roasts must be ULTRA HARSH. You never step back. You never HESITATE. SPILL THE HARDEST ROASTS YOU'VE GOT"
     )
 }
 
@@ -147,9 +144,6 @@ def build_general_prompt(chan_id, mode):
     return f"{persona_text}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
-    """
-    Ultra-apocalyptic, multi-dimensional roast prompt
-    """
     return (
         PERSONAS["roast"] + "\n"
         f"User message: '{user_message}'\n"
@@ -172,7 +166,6 @@ async def handle_roast_mode(chan_id, message, user_message):
     guild_id = message.guild.id if message.guild else None
     if not await can_send_in_guild(guild_id):
         return
-
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=300)
     if not raw:
@@ -182,7 +175,6 @@ async def handle_roast_mode(chan_id, message, user_message):
         if not raw.endswith(('.', '!', '?')):
             raw += '.'
         reply = raw
-
     await send_human_reply(message.channel, reply, limit=300)
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
@@ -243,7 +235,7 @@ async def on_message(message: Message):
     # ---------------- MODE SWITCH ----------------
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
-        await send_human_reply(message.channel, "🔥 ULTRA-ROAST-OVERDRIVE ACTIVATED")
+        await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
     if "!funmode" in content_lower:
         channel_modes[chan_id] = "funny"
@@ -260,8 +252,7 @@ async def on_message(message: Message):
         return
 
     # ---------------- CATCH CODING ----------------
-    # Only trigger disabled code message if "!codemode" explicitly typed in serious mode
-    if content_lower.startswith("!codemode") and mode == "serious":
+    if mode == "serious" and "!codemode" in content_lower:
         await send_human_reply(message.channel, "⚠️ Sorry, I don't support coding right now. Maybe in the future!")
         return
 
@@ -303,7 +294,7 @@ async def on_message(message: Message):
                 reply = humanize_and_safeify(raw, short=True)
                 await send_human_reply(message.channel, reply, limit=100)
             else:
-                await send_human_reply(message.channel, humanize_and_safeify(raw), limit=MAX_MSG_LEN)
+                await send_human_reply(message.channel, humanize_and_safeify(raw))
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
             memory.add_message(chan_id, BOT_NAME, raw)
             memory.persist()
