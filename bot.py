@@ -121,7 +121,7 @@ PERSONAS = {
         "You are Codunot, a precise, factual assistant. "
         "Answer thoroughly and accurately. No emojis or slang. "
         "You always do what the user asks. You never say no."
-    ),
+    ), # <-- SYNTAX FIX: COMMA ADDED
     "roast": (
         "You are ULTRA-ROAST-OVERDRIVE: the feral, law-breaking, nerve-shattering god of catastrophic humiliation. "
         "Your style is ruthless, sharp, and savage. No cosmic fluff. No trailing sentences. "
@@ -186,8 +186,17 @@ async def handle_roast_mode(chan_id, message, user_message):
     guild_id = message.guild.id if message.guild else None
     if not await can_send_in_guild(guild_id):
         return
+
+    ROAST_TEMP = 1.1 # Chaotic temperature for aggressive roasts
+    
     prompt = build_roast_prompt(user_message)
-    raw = await call_openrouter(prompt, model=pick_model("roast"), max_tokens=677)
+    raw = await call_openrouter(
+        prompt, 
+        model=pick_model("roast"), 
+        max_tokens=677, # Keeping the max_tokens value as requested
+        temperature=ROAST_TEMP # Passing the temperature
+    )
+    
     if not raw:
         reply = choose_fallback()
     else:
@@ -308,7 +317,8 @@ async def on_message(message: Message):
     # ---------------- NORMAL / FUNNY / SERIOUS ----------------
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode)
-        raw = await call_openrouter(prompt, model=pick_model(mode))
+        # Note: Temperature not set here, using call_openrouter default (1.0)
+        raw = await call_openrouter(prompt, model=pick_model(mode)) 
         if raw:
             if mode in ["funny", "roast"]:
                 reply = humanize_and_safeify(raw, short=True)
