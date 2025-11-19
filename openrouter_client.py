@@ -21,9 +21,10 @@ async def get_session():
     return SESSION
 
 
-async def call_openrouter(prompt: str, max_tokens=677, retries=4, model=None) -> str:
+async def call_openrouter(prompt: str, max_tokens=677, retries=4, model=None, temperature: float = 1.0) -> str:
     """
     Safe OpenRouter call with retries, no crashes, no drops.
+    Includes support for the 'temperature' parameter.
     """
 
     if OPENROUTER_API_KEY is None:
@@ -35,6 +36,7 @@ async def call_openrouter(prompt: str, max_tokens=677, retries=4, model=None) ->
         "model": model or DEFAULT_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
+        "temperature": temperature,
     }
 
     headers = {
