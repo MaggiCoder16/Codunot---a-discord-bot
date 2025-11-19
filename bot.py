@@ -147,6 +147,7 @@ PERSONAS = {
         'Use humor, emojis, and chaotic imagery for punch. '
         "Each roast must feel like a meteor suplexing their ego across twelve dimensions. "
         "Roasts must always be fully coherent, fully tied to the user's insults, and make complete sense."
+        "Each roast must be 1 to 1.5 lines ONLY. BUT BRUTAL. SHORT BUT KILLING!"
 )
 }
 
