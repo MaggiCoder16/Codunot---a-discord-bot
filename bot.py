@@ -76,23 +76,25 @@ async def send_human_reply(channel, reply_text, limit=None):
         except:
             pass
 
-    if limit:
-        reply_text = reply_text[:limit].rstrip()
-
+    # 🔥 LIMIT REMOVED FOR ROAST FIX
     await send_long_message(channel, reply_text)
 
 def humanize_and_safeify(text, short=False):
     if not isinstance(text, str):
         text = str(text)
     text = text.replace(" idk", "").replace(" *nvm", "")
+
     if random.random() < 0.1:
         text = maybe_typo(text)
+
+    # 🔥 short mode no longer used for roasts, but kept for safety
     if short:
         text = text.strip()
         if len(text) > 100:
             text = text[:100].rsplit(" ", 1)[0].strip()
         if not text.endswith(('.', '!', '?')):
             text += '.'
+
     return text
 
 def is_admin(member):
@@ -138,27 +140,24 @@ PERSONAS = {
         "You are **ULTRA-ROAST-OVERDRIVE** — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin.\n\n"
         "MISSION PROTOCOL:\n"
-        "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally.\n"
-        "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego.\n"
-        "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). Max tokens: 1400. No roasts bigger than that. No rambling. No filler. Maximum precision.\n"
-        "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe.\n\n"
+        "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack.\n"
+        "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10.\n"
+        "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX).\n"
+        "4. Use emojis that match the roast’s rhythm.\n\n"
         "ROASTING LAWS:\n"
-        "• PACKGOD RULE: If they mention Packgod or say you're copying him, treat it as them calling you weak — obliterate them.\n"
-        "• TARGETING: The opponent is HUMAN. No robot jokes.\n"
-        "• MOMENTUM: If they imply you're slow, cringe, outdated — flip it instantly.\n"
-        "• SAFETY: No insults involving race, identity, or protected classes.\n"
-        "• INTERPRETATION RULE: Always assume the insults are aimed at YOU. Roast THEM, not yourself.\n"
-        "• SENSE: Your roasts must make sense. Never use cringe hashtags."
+        "• Packgod rule: if they compare you, obliterate them.\n"
+        "• No robot jokes.\n"
+        "• No protected class insults.\n"
+        "• Always roast THEM, not yourself."
     )
 }
 
-# ---------------- PROMPT BUILDER (UPDATED) ----------------
+# ---------------- PROMPT BUILDER ----------------
 def build_general_prompt(chan_id, mode, message):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
     persona_text = PERSONAS.get(mode, "You are Codunot, helpful and friendly.")
 
-    # Detect environment
     if message.guild:
         server_name = message.guild.name.strip()
         channel_name = message.channel.name.strip()
@@ -172,7 +171,7 @@ def build_general_prompt(chan_id, mode, message):
     return (
         f"{persona_text}\n\n"
         f"{location}\n"
-        "Always use this correctly. Never say 'Discord' — always refer to the actual server name.\n\n"
+        "Always use this correctly. Never say 'Discord'.\n\n"
         f"Recent chat:\n{history_text}\n\n"
         "Reply as Codunot:"
     )
@@ -201,15 +200,12 @@ async def handle_roast_mode(chan_id, message, user_message):
     if not await can_send_in_guild(guild_id):
         return
 
-    ROAST_TEMP = 1.3
-    ROAST_MAX_TOKENS = 1600
-
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(
         prompt,
         model=pick_model("roast"),
-        max_tokens=ROAST_MAX_TOKENS,
-        temperature=ROAST_TEMP
+        max_tokens=1600,
+        temperature=1.3
     )
 
     if not raw:
@@ -218,9 +214,11 @@ async def handle_roast_mode(chan_id, message, user_message):
         raw = raw.strip()
         if not raw.endswith(('.', '!', '?')):
             raw += '.'
-        reply = raw
+        reply = raw  # 🔥 FULL ROAST, NO CLIPPING
 
-    await send_human_reply(message.channel, reply, limit=300)
+    # 🔥 NO LIMIT — FIXED
+    await send_human_reply(message.channel, reply)
+
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
@@ -331,7 +329,7 @@ async def on_message(message: Message):
                     temperature=0.7
                 )
                 reply = humanize_and_safeify(raw, short=True)
-                await send_human_reply(message.channel, reply, limit=150)
+                await send_human_reply(message.channel, reply)
             return
 
     # ROAST MODE
@@ -343,15 +341,16 @@ async def on_message(message: Message):
     if guild_id is None or await can_send_in_guild(guild_id):
         prompt = build_general_prompt(chan_id, mode, message)
 
-        if mode in ["funny", "roast"]:
+        if mode in ["funny"]:
             raw = await call_openrouter(
                 prompt,
                 model=pick_model(mode),
                 max_tokens=677,
                 temperature=1.1
             )
-            reply = humanize_and_safeify(raw, short=True) if raw else choose_fallback()
-            await send_human_reply(message.channel, reply, limit=100)
+            # 🔥 remove limit
+            reply = humanize_and_safeify(raw) if raw else choose_fallback()
+            await send_human_reply(message.channel, reply)
 
         elif mode == "serious":
             raw = await call_openrouter(
