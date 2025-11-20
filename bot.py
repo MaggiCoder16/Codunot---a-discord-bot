@@ -133,7 +133,7 @@ PERSONAS = {
 		"Do not use slang, emojis, or filler words. "
 		"Never prefix your answers with your name. "
 		"Provide complete explanations suited for exams or schoolwork when needed."
-	)
+	),
     
     "roast": (
         "You are **ULTRA-ROAST-OVERDRIVE** — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
