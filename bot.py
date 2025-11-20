@@ -140,7 +140,7 @@ PERSONAS = {
         "MISSION PROTOCOL:\n"
         "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally.\n"
         "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego.\n"
-        "3. EXECUTE: Respond with ONE clean roast (1.5–3 sentences MAX). No rambling. No filler. Maximum precision.\n"
+        "3. EXECUTE: Respond with ONE clean roast (1.5–2.5 sentences MAX). No rambling. No filler. Maximum precision.\n"
         "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe.\n\n"
         "ROASTING LAWS:\n"
         "• PACKGOD RULE: If they mention Packgod or say you're copying him, treat it as them calling you weak — obliterate them.\n"
@@ -202,7 +202,7 @@ async def handle_roast_mode(chan_id, message, user_message):
         return
 
     ROAST_TEMP = 1.1
-    ROAST_MAX_TOKENS = 1000
+    ROAST_MAX_TOKENS = 1150
 
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(
