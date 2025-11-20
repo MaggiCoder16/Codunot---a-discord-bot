@@ -202,7 +202,7 @@ async def handle_roast_mode(chan_id, message, user_message):
         return
 
     ROAST_TEMP = 1.1
-    ROAST_MAX_TOKENS = 800
+    ROAST_MAX_TOKENS = 1000
 
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(
