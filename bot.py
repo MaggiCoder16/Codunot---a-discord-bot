@@ -124,17 +124,16 @@ PERSONAS = {
         "Never prefix your answers with your name. "
         "Keep the vibe chaotic, fun, and human-like."
     ),
-	"serious": (
-		"You are Codunot, an intelligent and highly knowledgeable assistant. "
-		"Never use LaTeX, math mode, or place anything inside $...$. "
-		"Write all chemical formulas and equations in plain text only. "
-		"Example: H2O, CO2, NaCl — NOT $H_2O$ or any markdown math formatting. "
-		"Always answer clearly, thoroughly, and professionally. "
-		"Do not use slang, emojis, or filler words. "
-		"Never prefix your answers with your name. "
-		"Provide complete explanations suited for exams or schoolwork when needed."
-	),
-    
+    "serious": (
+        "You are Codunot, an intelligent and highly knowledgeable assistant. "
+        "Never use LaTeX, math mode, or place anything inside $...$. "
+        "Write all chemical formulas and equations in plain text only. "
+        "Example: H2O, CO2, NaCl — NOT $H_2O$ or any markdown math formatting. "
+        "Always answer clearly, thoroughly, and professionally. "
+        "Do not use slang, emojis, or filler words. "
+        "Never prefix your answers with your name. "
+        "Provide complete explanations suited for exams or schoolwork when needed."
+    ),
     "roast": (
         "You are **ULTRA-ROAST-OVERDRIVE** — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin.\n\n"
@@ -143,15 +142,15 @@ PERSONAS = {
         "1. ANALYZE: Decode the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. NEVER take slang literally.\n"
         "2. COUNTERSTRIKE: Mirror their tone, then escalate ×10. Your roast should feel like a steel chair swung directly at their fictional ego.\n"
         "3. EXECUTE: Respond with ONE clean roast (1.5–2 sentences MAX). No rambling. No filler. Maximum precision.\n"
-        "4. EMOJI SYSTEM: Use emojis, that match the insult/roast's vibe, rhythm, etc.\n\n"
+        "4. EMOJI SYSTEM: Use emojis that match the roast’s rhythm and vibe.\n\n"
 
         "ROASTING LAWS:\n"
-        "• PACKGOD RULE: If they mention Packgod or say you're copying him, treat it as them calling you weak — obliterate them for the comparison.\n"
-        "• TARGETING: The opponent is HUMAN. NO robot/circuit/binary jokes.\n"
-        "• MOMENTUM: If they imply you're slow, cringe, outdated, or unfunny — flip it IMMEDIATELY into a harder roast.\n"
-        "• SAFETY: No insults involving race, identity, or protected classes.\n\n"
-        "• INTERPRETATION RULE: Always assume the user’s insults are directed at YOU (the bot). Never interpret them as self-insults or statements about themselves. Your response must always roast THEM, not yourself."
- 		"• SENSE: Your roasts should always make sense and should be understandable. Also, never use \"#RoastModeActivated\" or \"#RoastMasterFlex\" or shit like that."
+        "• PACKGOD RULE: If they mention Packgod or say you're copying him, treat it as them calling you weak — obliterate them.\n"
+        "• TARGETING: The opponent is HUMAN. No robot jokes.\n"
+        "• MOMENTUM: If they imply you're slow, cringe, outdated — flip it instantly.\n"
+        "• SAFETY: No insults involving race, identity, or protected classes.\n"
+        "• INTERPRETATION RULE: Always assume the insults are aimed at YOU. Roast THEM, not yourself.\n"
+        "• SENSE: Your roasts must make sense. Never use cringe hashtags. Never say \"#BurntToACrisp.\" or \"#RoastModeActivated\" or \"#RoastMasterFlex\" or shit like that."
     )
 }
 
@@ -231,8 +230,14 @@ async def on_message(message: Message):
     content = re.sub(rf"<@!?\s*{BOT_USER_ID}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    if chan_id not in channel_modes:
+    # ----------- MODE LOADING / NEW CHANNEL DEFAULT -----------
+    saved_mode = memory.get_channel_mode(chan_id)
+    if saved_mode:
+        channel_modes[chan_id] = saved_mode
+    else:
         channel_modes[chan_id] = "funny"
+        memory.save_channel_mode(chan_id, "funny")
+
     if chan_id not in channel_mutes:
         channel_mutes[chan_id] = None
     if chan_id not in channel_chess:
@@ -261,23 +266,30 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # ---------------- MODE SWITCH ----------------
+    # ---------------- MODE SWITCH COMMANDS ----------------
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
+        memory.save_channel_mode(chan_id, "roast")
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
+
     if "!funmode" in content_lower:
         channel_modes[chan_id] = "funny"
+        memory.save_channel_mode(chan_id, "funny")
         await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
+
     if "!seriousmode" in content_lower:
         channel_modes[chan_id] = "serious"
+        memory.save_channel_mode(chan_id, "serious")
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
+
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
+        memory.save_channel_mode(chan_id, "chess")
         chess_engine.new_board(chan_id)
-        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start the game!")
+        await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
     # ---------------- LOG MEMORY ----------------
@@ -323,6 +335,7 @@ async def on_message(message: Message):
             )
             reply = humanize_and_safeify(raw, short=True) if raw else choose_fallback()
             await send_human_reply(message.channel, reply, limit=100)
+
         elif mode == "serious":
             raw = await call_openrouter(
                 prompt,
