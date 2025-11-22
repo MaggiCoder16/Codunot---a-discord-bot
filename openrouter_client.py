@@ -10,6 +10,17 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 SESSION: aiohttp.ClientSession | None = None
 
+
+# --- SANITIZE LOGS SO GITHUB DOESN’T HIDE THEM ---
+def clean_log(text: str) -> str:
+    if not text:
+        return text
+    # Remove API key from logs
+    if OPENROUTER_API_KEY:
+        text = text.replace(OPENROUTER_API_KEY, "***")
+    return text
+
+
 async def get_session():
     global SESSION
     if SESSION is None or SESSION.closed:
@@ -17,10 +28,14 @@ async def get_session():
     return SESSION
 
 
-async def call_openrouter(prompt: str, model: str,
-                          temperature: float = 1.0, retries: int = 4) -> str | None:
+async def call_openrouter(
+    prompt: str,
+    model: str,
+    temperature: float = 1.0,
+    retries: int = 4
+) -> str | None:
 
-    if OPENROUTER_API_KEY is None:
+    if not OPENROUTER_API_KEY:
         print("Missing OpenRouter API Key")
         return None
 
@@ -50,38 +65,40 @@ async def call_openrouter(prompt: str, model: str,
                 timeout=60
             ) as resp:
 
-                # ----- SUCCESS -----
+                # ---- SUCCESS ----
                 if resp.status == 200:
                     data = await resp.json()
                     return data["choices"][0]["message"]["content"]
 
-                # ----- AUTH ERRORS -----
+                # ---- AUTH FAIL ----
                 if resp.status in (401, 403):
+                    raw = clean_log(await resp.text())
                     print("\n===== OPENROUTER AUTH ERROR =====")
                     print(f"Status: {resp.status}")
-                    print(await resp.text())
+                    print(raw)
                     print("=================================\n")
                     return None
 
-                # ----- RATE LIMIT -----
+                # ---- RATE LIMIT ----
                 if resp.status == 429:
-                    print(f"Rate limit hit. Retrying in {backoff}s...")
+                    print(f"Rate limit — retrying in {backoff}s...")
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8)
                     continue
 
-                # ----- OTHER ERRORS -----
-                error_text = await resp.text()
+                # ---- OTHER ERRORS ----
+                raw = clean_log(await resp.text())
                 print("\n===== OPENROUTER ERROR =====")
                 print(f"Status: {resp.status}")
-                print(f"Response: {error_text}")
+                print(raw)
                 print("================================\n")
                 return None
 
         except Exception as e:
-            print(f"Network/Server error: {e}. Retrying in {backoff}s...")
+            # Network or server error
+            print(f"Exception: {clean_log(str(e))} — retrying in {backoff}s...")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 8)
 
-    # Total failure
+    # ---- TOTAL FAILURE ----
     return None
