@@ -44,7 +44,7 @@ def pick_model(mode: str):
     if mode in ["funny", "roast"]:
         return "meta-llama/llama-3.3-70b-instruct:free"
     if mode == "serious":
-        return "meta-llama/llama-3.3-70b-instruct:free"
+        return "mistralai/mistral-7b-instruct:free"
     return "meta-llama/llama-3.3-70b-instruct:free"
 
 # ---------------- HELPERS ----------------
