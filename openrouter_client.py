@@ -2,9 +2,10 @@ import aiohttp
 import os
 import asyncio
 from dotenv import load_dotenv
+
 load_dotenv()
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 SESSION: aiohttp.ClientSession | None = None
@@ -15,8 +16,7 @@ async def get_session():
         SESSION = aiohttp.ClientSession()
     return SESSION
 
-async def call_openrouter(prompt: str, model: str, max_tokens: int | None = None,
-                          temperature: float = 1.0, retries: int = 4) -> str:
+async def call_openrouter(prompt: str, model: str, temperature: float = 1.0, retries: int = 4) -> str:
     if OPENROUTER_API_KEY is None:
         return "OpenRouter API key missing."
 
@@ -27,8 +27,6 @@ async def call_openrouter(prompt: str, model: str, max_tokens: int | None = None
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
     }
-    if max_tokens:
-        payload["max_tokens"] = max_tokens
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -63,7 +61,7 @@ async def call_openrouter(prompt: str, model: str, max_tokens: int | None = None
                 text = await resp.text()
                 return f"OpenRouter error {resp.status}: {text}"
 
-        except Exception as e:
+        except Exception:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 8)
 
