@@ -45,9 +45,13 @@ async def call_openrouter(prompt: str, model: str, temperature: float = 1.0, ret
                 timeout=60
             ) as resp:
 
-                if resp.status == 200:
-                    data = await resp.json()
-                    return data["choices"][0]["message"]["content"]
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    print("\n===== OPENROUTER ERROR =====")
+                    print(f"Status: {resp.status}")
+                    print(f"Response: {error_text}")
+                    print("================================\n")
+                    return None
 
                 if resp.status in (401, 403):
                     return f"OpenRouter auth failed ({resp.status}). Your API key is invalid."
