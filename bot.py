@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 
 import discord
-from discord import Message, app_commands
+from discord import Message
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -70,7 +70,7 @@ async def process_queue():
             print(f"[QUEUE ERROR] {e}")
         await asyncio.sleep(0.02)
 
-async def send_human_reply(channel, reply_text, limit=None):
+async def send_human_reply(channel, reply_text):
     if hasattr(channel, "trigger_typing"):
         try:
             await channel.trigger_typing()
@@ -110,6 +110,25 @@ async def can_send_in_guild(guild_id):
         return True
     return False
 
+async def change_channel_mode(chan_id: str, new_mode: str) -> str:
+    """Sets the mode and returns the appropriate confirmation message."""
+    channel_modes[chan_id] = new_mode
+    memory.save_channel_mode(chan_id, new_mode)
+
+    if new_mode == "chess":
+        channel_chess[chan_id] = True
+        chess_engine.new_board(chan_id)
+        return "♟️ Chess mode ACTIVATED. You are white, start!"
+    else:
+        channel_chess[chan_id] = False
+
+    messages = {
+        "funny": "😎 Fun mode activated!",
+        "roast": "🔥 ROAST MODE ACTIVATED",
+        "serious": "🤓 Serious mode ON"
+    }
+    return messages.get(new_mode, f"Mode set to {new_mode}!")
+
 # ---------------- PERSONAS ----------------
 PERSONAS = {
     "funny": (
@@ -126,7 +145,7 @@ PERSONAS = {
         "You are Codunot, an intelligent and highly knowledgeable assistant. "
         "Never use LaTeX, math mode, or place anything inside $...$. "
         "Write all chemical formulas and equations in plain text only. "
-        "Example: H2O, CO2, NaCl — NOT $H_2O$ or any markdown math formatting. "
+        "Example: H2O, CO2, NaCl — NOT H_2O or any markdown math formatting. "
         "Always answer clearly, thoroughly, and professionally. "
         "Do not use slang, emojis, or filler words. "
         "Never prefix your answers with your name. "
@@ -185,13 +204,9 @@ async def handle_roast_mode(chan_id, message, user_message):
         return
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(prompt, model=pick_model("roast"), temperature=1.3)
-    if not raw:
-        reply = "[ERROR] OpenRouter request failed. Check logs."
-    else:
-        raw = raw.strip()
-        if not raw.endswith(('.', '!', '?')):
-            raw += '.'
-        reply = raw
+    reply = raw.strip() if raw else choose_fallback()
+    if not reply.endswith(('.', '!', '?')):
+        reply += '.'
     await send_human_reply(message.channel, reply)
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
     memory.add_message(chan_id, BOT_NAME, reply)
@@ -201,37 +216,32 @@ async def handle_roast_mode(chan_id, message, user_message):
 @bot.tree.command(name="funmode", description="Switch bot to funny mode")
 async def slash_funmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    channel_modes[chan_id] = "funny"
-    memory.save_channel_mode(chan_id, "funny")
-    await interaction.response.send_message("😎 Fun mode activated!", ephemeral=True)
+    response = await change_channel_mode(chan_id, "funny")
+    await interaction.response.send_message(response, ephemeral=True)
 
 @bot.tree.command(name="roastmode", description="Activate roast mode")
 async def slash_roastmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    channel_modes[chan_id] = "roast"
-    memory.save_channel_mode(chan_id, "roast")
-    await interaction.response.send_message("🔥 ROAST MODE ACTIVATED", ephemeral=True)
+    response = await change_channel_mode(chan_id, "roast")
+    await interaction.response.send_message(response, ephemeral=True)
 
 @bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
 async def slash_seriousmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    channel_modes[chan_id] = "serious"
-    memory.save_channel_mode(chan_id, "serious")
-    await interaction.response.send_message("🤓 Serious mode ON", ephemeral=True)
+    response = await change_channel_mode(chan_id, "serious")
+    await interaction.response.send_message(response, ephemeral=True)
 
 @bot.tree.command(name="chessmode", description="Activate chess mode")
 async def slash_chessmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
-    channel_chess[chan_id] = True
-    chess_engine.new_board(chan_id)
-    await interaction.response.send_message("♟️ Chess mode ACTIVATED. You are white, start!", ephemeral=True)
+    response = await change_channel_mode(chan_id, "chess")
+    await interaction.response.send_message(response, ephemeral=True)
 
 # ---------------- EVENTS & ON_MESSAGE ----------------
 @bot.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
-    # Global sync for slash commands
     await bot.tree.sync()
     print("Slash commands synced globally!")
 
@@ -245,6 +255,8 @@ async def on_message(message: Message):
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
+
+    await bot.process_commands(message)
 
     if not is_dm and bot_id not in [m.id for m in message.mentions]:
         return
@@ -283,22 +295,12 @@ async def on_message(message: Message):
         return
 
     # --- MODE SWITCHING via @bot commands ---
-    if content_lower in ["!funmode", "!roastmode", "!seriousmode", "!chessmode"]:
-        if content_lower == "!chessmode":
-            channel_chess[chan_id] = True
-            chess_engine.new_board(chan_id)
-            await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
-        else:
-            mode_cmd = content_lower[1:-4]  # removes ! and mode
-            channel_modes[chan_id] = mode_cmd
-            memory.save_channel_mode(chan_id, mode_cmd)
-            messages = {
-                "fun": "😎 Fun mode activated!",
-                "roast": "🔥 ROAST MODE ACTIVATED",
-                "serious": "🤓 Serious mode ON"
-            }
-            await send_human_reply(message.channel, messages.get(mode_cmd, f"{mode_cmd} mode activated!"))
-        return
+    if content_lower.startswith("!") and content_lower.endswith("mode"):
+        mode_cmd = content_lower[1:-4]  # proper slice
+        if mode_cmd in ["funny", "roast", "serious", "chess"]:
+            message_text = await change_channel_mode(chan_id, mode_cmd)
+            await send_human_reply(message.channel, message_text)
+            return
 
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
@@ -312,6 +314,10 @@ async def on_message(message: Message):
             if bot_move:
                 chess_engine.push_uci(chan_id, bot_move)
                 await send_human_reply(message.channel, f"My move: `{bot_move}`")
+                if board.is_checkmate():
+                    await send_human_reply(message.channel, "Checkmate! I win. Start a new game with `/chessmode` if you dare.")
+                elif board.is_stalemate():
+                    await send_human_reply(message.channel, "Stalemate. It's a draw!")
             return
         except ValueError:
             if guild_id is None or await can_send_in_guild(guild_id):
@@ -320,7 +326,7 @@ async def on_message(message: Message):
                     model=pick_model("serious"),
                     temperature=0.7
                 )
-                reply = humanize_and_safeify(raw, short=True) if raw else "[ERROR] OpenRouter request failed. Check logs."
+                reply = humanize_and_safeify(raw, short=True) if raw else choose_fallback()
                 await send_human_reply(message.channel, reply)
             return
 
@@ -337,7 +343,7 @@ async def on_message(message: Message):
             model=pick_model(mode),
             temperature=1.1 if mode == "funny" else 0.7
         )
-        reply = humanize_and_safeify(raw) if raw else "[ERROR] OpenRouter request failed. Check logs."
+        reply = humanize_and_safeify(raw) if raw else choose_fallback()
         await send_human_reply(message.channel, reply)
         if raw:
             channel_memory[chan_id].append(f"{BOT_NAME}: {raw}")
