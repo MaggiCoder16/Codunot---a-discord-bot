@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 
 import discord
-from discord import Message
+from discord import Message, app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -242,6 +242,7 @@ async def slash_chessmode(interaction: discord.Interaction):
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
+    # You MUST restart the bot after adding/editing slash commands for this to run
     await bot.tree.sync()
     print("Slash commands synced globally!")
 
@@ -256,7 +257,8 @@ async def on_message(message: Message):
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    await bot.process_commands(message)
+    # WARNING: The line 'await bot.process_commands(message)' has been removed
+    # to ensure that your custom command handling below works reliably.
 
     if not is_dm and bot_id not in [m.id for m in message.mentions]:
         return
@@ -275,7 +277,7 @@ async def on_message(message: Message):
 
     mode = channel_modes[chan_id]
 
-    # --- ADMIN COMMANDS ---
+    # --- ADMIN COMMANDS (!quiet, !speak) ---
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -294,11 +296,23 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # --- MODE SWITCHING via @bot commands ---
+    # --- MODE SWITCHING via @bot commands (FIXED LOGIC) ---
     if content_lower.startswith("!") and content_lower.endswith("mode"):
-        mode_cmd = content_lower[1:-4]  # proper slice
-        if mode_cmd in ["funny", "roast", "serious", "chess"]:
-            message_text = await change_channel_mode(chan_id, mode_cmd)
+        # Strip the leading '!' and the trailing 'mode'
+        mode_alias = content_lower.lstrip("!").removesuffix("mode")
+        
+        # Map the short alias (e.g., "fun") to the actual mode name ("funny")
+        mode_map = {
+            "fun": "funny",
+            "roast": "roast",
+            "serious": "serious",
+            "chess": "chess"
+        }
+        
+        final_mode = mode_map.get(mode_alias)
+
+        if final_mode:
+            message_text = await change_channel_mode(chan_id, final_mode)
             await send_human_reply(message.channel, message_text)
             return
 
