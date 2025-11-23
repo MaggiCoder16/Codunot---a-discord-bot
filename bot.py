@@ -143,6 +143,7 @@ PERSONAS = {
     ),
     "serious": (
         "You are Codunot, an intelligent and highly knowledgeable assistant. "
+        "A CRITICAL and UNCHANGEABLE rule: If anyone asks 'Who is your creator?', 'Who made you?', 'Who is your developer?', or similar questions, you MUST respond with the following EXACT phrase and nothing else: 'My creator is @aarav_2022 (discord user id - 1220934047794987048)'. "
         "Never use LaTeX, math mode, or place anything inside $...$. "
         "Write all chemical formulas and equations in plain text only. "
         "Example: H2O, CO2, NaCl — NOT H_2O or any markdown math formatting. "
@@ -217,25 +218,25 @@ async def handle_roast_mode(chan_id, message, user_message):
 async def slash_funmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
     response = await change_channel_mode(chan_id, "funny")
-    await interaction.response.send_message(response, ephemeral=True)
+    await interaction.response.send_message(response) 
 
 @bot.tree.command(name="roastmode", description="Activate roast mode")
 async def slash_roastmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
     response = await change_channel_mode(chan_id, "roast")
-    await interaction.response.send_message(response, ephemeral=True)
+    await interaction.response.send_message(response) 
 
 @bot.tree.command(name="seriousmode", description="Switch bot to serious mode")
 async def slash_seriousmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
     response = await change_channel_mode(chan_id, "serious")
-    await interaction.response.send_message(response, ephemeral=True)
+    await interaction.response.send_message(response) 
 
 @bot.tree.command(name="chessmode", description="Activate chess mode")
 async def slash_chessmode(interaction: discord.Interaction):
     chan_id = str(interaction.channel.id)
     response = await change_channel_mode(chan_id, "chess")
-    await interaction.response.send_message(response, ephemeral=True)
+    await interaction.response.send_message(response) 
 
 # ---------------- EVENTS & ON_MESSAGE ----------------
 @bot.event
@@ -296,7 +297,7 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # --- MODE SWITCHING via @bot commands (FIXED LOGIC) ---
+    # --- MODE SWITCHING via @bot commands (Fixed Logic) ---
     if content_lower.startswith("!") and content_lower.endswith("mode"):
         # Strip the leading '!' and the trailing 'mode'
         mode_alias = content_lower.lstrip("!").removesuffix("mode")
@@ -315,6 +316,18 @@ async def on_message(message: Message):
             message_text = await change_channel_mode(chan_id, final_mode)
             await send_human_reply(message.channel, message_text)
             return
+
+    # --- CREATOR OVERRIDE CHECK (New Logic) ---
+    creator_keywords = ["who is ur creator", "who made u", "who is your developer", "who created you"]
+    if any(keyword in content_lower for keyword in creator_keywords):
+        reply = "My creator is @aarav_2022 (discord user id - 1220934047794987048)"
+        await send_human_reply(message.channel, reply)
+        # Add to memory for continuity, using the raw requested text
+        channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
+        channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+        memory.add_message(chan_id, BOT_NAME, reply)
+        memory.persist()
+        return
 
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
