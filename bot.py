@@ -43,8 +43,10 @@ rate_buckets = {}
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
-    if mode in ["funny", "roast"]:
+    if mode == "funny":
         return "x-ai/grok-4.1-fast:free"
+    if mode == "roast":
+        return "mistralai/mistral-7b-instruct:free"
     if mode == "serious":
         return "mistralai/mistral-7b-instruct:free"
     return "x-ai/grok-4.1-fast:free"
