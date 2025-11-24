@@ -14,7 +14,7 @@ from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo
 from bot_chess import OnlineChessEngine
 from openrouter_client import call_openrouter # updated client with logging
-import chess # <--- CRITICAL FIX: Ensure the python-chess library is imported
+import chess
 
 load_dotenv()
 
