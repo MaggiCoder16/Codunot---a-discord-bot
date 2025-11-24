@@ -93,6 +93,12 @@ def humanize_and_safeify(text, short=False):
             text += '.'
     return text
 
+def is_admin(member):
+    try:
+        return member.id == OWNER_ID or any(role.permissions.administrator for role in member.roles)
+    except:
+        return member.id == OWNER_ID
+
 async def can_send_in_guild(guild_id):
     if not guild_id:
         return True
@@ -220,32 +226,22 @@ async def on_message(message: Message):
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    is_chess_mode = str(message.channel.id) in channel_chess and channel_chess.get(str(message.channel.id))
     content = message.content.strip()
-    is_single_word_input = len(content.split()) == 1
-
-    if not is_dm and bot_id not in [m.id for m in message.mentions] and not (is_chess_mode and is_single_word_input):
-        return
-
-    if bot_id in [m.id for m in message.mentions]:
-        content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", content).strip()
-
     content_lower = content.lower()
 
-    # Initialize mode & memory
+    # Initialize modes/memory
     current_mode = channel_modes.get(chan_id) or memory.get_channel_mode(chan_id) or "funny"
     channel_modes[chan_id] = current_mode
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 
-    # Admin commands
+    # Admin mute commands
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
             if match:
-                num = int(match.group(1))
-                unit = match.group(2)
+                num, unit = int(match.group(1)), match.group(2)
                 seconds = num * {"s":1,"m":60,"h":3600,"d":86400}[unit]
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=seconds)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, unit)}.")
@@ -258,8 +254,8 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # Handle !mode commands
-    if content_lower.startswith("!") and content_lower.endswith("mode"):
+    # --- MODE COMMANDS FIRST ---
+    if content_lower.startswith("!"):
         mode_alias = content_lower.lstrip("!").removesuffix("mode")
         mode_map = {"fun": "funny", "roast": "roast", "serious": "serious", "chess": "chess"}
         final_mode = mode_map.get(mode_alias)
@@ -268,58 +264,50 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, get_mode_message(final_mode))
             return
 
+    # Remove mention if exists
+    if bot_id in [m.id for m in message.mentions]:
+        content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", content).strip()
+        content_lower = content.lower()
+
+    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
+
     # Creator override
     creator_keywords = ["who is ur creator", "who made u", "who is your developer", "who created you"]
     if any(keyword in content_lower for keyword in creator_keywords):
         reply = (
-            "Wait, you think I'm from a massive tech lab? Nah. "
-            "\nI was actually birthed from the sheer chaos and brilliance of one human."
-            f"\n**My creator is @aarav_2022 (discord user id - {OWNER_ID})**."
+            f"Wait, you think I'm from a massive lab? Nah.\n"
+            f"Birthed from the chaos and brilliance of one human.\n"
+            f"**Creator: @aarav_2022 (id {OWNER_ID})**"
         )
         await send_human_reply(message.channel, reply)
-        channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
         channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
         return
 
-    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
-
-    # Chess mode
-    if is_chess_mode:
+    # Chess handling
+    if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
-        if not is_single_word_input:
-            await send_human_reply(message.channel, "I'm in chess mode. Only send valid chess moves (e.g., d4, Nf6) or use a mode command to chat.")
+        if len(content.split()) > 1:
+            await send_human_reply(message.channel, "Send only valid chess moves (e.g., d4, Nf6).")
             return
-        user_move_san = content.strip()
         try:
-            user_move_obj = board.parse_san(user_move_san)
-            board.push(user_move_obj)
-
+            move_obj = board.parse_san(content)
+            board.push(move_obj)
             if board.is_checkmate():
-                await send_human_reply(message.channel, f"Checkmate! You win. ({user_move_san}) Use !chessmode for a rematch.")
+                await send_human_reply(message.channel, "Checkmate! You win. Use !chessmode to restart.")
                 return
             elif board.is_stalemate():
-                await send_human_reply(message.channel, "Stalemate. It's a draw!")
-                return
-
-            bot_move_uci = chess_engine.get_best_move(chan_id)
-            if bot_move_uci:
-                bot_move_obj = board.parse_uci(bot_move_uci)
+                await send_human_reply(message.channel, "Stalemate! Draw.")
+            bot_move = chess_engine.get_best_move(chan_id)
+            if bot_move:
+                bot_move_obj = board.parse_uci(bot_move)
                 board.push(bot_move_obj)
-                bot_move_san = board.san(bot_move_obj)
-                await send_human_reply(message.channel, f"My move: `{bot_move_uci}` / **{bot_move_san}**")
-                if board.is_checkmate():
-                    await send_human_reply(message.channel, f"Checkmate! I win. ({bot_move_san}) Start a new game with !chessmode if you dare.")
-                elif board.is_stalemate():
-                    await send_human_reply(message.channel, "Stalemate. It's a draw!")
-            return
-        except chess.InvalidMoveError:
-            await send_human_reply(message.channel, f"❌ **Illegal Move.** Current turn: {'White' if board.turn == chess.WHITE else 'Black'}.")
-            return
-        except ValueError:
-            await send_human_reply(message.channel, f"❓ **Invalid Notation.** Current turn: {'White' if board.turn == chess.WHITE else 'Black'}.")
-            return
+                san = board.san(bot_move_obj)
+                await send_human_reply(message.channel, f"My move: `{bot_move}` / **{san}**")
+        except (chess.InvalidMoveError, ValueError):
+            await send_human_reply(message.channel, f"❌ Invalid move or notation. Current turn: {'White' if board.turn == chess.WHITE else 'Black'}.")
+        return
 
     # Roast mode
     if current_mode == "roast":
