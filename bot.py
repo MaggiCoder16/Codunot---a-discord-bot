@@ -170,7 +170,7 @@ def build_roast_prompt(user_message):
 
 async def handle_roast_mode(chan_id, message, user_message):
     guild_id = message.guild.id if message.guild else None
-    if not await can_send_in_guild(guild_id):
+    if not is_dm and not await can_send_in_guild(guild_id):
         return
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(prompt, model=pick_model("roast"), temperature=1.3)
@@ -184,7 +184,7 @@ async def handle_roast_mode(chan_id, message, user_message):
 
 async def generate_and_reply(chan_id, message, content, current_mode):
     guild_id = message.guild.id if message.guild else None
-    if guild_id is not None and not await can_send_in_guild(guild_id):
+    if not is_dm and not await can_send_in_guild(guild_id):
         return
     prompt = build_general_prompt(chan_id, current_mode, message)
     try:
@@ -209,29 +209,32 @@ async def on_message(message: Message):
     if message.author.bot:
         return
 
-    # --- Only respond in servers if pinged ---
+    global is_dm
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
     bot_id = bot.user.id
     content = message.content.strip()
-    content_lower = content.lower()
 
-    # --- Initialize modes & memory ---
+    # Initialize modes & memory
     current_mode = channel_modes.get(chan_id) or memory.get_channel_mode(chan_id) or "funny"
     channel_modes[chan_id] = current_mode
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 
-    # --- Check if pinged (servers only) ---
+    # Only respond if DM or pinged in a server
     if not is_dm and bot.user not in message.mentions:
         return
+
+    # Strip bot mention if pinged
+    content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", content).strip()
+    content_lower = content.lower()
 
     now = datetime.utcnow()
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # --- Admin commands ---
+    # Admin commands
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -247,32 +250,22 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
-    # --- Mode change ---
-    if content_lower.startswith("!funmode"):
-        await update_mode_and_memory(chan_id, "funny")
-        await send_human_reply(message.channel, get_mode_message("funny"))
-        return
-    if content_lower.startswith("!roastmode"):
-        await update_mode_and_memory(chan_id, "roast")
-        await send_human_reply(message.channel, get_mode_message("roast"))
-        return
-    if content_lower.startswith("!seriousmode"):
-        await update_mode_and_memory(chan_id, "serious")
-        await send_human_reply(message.channel, get_mode_message("serious"))
-        return
-    if content_lower.startswith("!chessmode"):
-        await update_mode_and_memory(chan_id, "chess")
-        await send_human_reply(message.channel, get_mode_message("chess"))
+    # Mode change
+    mode_map = {
+        "!funmode": "funny",
+        "!roastmode": "roast",
+        "!seriousmode": "serious",
+        "!chessmode": "chess"
+    }
+    if content_lower in mode_map:
+        await update_mode_and_memory(chan_id, mode_map[content_lower])
+        await send_human_reply(message.channel, get_mode_message(mode_map[content_lower]))
         return
 
-    # --- Creator info ---
+    # Creator info
     creator_keywords = ["who is ur creator", "who made u", "who is your developer", "who created you"]
     if any(k in content_lower for k in creator_keywords):
-        reply = (
-            f"Wait, you think I'm from a lab? Nah. "
-            f"I was birthed by sheer chaos and brilliance.\n"
-            f"**My creator is @aarav_2022 (id {OWNER_ID})**."
-        )
+        reply = f"Wait, you think I'm from a lab? Nah. I was birthed by sheer chaos and brilliance.\n**My creator is @aarav_2022 (id {OWNER_ID})**."
         await send_human_reply(message.channel, reply)
         channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
         channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
@@ -282,7 +275,7 @@ async def on_message(message: Message):
 
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # --- Chess mode ---
+    # Chess mode
     if channel_chess.get(chan_id, False):
         board = chess_engine.get_board(chan_id)
         if len(content.split()) > 1:
@@ -291,14 +284,12 @@ async def on_message(message: Message):
         try:
             move_obj = board.parse_san(content)
             board.push(move_obj)
-
             if board.is_checkmate():
                 await send_human_reply(message.channel, f"Checkmate! You win. ({content}) Use !chessmode to rematch.")
                 return
             elif board.is_stalemate():
                 await send_human_reply(message.channel, "Stalemate! Draw.")
                 return
-
             bot_move_uci = chess_engine.get_best_move(chan_id)
             if bot_move_uci:
                 bot_move_obj = board.parse_uci(bot_move_uci)
@@ -314,12 +305,12 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, f"Invalid move: {content}")
             return
 
-    # --- Roast mode ---
+    # Roast mode
     if current_mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
-    # --- General chat ---
+    # General chat
     asyncio.create_task(generate_and_reply(chan_id, message, content, current_mode))
 
 
@@ -329,11 +320,9 @@ async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
 
-
 # ---------------- RUN ----------------
 def run():
     bot.run(DISCORD_TOKEN)
-
 
 if __name__ == "__main__":
     run()
