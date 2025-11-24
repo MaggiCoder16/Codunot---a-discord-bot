@@ -112,11 +112,16 @@ async def can_send_in_guild(guild_id):
     return False
 
 async def change_channel_mode(chan_id: str, new_mode: str) -> str:
-    """Sets the mode and returns the appropriate confirmation message."""
+    """Sets the mode, CLEARS MEMORY, and returns the appropriate confirmation message."""
     if new_mode not in ["funny", "roast", "serious", "chess"]:
         return "I don't recognize that mode. Try 'funny', 'roast', 'serious', or 'chess'."
 
-    # Update both volatile and persistent memory immediately
+    # CRITICAL FIX: Clear history when changing modes to enforce persona switch
+    if chan_id in channel_memory:
+        channel_memory[chan_id].clear()
+    memory.clear_history(chan_id)
+    
+    # Update both volatile and persistent memory
     channel_modes[chan_id] = new_mode
     memory.save_channel_mode(chan_id, new_mode)
 
@@ -138,6 +143,7 @@ async def change_channel_mode(chan_id: str, new_mode: str) -> str:
 PERSONAS = {
     "funny": (
         "You are Codunot, a playful, witty friend. "
+        "CRITICAL RULE: **MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES MAX.** "
         "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
         "Just chat naturally, don't ask the user what they need. "
         "GAME REALITY RULE: You CANNOT play real video games. "
@@ -274,9 +280,11 @@ async def on_message(message: Message):
     content_lower = content.lower()
 
     # --- Mode Setup and Memory Initialization (ROBUST CHECK) ---
+    # Determine the mode from the volatile dictionary (updated immediately by mode commands)
     if chan_id in channel_modes:
         current_mode = channel_modes[chan_id]
     else:
+        # If not in volatile memory, load from persistent memory
         saved_mode = memory.get_channel_mode(chan_id)
         current_mode = saved_mode if saved_mode else "funny"
         channel_modes[chan_id] = current_mode # Store in volatile memory for immediate use
@@ -316,10 +324,9 @@ async def on_message(message: Message):
             return
         return
 
-    # --- CREATOR OVERRIDE CHECK (FIXED) ---
+    # --- CREATOR OVERRIDE CHECK ---
     creator_keywords = ["who is ur creator", "who made u", "who is your developer", "who created you"]
     if any(keyword in content_lower for keyword in creator_keywords):
-        # This is the only place the mandatory message is sent
         reply = ("Wait, you think I'm from a massive tech lab? Nah. "
                  "\nI was actually birthed from the sheer chaos and brilliance of one human."
                  f"\n**My creator is @aarav_2022 (discord user id - {OWNER_ID})**.")
@@ -330,7 +337,7 @@ async def on_message(message: Message):
         memory.add_message(chan_id, BOT_NAME, reply)
         memory.persist()
         
-        return # CRITICAL: Exit immediately
+        return 
 
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
