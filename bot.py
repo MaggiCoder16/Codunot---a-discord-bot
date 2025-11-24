@@ -10,6 +10,7 @@ from discord import Message, app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
+# Assuming memory.py, humanizer.py, bot_chess.py, and openrouter_client.py exist
 from memory import MemoryManager
 from humanizer import humanize_response, maybe_typo
 from bot_chess import OnlineChessEngine
