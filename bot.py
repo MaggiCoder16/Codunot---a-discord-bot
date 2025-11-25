@@ -7,7 +7,6 @@ from collections import deque
 
 import discord
 from discord import Message
-from discord.ext import commands
 from dotenv import load_dotenv
 
 from memory import MemoryManager
@@ -28,7 +27,7 @@ RATE_LIMIT = 900
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = discord.Client(intents=intents)  # using discord.Client (match your working example)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 
@@ -40,14 +39,15 @@ channel_chess = {}
 channel_memory = {}
 rate_buckets = {}
 
-# ---------------- HELPERS ----------------
+# ---------------- MODEL PICKER ----------------
 def pick_model(mode: str):
     if mode in ["funny", "roast"]:
-        return "x-ai/grok-4.1-fast:free"
+        return "meta-llama/llama-3.3-70b-instruct:free"
     if mode == "serious":
         return "mistralai/mistral-7b-instruct:free"
-    return "x-ai/grok-4.1-fast:free"
+    return "meta-llama/llama-3.3-70b-instruct:free"
 
+# ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
     units = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
     name = units.get(unit, "minute")
@@ -60,11 +60,21 @@ async def send_long_message(channel, text):
         await channel.send(chunk)
         await asyncio.sleep(0.05)
 
+async def process_queue():
+    while True:
+        channel, content = await message_queue.get()
+        try:
+            await channel.send(content)
+        except Exception as e:
+            print(f"[QUEUE ERROR] {e}")
+        await asyncio.sleep(0.02)
+
 async def send_human_reply(channel, reply_text):
-    try:
-        await channel.trigger_typing()
-    except:
-        pass
+    if hasattr(channel, "trigger_typing"):
+        try:
+            await channel.trigger_typing()
+        except:
+            pass
     await send_long_message(channel, reply_text)
 
 def humanize_and_safeify(text, short=False):
@@ -83,7 +93,7 @@ def humanize_and_safeify(text, short=False):
 
 async def can_send_in_guild(guild_id):
     if not guild_id:
-        return False
+        return True
     now = datetime.now(timezone.utc)
     bucket = rate_buckets.setdefault(guild_id, deque())
     while bucket and (now - bucket[0]).total_seconds() > 60:
@@ -92,20 +102,6 @@ async def can_send_in_guild(guild_id):
         bucket.append(now)
         return True
     return False
-
-async def update_mode_and_memory(chan_id: str, new_mode: str):
-    if new_mode not in ["funny", "roast", "serious", "chess"]:
-        return
-    if chan_id in channel_memory:
-        channel_memory[chan_id].clear()
-    memory.clear_history(chan_id)
-
-    channel_modes[chan_id] = new_mode
-    memory.save_channel_mode(chan_id, new_mode)
-
-    channel_chess[chan_id] = (new_mode == "chess")
-    if new_mode == "chess":
-        chess_engine.new_board(chan_id)
 
 # ---------------- PERSONAS ----------------
 PERSONAS = {
@@ -163,6 +159,7 @@ def build_general_prompt(chan_id, mode, message):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
+    # IMPORTANT: do NOT add server/channel details here (user requested)
     return f"{persona_text}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
@@ -170,12 +167,12 @@ def build_roast_prompt(user_message):
 
 async def handle_roast_mode(chan_id, message, user_message):
     guild_id = message.guild.id if message.guild else None
-    if not await can_send_in_guild(guild_id):
+    if guild_id is not None and not await can_send_in_guild(guild_id):
         return
     prompt = build_roast_prompt(user_message)
     raw = await call_openrouter(prompt, model=pick_model("roast"), temperature=1.3)
     reply = raw.strip() if raw else choose_fallback()
-    if not reply.endswith(('.', '!', '?')):
+    if reply and not reply.endswith(('.', '!', '?')):
         reply += '.'
     await send_human_reply(message.channel, reply)
     channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
@@ -206,39 +203,47 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 # ---------------- ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
+    # ignore self/bots
     if message.author.bot:
         return
 
+    now = datetime.utcnow()
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
-    content = message.content.strip()
+    guild_id = message.guild.id if message.guild else None
+    bot_id = bot.user.id
 
-    # Strip bot mention if exists
-    if not is_dm:
-        content = re.sub(rf"<@!?{bot.user.id}>", "", content).strip()
-        if not content.startswith("!"):  # Only respond if pinged
-            return
+    # DEBUG lines (optional) - can comment out
+    # print(f"[DEBUG] RAW: {message.content} | MENTIONS: {[m.id for m in message.mentions]}")
 
+    # REQUIRE ping in servers (but allow direct messages)
+    if not is_dm and bot_id not in [m.id for m in message.mentions]:
+        # not pinged in server -> ignore
+        return
+
+    # Remove the bot mention from the content (if present)
+    content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # Initialize modes & memory
-    current_mode = channel_modes.get(chan_id) or memory.get_channel_mode(chan_id) or "funny"
-    channel_modes[chan_id] = current_mode
+    # load or set mode
+    saved_mode = memory.get_channel_mode(chan_id)
+    channel_modes[chan_id] = saved_mode if saved_mode else "funny"
+    if not saved_mode:
+        memory.save_channel_mode(chan_id, "funny")
+
+    # ensure dict slots exist
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 
-    now = datetime.utcnow()
-    if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
-        return
+    mode = channel_modes[chan_id]
 
-    # --- Admin commands ---
+    # Owner admin commands
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
             if match:
-                num = int(match.group(1))
-                unit = match.group(2)
+                num = int(match.group(1)); unit = match.group(2)
                 seconds = num * {"s":1,"m":60,"h":3600,"d":86400}[unit]
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=seconds)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, unit)}.")
@@ -248,56 +253,57 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
-    # --- Mode commands ---
-    if content_lower.startswith("!funmode"):
-        await update_mode_and_memory(chan_id, "funny")
-        await send_human_reply(message.channel, "😎 Fun mode activated!")
+    # respect mute
+    if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
-    if content_lower.startswith("!roastmode"):
-        await update_mode_and_memory(chan_id, "roast")
+
+    # ---- MODE SWITCHING: use substring checks exactly like your working example ----
+    # This supports messages like: "@Codunot !roastmode", "@Codunot please !roastmode", "!roastmode" in DMs, etc.
+    if "!roastmode" in content_lower:
+        channel_modes[chan_id] = "roast"
+        memory.save_channel_mode(chan_id, "roast")
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
-    if content_lower.startswith("!seriousmode"):
-        await update_mode_and_memory(chan_id, "serious")
+
+    if "!funmode" in content_lower:
+        channel_modes[chan_id] = "funny"
+        memory.save_channel_mode(chan_id, "funny")
+        await send_human_reply(message.channel, "😎 Fun mode activated!")
+        return
+
+    if "!seriousmode" in content_lower:
+        channel_modes[chan_id] = "serious"
+        memory.save_channel_mode(chan_id, "serious")
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
-    if content_lower.startswith("!chessmode"):
-        await update_mode_and_memory(chan_id, "chess")
+
+    if "!chessmode" in content_lower:
+        channel_chess[chan_id] = True
+        chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # Creator info
-    creator_keywords = ["who is ur creator", "who made u", "who is your developer", "who created you"]
-    if any(k in content_lower for k in creator_keywords):
-        reply = (
-            f"Wait, you think I'm from a lab? Nah. "
-            f"I was birthed by sheer chaos and brilliance.\n"
-            f"**My creator is @aarav_2022 (id {OWNER_ID})**."
-        )
-        await send_human_reply(message.channel, reply)
-        channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
-        channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-        memory.add_message(chan_id, BOT_NAME, reply)
-        memory.persist()
-        return
-
+    # log message to memory
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # --- Chess mode ---
-    if channel_chess.get(chan_id, False):
+    # --- Chess mode handling ---
+    if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
+        # only accept single-word moves
         if len(content.split()) > 1:
             await send_human_reply(message.channel, "Send only one move (e.g., d4, Nf6).")
             return
         try:
             move_obj = board.parse_san(content)
             board.push(move_obj)
+
             if board.is_checkmate():
                 await send_human_reply(message.channel, f"Checkmate! You win. ({content}) Use !chessmode to rematch.")
                 return
             elif board.is_stalemate():
                 await send_human_reply(message.channel, "Stalemate! Draw.")
                 return
+
             bot_move_uci = chess_engine.get_best_move(chan_id)
             if bot_move_uci:
                 bot_move_obj = board.parse_uci(bot_move_uci)
@@ -309,24 +315,28 @@ async def on_message(message: Message):
                 elif board.is_stalemate():
                     await send_human_reply(message.channel, "Stalemate! Draw.")
             return
-        except:
+        except Exception:
             await send_human_reply(message.channel, f"Invalid move: {content}")
             return
 
     # --- Roast mode ---
-    if current_mode == "roast":
+    if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
     # --- General chat ---
-    asyncio.create_task(generate_and_reply(chan_id, message, content, current_mode))
+    # allow only if rate bucket permits (can_send_in_guild checks)
+    if guild_id is None or await can_send_in_guild(guild_id):
+        asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
 
+# ---------------- EVENTS ----------------
 @bot.event
 async def on_ready():
     print(f"{BOT_NAME} is ready!")
     asyncio.create_task(process_queue())
 
+# ---------------- RUN ----------------
 def run():
     bot.run(DISCORD_TOKEN)
 
