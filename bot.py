@@ -199,6 +199,68 @@ async def generate_and_reply(chan_id, message, content, current_mode):
         memory.add_message(chan_id, BOT_NAME, raw)
         memory.persist()
 
+# ---------------- CHESS UTILS ----------------
+RESIGN_PHRASES = [
+    "resign", "i resign", "gg", "give up", "i give up",
+    "surrender", "i surrender", "forfeit", "i forfeit",
+    "quit", "i quit", "done", "enough", "cant win",
+    "can't win", "lost", "i lost", "i'm done", "im done"
+]
+
+def is_resign_message(message_content: str) -> bool:
+    """
+    Returns True if the user's message indicates resignation,
+    even if it contains extra words.
+    """
+    msg = message_content.lower()
+    for phrase in RESIGN_PHRASES:
+        if phrase in msg:
+            return True
+    return False
+
+def normalize_move_input(board, move_input: str) -> str:
+    """
+    Normalize any user input (SAN, UCI, algebraic, coordinates, castle) to a valid SAN.
+    Returns 'resign' if user resigns.
+    """
+    move_input = move_input.strip().lower().replace('o-0', '0-0').replace('o-o-o', '0-0-0')
+
+    if is_resign_message(move_input):
+        return "resign"
+
+    legal_moves = list(board.legal_moves)
+
+    # Coordinate inference (e.g., "e4")
+    if len(move_input) == 2 and move_input[0] in 'abcdefgh' and move_input[1] in '123456':
+        matches = [m for m in legal_moves if m.to_square == chess.parse_square(move_input)]
+        if len(matches) == 1:
+            return board.san(matches[0])
+
+    # Try SAN parsing
+    try:
+        move_obj = board.parse_san(move_input)
+        return board.san(move_obj)
+    except:
+        pass
+
+    # Try UCI parsing
+    try:
+        move_obj = chess.Move.from_uci(move_input)
+        if move_obj in legal_moves:
+            return board.san(move_obj)
+    except:
+        pass
+
+    # Long algebraic (e2-e4)
+    if '-' in move_input:
+        try:
+            move_obj = board.parse_san(move_input.replace('-', ''))
+            return board.san(move_obj)
+        except:
+            pass
+
+    return None
+
 # ---------------- ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
@@ -211,35 +273,36 @@ async def on_message(message: Message):
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    # DEBUG lines (optional) - can comment out
+    # DEBUG
     print(f"[DEBUG] RAW: {message.content} | MENTIONS: {[m.id for m in message.mentions]}")
 
-    # REQUIRE ping in servers (but allow direct messages)
+    # Require ping in servers
     if not is_dm and bot_id not in [m.id for m in message.mentions]:
         return
 
-    # Remove the bot mention from the content
+    # Remove bot mention
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # load or set mode
+    # Load or set mode
     saved_mode = memory.get_channel_mode(chan_id)
     channel_modes[chan_id] = saved_mode if saved_mode else "funny"
     if not saved_mode:
         memory.save_channel_mode(chan_id, "funny")
 
-    # ensure dict slots exist
+    # Ensure dict slots exist
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
     mode = channel_modes[chan_id]
 
-    # Owner admin commands
+    # Owner commands
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
             if match:
-                num = int(match.group(1)); unit = match.group(2)
+                num = int(match.group(1))
+                unit = match.group(2)
                 seconds = num * {"s":1,"m":60,"h":3600,"d":86400}[unit]
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=seconds)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, unit)}.")
@@ -252,7 +315,7 @@ async def on_message(message: Message):
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # MODE SWITCHING
+    # Mode switching
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
@@ -274,25 +337,36 @@ async def on_message(message: Message):
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # log message
+    # Log message
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
     # --- Chess mode ---
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
-        move = chess_engine.parse_user_move(chan_id, content)
-        if not move:
+        move_san = normalize_move_input(board, content)
+
+        if move_san == "resign":
+            await send_human_reply(message.channel, f"{message.author.display_name} resigned! I win. 😎")
+            channel_chess[chan_id] = False
+            return
+
+        if not move_san:
             await send_human_reply(message.channel, f"Invalid move: {content}")
             return
-        board.push(move)
+
+        move_obj = board.parse_san(move_san)
+        board.push(move_obj)
 
         if board.is_checkmate():
-            await send_human_reply(message.channel, f"Checkmate! You win. ({board.san(move)}) Use !chessmode to rematch.")
+            await send_human_reply(message.channel, f"Checkmate! You win. ({move_san}) Use !chessmode to rematch.")
+            channel_chess[chan_id] = False
             return
         elif board.is_stalemate():
             await send_human_reply(message.channel, "Stalemate! Draw.")
+            channel_chess[chan_id] = False
             return
 
+        # Bot's move
         best_move = chess_engine.get_best_move(chan_id)
         if best_move:
             bot_move_obj = board.parse_uci(best_move["uci"])
@@ -300,8 +374,10 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, f"My move: `{best_move['uci']}` / **{best_move['san']}**")
             if board.is_checkmate():
                 await send_human_reply(message.channel, f"Checkmate! I win. ({best_move['san']})")
+                channel_chess[chan_id] = False
             elif board.is_stalemate():
                 await send_human_reply(message.channel, "Stalemate! Draw.")
+                channel_chess[chan_id] = False
         return
 
     # --- Roast mode ---
@@ -312,7 +388,6 @@ async def on_message(message: Message):
     # --- General chat ---
     if guild_id is None or await can_send_in_guild(guild_id):
         asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
-
 
 # ---------------- EVENTS ----------------
 @bot.event
