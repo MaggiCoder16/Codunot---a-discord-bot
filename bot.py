@@ -27,7 +27,7 @@ RATE_LIMIT = 900
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
 intents.message_content = True
-bot = discord.Client(intents=intents)  # using discord.Client (match your working example)
+bot = discord.Client(intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 
@@ -159,7 +159,6 @@ def build_general_prompt(chan_id, mode, message):
     mem = channel_memory.get(chan_id, deque())
     history_text = "\n".join(mem)
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
-    # IMPORTANT: do NOT add server/channel details here (user requested)
     return f"{persona_text}\n\nRecent chat:\n{history_text}\n\nReply as Codunot:"
 
 def build_roast_prompt(user_message):
@@ -200,10 +199,49 @@ async def generate_and_reply(chan_id, message, content, current_mode):
         memory.add_message(chan_id, BOT_NAME, raw)
         memory.persist()
 
+# ---------------- CHESS UTILS ----------------
+def normalize_move_input(board, move_input: str) -> str:
+    """
+    Normalize any user input (SAN, UCI, algebraic, coordinates, castle) to a valid SAN.
+    """
+    move_input = move_input.strip().lower().replace('o-0', '0-0').replace('o-o-o', '0-0-0')
+    legal_moves = list(board.legal_moves)
+    
+    # Check if only one move ends on square indicated by input
+    if len(move_input) == 2 and move_input[0] in 'abcdefgh' and move_input[1] in '123456':
+        matches = [m for m in legal_moves if m.to_square == chess.parse_square(move_input)]
+        if len(matches) == 1:
+            return board.san(matches[0])
+    
+    # Try SAN parsing
+    try:
+        move_obj = board.parse_san(move_input)
+        return board.san(move_obj)
+    except:
+        pass
+    
+    # Try UCI parsing
+    try:
+        move_obj = chess.Move.from_uci(move_input)
+        if move_obj in legal_moves:
+            return board.san(move_obj)
+    except:
+        pass
+    
+    # Try long algebraic
+    if '-' in move_input:
+        try:
+            move_obj = board.parse_san(move_input.replace('-', ''))
+            return board.san(move_obj)
+        except:
+            pass
+    
+    # fallback
+    return None
+
 # ---------------- ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
-    # ignore self/bots
     if message.author.bot:
         return
 
@@ -213,25 +251,14 @@ async def on_message(message: Message):
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    # DEBUG lines (optional) - can comment out
-    # print(f"[DEBUG] RAW: {message.content} | MENTIONS: {[m.id for m in message.mentions]}")
-
-    # REQUIRE ping in servers (but allow direct messages)
-    if not is_dm and bot_id not in [m.id for m in message.mentions]:
-        # not pinged in server -> ignore
-        return
-
-    # Remove the bot mention from the content (if present)
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # load or set mode
     saved_mode = memory.get_channel_mode(chan_id)
     channel_modes[chan_id] = saved_mode if saved_mode else "funny"
     if not saved_mode:
         memory.save_channel_mode(chan_id, "funny")
 
-    # ensure dict slots exist
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
@@ -253,52 +280,46 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
-    # respect mute
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # ---- MODE SWITCHING: use substring checks exactly like your working example ----
-    # This supports messages like: "@Codunot !roastmode", "@Codunot please !roastmode", "!roastmode" in DMs, etc.
     if "!roastmode" in content_lower:
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
-
     if "!funmode" in content_lower:
         channel_modes[chan_id] = "funny"
         memory.save_channel_mode(chan_id, "funny")
         await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
-
     if "!seriousmode" in content_lower:
         channel_modes[chan_id] = "serious"
         memory.save_channel_mode(chan_id, "serious")
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
-
     if "!chessmode" in content_lower:
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # log message to memory
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
-    # --- Chess mode handling ---
+    # --- Chess handling ---
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
-        # only accept single-word moves
-        if len(content.split()) > 1:
-            await send_human_reply(message.channel, "Send only one move (e.g., d4, Nf6).")
+        move_san = normalize_move_input(board, content)
+        if not move_san:
+            await send_human_reply(message.channel, f"Invalid move: {content}")
             return
+
         try:
-            move_obj = board.parse_san(content)
+            move_obj = board.parse_san(move_san)
             board.push(move_obj)
 
             if board.is_checkmate():
-                await send_human_reply(message.channel, f"Checkmate! You win. ({content}) Use !chessmode to rematch.")
+                await send_human_reply(message.channel, f"Checkmate! You win. ({move_san}) Use !chessmode to rematch.")
                 return
             elif board.is_stalemate():
                 await send_human_reply(message.channel, "Stalemate! Draw.")
@@ -325,10 +346,8 @@ async def on_message(message: Message):
         return
 
     # --- General chat ---
-    # allow only if rate bucket permits (can_send_in_guild checks)
     if guild_id is None or await can_send_in_guild(guild_id):
         asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
-
 
 # ---------------- EVENTS ----------------
 @bot.event
