@@ -343,7 +343,7 @@ async def on_message(message: Message):
     # --- Chess mode ---
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
-        move_san = normalize_move_input(board, content)
+        move_san = await normalize_move_input(board, content)  # note the 'await' here
 
         if move_san == "resign":
             await send_human_reply(message.channel, f"{message.author.display_name} resigned! I win. 😎")
