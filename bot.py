@@ -228,25 +228,35 @@ async def generate_and_reply(chan_id, message, content, current_mode):
         memory.persist()
 
 # ---------------- IMAGE HANDLING ----------------
+import aiohttp
+import base64
+
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
 
 async def extract_image_bytes(message):
     async def download(url):
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
+                async with session.get(url, timeout=10) as resp:
                     if resp.status == 200:
                         ct = resp.headers.get("Content-Type", "")
                         if "image" in ct:
                             return await resp.read()
-        except:
-            return None
+                        else:
+                            print(f"[IMAGE ERROR] URL {url} returned non-image content-type: {ct}")
+                    else:
+                        print(f"[IMAGE ERROR] URL {url} returned HTTP {resp.status}")
+        except Exception as e:
+            print(f"[IMAGE ERROR] Exception downloading {url}: {e}")
         return None
 
     # 1. Attachments
     for a in message.attachments:
         if a.content_type and "image" in a.content_type:
-            return await a.read()
+            try:
+                return await a.read()
+            except Exception as e:
+                print(f"[IMAGE ERROR] Failed to read attachment {a.filename}: {e}")
 
     # 2. Embeds (image + thumbnail)
     for embed in message.embeds:
@@ -264,11 +274,14 @@ async def extract_image_bytes(message):
         if data:
             return data
 
+    print("[IMAGE ERROR] No valid image found in message")
     return None
+
 
 async def handle_image_message(message, mode):
     image_bytes = await extract_image_bytes(message)
     if not image_bytes:
+        print("[VISION ERROR] extract_image_bytes returned None")
         return None
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -293,9 +306,13 @@ async def handle_image_message(message, mode):
             model="x-ai/grok-2-vision-1212",
             temperature=0.7
         )
-        return response.strip()
+        if response:
+            return response.strip()
+        else:
+            print("[VISION ERROR] Model returned empty response")
+            return "bro I couldn't load that image 💀"
     except Exception as e:
-        print(f"[VISION ERROR] {e}")
+        print(f"[VISION ERROR] Exception from call_openrouter: {e}")
         return "bro I couldn't load that image 💀"
 
 # ---------------- CHESS UTILS ----------------
