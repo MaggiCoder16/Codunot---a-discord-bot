@@ -302,7 +302,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             prompt=prompt,
-            model="x-ai/grok-4.1-fast:free",
+            model="google/gemini-2.0-flash-exp:free",
             temperature=0.7
         )
 
