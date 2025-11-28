@@ -237,20 +237,20 @@ async def extract_image_bytes(message):
             print(f"[DEBUG] Downloading URL: {url}")
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10) as resp:
-                    print(f"[DEBUG] HTTP status for {url}: {resp.status}")
+                    print(f"[DEBUG] HTTP status for {url}: {resp.status}", flush=True)
                     if resp.status == 200:
                         ct = resp.headers.get("Content-Type", "")
-                        print(f"[DEBUG] Content-Type: {ct}")
+                        print(f"[DEBUG] Content-Type: {ct}", flush=True)
                         if "image" in ct:
                             data = await resp.read()
-                            print(f"[DEBUG] Downloaded {len(data)} bytes from {url}")
+                            print(f"[DEBUG] Downloaded {len(data)} bytes from {url}", flush=True)
                             return data
                         else:
-                            print(f"[IMAGE ERROR] URL {url} returned non-image content-type: {ct}")
+                            print(f"[IMAGE ERROR] URL {url} returned non-image content-type: {ct}", flush=True)
                     else:
-                        print(f"[IMAGE ERROR] URL {url} returned HTTP {resp.status}")
+                        print(f"[IMAGE ERROR] URL {url} returned HTTP {resp.status}", flush=True)
         except Exception as e:
-            print(f"[IMAGE ERROR] Exception downloading {url}: {e}")
+            print(f"[IMAGE ERROR] Exception downloading {url}: {e}", flush=True)
             import traceback; traceback.print_exc()
         return None
 
@@ -259,10 +259,10 @@ async def extract_image_bytes(message):
         if a.content_type and "image" in a.content_type:
             try:
                 data = await a.read()
-                print(f"[DEBUG] Read attachment {a.filename} ({len(data)} bytes)")
+                print(f"[DEBUG] Read attachment {a.filename} ({len(data)} bytes)", flush=True)
                 return data
             except Exception as e:
-                print(f"[IMAGE ERROR] Failed to read attachment {a.filename}: {e}")
+                print(f"[IMAGE ERROR] Failed to read attachment {a.filename}: {e}", flush=True)
                 import traceback; traceback.print_exc()
 
     # 2. Embeds (image + thumbnail)
@@ -281,14 +281,14 @@ async def extract_image_bytes(message):
         if data:
             return data
 
-    print("[IMAGE ERROR] No valid image found in message")
+    print("[IMAGE ERROR] No valid image found in message", flush=True)
     return None
 
 
 async def handle_image_message(message, mode):
     image_bytes = await extract_image_bytes(message)
     if not image_bytes:
-        print("[VISION ERROR] extract_image_bytes returned None")
+        print("[VISION ERROR] extract_image_bytes returned None", flush=True)
         return None
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -310,10 +310,10 @@ async def handle_image_message(message, mode):
             print(f"[DEBUG] Model returned: {response}")
             return response.strip()
         else:
-            print("[VISION ERROR] Model returned empty response")
+            print("[VISION ERROR] Model returned empty response", flush=True)
             return "bro I couldn't load that image 💀"
     except Exception as e:
-        print(f"[VISION ERROR] Exception from call_openrouter: {e}")
+        print(f"[VISION ERROR] Exception from call_openrouter: {e}", flush=True)
         import traceback; traceback.print_exc()
         return "bro I couldn't load that image 💀"
 
