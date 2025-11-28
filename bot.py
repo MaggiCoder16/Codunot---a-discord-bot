@@ -294,7 +294,7 @@ async def handle_image_message(message, mode):
     persona = PERSONAS.get(mode, PERSONAS["serious"])
 
     payload = {
-        "model": "nvidia/nemotron-nano-12b-v2-vl",
+        "model": "nvidia/nemotron-nano-12b-v2-vl:free",
         "messages": [
             {
                 "role": "user",
