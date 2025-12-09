@@ -302,7 +302,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             prompt=prompt,
-            model="google/gemini-2.0-flash-exp:free",
+            model="meta-llama/llama-3.2-3b-instruct:free",
             temperature=0.7
         )
 
@@ -379,11 +379,11 @@ async def on_message(message: Message):
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    # Require ping in servers
-    if not is_dm and bot_id not in [m.id for m in message.mentions]:
-        return
+    # ---------------- REMOVE FORCED MENTION REQUIREMENT ----------------
+    # Old behavior blocked everything: now bot responds normally.
+    # ---------------------------------------------------------------
 
-    # Strip bot mention
+    # Strip mention safely
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
@@ -397,9 +397,10 @@ async def on_message(message: Message):
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+    channel_modes.setdefault(chan_id, "funny")
     mode = channel_modes[chan_id]
 
-    # Owner commands
+    # ---------------- OWNER COMMANDS ----------------
     if message.author.id == OWNER_ID:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
@@ -409,44 +410,66 @@ async def on_message(message: Message):
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=sec)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, match.group(2))}.")
             return
+
         if content_lower.startswith("!speak"):
             channel_mutes[chan_id] = None
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
             return
 
-    # Quiet mode
+    # ---------------- QUIET MODE ----------------
     if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
         return
 
-    # Mode switching
-    if "!roastmode" in content_lower:
+    # ---------------- MODE SWITCHING ----------------
+    if content_lower.startswith("!roastmode"):
         channel_modes[chan_id] = "roast"
         memory.save_channel_mode(chan_id, "roast")
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
-    if "!funmode" in content_lower:
+
+    if content_lower.startswith("!funmode"):
         channel_modes[chan_id] = "funny"
         memory.save_channel_mode(chan_id, "funny")
         await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
-    if "!seriousmode" in content_lower:
+
+    if content_lower.startswith("!seriousmode"):
         channel_modes[chan_id] = "serious"
         memory.save_channel_mode(chan_id, "serious")
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
-    if "!chessmode" in content_lower:
+
+    if content_lower.startswith("!chessmode"):
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # ---------------- IMAGE HANDLING ----------------
-    image_reply = await handle_image_message(message, mode)
-    if image_reply:
-        await send_human_reply(message.channel, image_reply)
-        return
+    # ---------------- SAFE IMAGE CHECK ----------------
+    has_image = False
 
-    # ---------------- Chess mode ----------------
+    # attachments
+    if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
+        has_image = True
+
+    # embeds
+    elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
+        has_image = True
+
+    # image-urls only
+    else:
+        urls = re.findall(r"(https?://\S+)", message.content)
+        img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
+        if any(url.lower().endswith(img_exts) for url in urls):
+            has_image = True
+
+    if has_image:
+        image_reply = await handle_image_message(message, mode)
+        if image_reply is not None:
+            await send_human_reply(message.channel, image_reply)
+            return
+
+    # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
         move_san = normalize_move_input(board, content)
@@ -478,16 +501,15 @@ async def on_message(message: Message):
                 channel_chess[chan_id] = False
         return
 
-    # ---------------- Roast mode ----------------
+    # ---------------- ROAST MODE ----------------
     if mode == "roast":
         await handle_roast_mode(chan_id, message, content)
         return
 
-    # ---------------- General chat ----------------
-    if guild_id is None or await can_send_in_guild(guild_id):
-        asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
+    # ---------------- GENERAL CHAT ----------------
+    asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
-    # Log user message in memory
+    # ---------------- SAVE USER MESSAGE ----------------
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
 # ---------------- EVENTS ----------------
