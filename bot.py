@@ -324,7 +324,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             prompt=prompt,
-            model="x-ai/grok-4.1-fast",
+            model="meta-llama/llama-3.3-70b-instruct:free",
             temperature=0.7
         )
 
