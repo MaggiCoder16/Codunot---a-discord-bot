@@ -302,7 +302,7 @@ async def handle_image_message(message, mode):
     try:
         response = await call_openrouter(
             prompt=prompt,
-            model="qwen/qwen3-235b-a22b:free",
+            model="qwen/qwen3-4b:free",
             temperature=0.7
         )
 
