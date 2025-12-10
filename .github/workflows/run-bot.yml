@@ -4,11 +4,11 @@ on:
   schedule:
     # Every 4 hours
     - cron: '0 */4 * * *'
-  workflow_dispatch:  # allows manual trigger
+  workflow_dispatch:
 
 concurrency:
-  group: codunot-bot  # unique identifier for this workflow
-  cancel-in-progress: false  # wait instead of canceling
+  group: codunot-bot
+  cancel-in-progress: false
 
 jobs:
   bot:
@@ -23,7 +23,12 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Install dependencies
+      - name: Install system dependencies (Tesseract)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
