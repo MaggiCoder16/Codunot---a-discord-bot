@@ -129,6 +129,7 @@ PERSONAS = {
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
         "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
         "Always use emojis"
+        "Dont say anything like [BOS] or [EOS] or anything like that."
     ),
 
     "serious": (
@@ -147,6 +148,7 @@ PERSONAS = {
         "\"You asked about my creator: I was developed by @aarav_2022 on Discord "
         "(User ID: 1220934047794987048). For further information, please contact him directly.\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
+        "Dont say anything like [BOS] or [EOS] or anything like that."
     ),
 
     "roast": (
@@ -170,6 +172,7 @@ PERSONAS = {
         "or anything like that, say this exact message - "
         "\"You’re wondering who built me? That’s @aarav_2022 (Discord ID: 1220934047794987048). "
         "If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\""
+        "Dont say anything like [BOS] or [EOS] or anything like that."
         "Always use emojis based on your roast"
     )
 }
@@ -321,6 +324,7 @@ async def handle_image_message(message, mode):
         f"----\n{ocr_text}\n----\n"
         "Help the user based ONLY on this extracted text. "
         "Never say that OCR isn't working."
+        "If there is no text in the image at all, help the user normally by seeing the image, dont consider the text if OCR returns nothing."
     )
 
     try:
