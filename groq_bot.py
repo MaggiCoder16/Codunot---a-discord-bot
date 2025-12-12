@@ -219,7 +219,7 @@ async def generate_and_reply(chan_id, message, content, current_mode):
     try:
         response = await call_groq(
             prompt=prompt,
-            model="llama-4-scout",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7,
             image_bytes=image_bytes
         )
