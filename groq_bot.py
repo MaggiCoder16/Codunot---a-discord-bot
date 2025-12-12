@@ -283,6 +283,7 @@ async def generate_and_reply(chan_id, message, content, current_mode):
         return
 
     prompt = build_general_prompt(chan_id, current_mode, message)
+    image_bytes = None
 
     # Safely get image bytes if present
     image_bytes = await extract_image_bytes(message)
