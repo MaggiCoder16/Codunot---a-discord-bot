@@ -507,54 +507,57 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, image_reply)
             return
 
-# ---------------- CHESS MODE ----------------
-if channel_chess.get(chan_id):
+#    # ---------------- CHESS MODE ----------------
+    if channel_chess.get(chan_id):
 
-    # Allow commands & normal chat during chess
-    if content_lower.startswith("!"):
-        pass  # fall through to normal command handling
-    else:
-        board = chess_engine.get_board(chan_id)
-        move_san = normalize_move_input(board, content)
+        # Allow commands during chess
+        if content_lower.startswith("!"):
+            pass
+        else:
+            board = chess_engine.get_board(chan_id)
+            move_san = normalize_move_input(board, content)
 
-        if move_san == "resign":
-            await send_human_reply(
-                message.channel,
-                f"{message.author.display_name} resigned! I win 😎"
-            )
-            channel_chess[chan_id] = False
-            return
+            if move_san == "resign":
+                await send_human_reply(
+                    message.channel,
+                    f"{message.author.display_name} resigned! I win 😎"
+                )
+                channel_chess[chan_id] = False
+                return
 
-        if not move_san:
-            await send_human_reply(message.channel, f"Invalid move: {content}")
-            return
+            if not move_san:
+                await send_human_reply(
+                    message.channel,
+                    f"Invalid move: {content}"
+                )
+                return
 
-        move_obj = board.parse_san(move_san)
-        board.push(move_obj)
+            move_obj = board.parse_san(move_san)
+            board.push(move_obj)
 
-        if board.is_checkmate():
-            await send_human_reply(
-                message.channel,
-                f"Checkmate — you win! ({move_san})"
-            )
-            channel_chess[chan_id] = False
-            return
-
-        best_move = chess_engine.get_best_move(chan_id)
-        if best_move:
-            bot_move = board.parse_uci(best_move["uci"])
-            board.push(bot_move)
-            await send_human_reply(
-                message.channel,
-                f"My move: `{best_move['uci']}` / **{best_move['san']}**"
-            )
             if board.is_checkmate():
                 await send_human_reply(
                     message.channel,
-                    f"Checkmate — I win ({best_move['san']})"
+                    f"Checkmate — you win! ({move_san})"
                 )
                 channel_chess[chan_id] = False
-        return
+                return
+
+            best_move = chess_engine.get_best_move(chan_id)
+            if best_move:
+                bot_move = board.parse_uci(best_move["uci"])
+                board.push(bot_move)
+                await send_human_reply(
+                    message.channel,
+                    f"My move: `{best_move['uci']}` / **{best_move['san']}**"
+                )
+                if board.is_checkmate():
+                    await send_human_reply(
+                        message.channel,
+                        f"Checkmate — I win ({best_move['san']})"
+                    )
+                    channel_chess[chan_id] = False
+            return
 
     # ---------------- ROAST MODE ----------------
     if mode == "roast":
