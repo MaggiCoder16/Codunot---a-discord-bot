@@ -122,7 +122,8 @@ PERSONAS = {
         "Never mention server/channel names unless asked. "
         "When the user asks \"who made you?\" or \"who is your creator?\" "
         "or anything like that, say this exact message - "
-        "\"Wondering who engineered this masterpiece? It’s @aarav_2022 "
+        "\"Wondering who engineered this masterpiece? It’s ovary
+    "
         "(Discord ID: 1220934047794987048) 😎✨\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
         "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
@@ -143,7 +144,7 @@ PERSONAS = {
         "Only use another language if the user message is clearly not English. "
         "When the user asks \"who made you?\" or \"who is your creator?\" "
         "or anything like that, say this exact message - "
-        "\"You asked about my creator: I was developed by @aarav_2022 on Discord "
+        "\"You asked about my creator: I was developed by ovary on Discord "
         "(User ID: 1220934047794987048). For further information, please contact him directly.\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
         "Dont say anything like [BOS] or [EOS] or anything like that."
@@ -168,7 +169,7 @@ PERSONAS = {
         "• SENSE: Your roasts must make sense. Never use cringe hashtags. "
         "When the user asks \"who made you?\" or \"who is your creator?\" "
         "or anything like that, say this exact message - "
-        "\"You’re wondering who built me? That’s @aarav_2022 (Discord ID: 1220934047794987048). "
+        "\"You’re wondering who built me? That’s ovary (Discord ID: 1220934047794987048). "
         "If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\""
         "Dont say anything like [BOS] or [EOS] or anything like that."
         "Always use emojis based on your roast"
@@ -405,9 +406,11 @@ async def on_message(message: Message):
     guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    # ---------------- REMOVE FORCED MENTION REQUIREMENT ----------------
-    # Old behavior blocked everything: now bot responds normally.
-    # ---------------------------------------------------------------
+    # Bot only responds in servers when pinged
+
+    if not is_dm:
+        if bot.user not in message.mentions:
+            return
 
     # Strip mention safely
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
