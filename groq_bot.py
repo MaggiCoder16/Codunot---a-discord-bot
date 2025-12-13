@@ -344,83 +344,99 @@ async def handle_image_message(message, mode):
         
 # ---------------- CHESS UTILS ----------------
 RESIGN_PHRASES = [
-    "resign", "i resign", "gg", "give up", "i give up",
-    "surrender", "i surrender", "forfeit", "i forfeit",
-    "quit", "i quit", "done", "enough", "cant win",
-    "can't win", "lost", "i lost", "i'm done", "im done"
+    "resign", "i resign", "gg", "good game", "give up", "i give up",
+    "surrender", "i surrender", "forfeit", "i forfeit", "quit", "i quit",
+    "done", "enough", "cant win", "can't win", "lost", "i lost",
+    "i'm done", "im done"
 ]
 
-def is_resign_message(message_content: str) -> bool:
-    msg = message_content.lower()
-    for phrase in RESIGN_PHRASES:
-        if phrase in msg:
-            return True
+CHESS_CHAT_KEYWORDS = [
+    "hint", "help", "assist", "suggest", "advice",
+    "what should", "what do i play", "what now",
+    "any ideas", "idea", "plan", "strategy",
+    "next move", "best move", "recommend",
+    "good move", "bad move", "was that good",
+    "was that bad", "mistake", "blunder",
+    "did i blunder", "is this winning", "is this losing",
+    "am i better", "am i worse", "position",
+    "analyze", "analysis", "explain", "why", "how",
+    "what's the idea", "what is the point", "what does this do",
+    "what am i missing", "thoughts", "teach", "learn", "lesson",
+    "how do i improve", "how to play", "beginner", "advanced", "tips",
+    "principles", "fundamentals", "opening", "opening name", "what opening",
+    "is this an opening", "theory", "book move", "out of book",
+    "endgame", "middlegame", "late game", "early game", "transition",
+    "am i in trouble", "is this dangerous", "any threats",
+    "what is he threatening", "is my king safe", "or", "instead",
+    "better than", "which is better", "this or that",
+    "gg", "good game", "that was fun", "nice game", "rematch",
+    "again", "another", "idk", "i don't know", "confused", "lost",
+    "i'm stuck", "not sure", "lol", "lmao", "bruh", "bro",
+    "haha", "rip", "damn", "oops", "my bad"
+]
+
+MOVE_REGEX = re.compile(
+    r"""^(
+        O-O(-O)? |
+        [KQRBN]?[a-h]x?[a-h][1-8](=[QRBN])?[+#]? |
+        [a-h][1-8][a-h][1-8][+#]?
+    )$""",
+    re.VERBOSE | re.IGNORECASE
+)
+
+def is_resign_message(text: str) -> bool:
+    t = text.lower()
+    return any(phrase in t for phrase in RESIGN_PHRASES)
+
+def looks_like_chess_chat(text: str) -> bool:
+    t = text.lower().strip()
+    if any(k in t for k in CHESS_CHAT_KEYWORDS):
+        return True
+    if len(t.split()) > 3:
+        return True
     return False
 
-def normalize_move_input(board, move_input: str) -> str:
+def looks_like_chess_move(text: str) -> bool:
+    t = text.strip()
+    if not t:
+        return False
+    if looks_like_chess_chat(t):
+        return False
+    return bool(MOVE_REGEX.match(t))
+
+def normalize_move_input(board, move_input: str) -> str | None:
     raw = move_input.strip()
-
-    # Handle resign
-    if is_resign_message(raw.lower()):
+    if not raw:
+        return None
+    if is_resign_message(raw):
         return "resign"
-
-    # Normalize castling
-    normalized = (
-        raw.replace('o-o-o', 'O-O-O')
-           .replace('o-o', 'O-O')
-           .replace('0-0-0', 'O-O-O')
-           .replace('0-0', 'O-O')
-    )
-
+    norm = (
+        raw.replace("o-o-o", "O-O-O")
+           .replace("o-o", "O-O")
+           .replace("0-0-0", "O-O-O")
+           .replace("0-0", "O-O")
+    ).strip()
     legal_moves = list(board.legal_moves)
-
-    # Pawn square-only (e4, E4)
-    if len(raw) == 2 and raw[0].lower() in 'abcdefgh' and raw[1] in '12345678':
-        matches = [
-            m for m in legal_moves
-            if m.to_square == chess.parse_square(raw.lower())
-        ]
+    if len(norm) == 2 and norm[0].lower() in "abcdefgh" and norm[1] in "12345678":
+        matches = [m for m in legal_moves if m.to_square == chess.parse_square(norm.lower())]
         if len(matches) == 1:
             return board.san(matches[0])
-
-    if len(normalized) >= 2 and normalized[0] in "nbrqk":
-        normalized = normalized[0].upper() + normalized[1:]
-
-    # Try SAN
+    if len(norm) >= 2 and norm[0].lower() in "nbrqk":
+        norm = norm[0].upper() + norm[1:]
     try:
-        move_obj = board.parse_san(normalized)
+        move_obj = board.parse_san(norm)
         return board.san(move_obj)
     except:
         pass
-
-    # Try UCI (g1f3)
     try:
         move_obj = chess.Move.from_uci(raw.lower())
         if move_obj in legal_moves:
             return board.san(move_obj)
     except:
         pass
-
     return None
 
-def looks_like_chess_move(text: str) -> bool:
-    text = text.strip()
-    if not text:
-        return False
-
-    # Common chess patterns
-    if re.match(r"^[a-h][1-8]$", text, re.I):       # e4
-        return True
-    if re.match(r"^[nbrqk][a-h][1-8]$", text, re.I):  # Nf3
-        return True
-    if re.match(r"^[a-h][1-8][a-h][1-8]$", text, re.I):  # e2e4
-        return True
-    if text.lower() in ["o-o", "o-o-o", "0-0", "0-0-0"]:
-        return True
-
-    return False
-
-# ---------------- ON_MESSAGE ----------------
+# ---------------- ON_MESSAGE + CHESS MODE ----------------
 @bot.event
 async def on_message(message: Message):
     if message.author.bot:
@@ -429,26 +445,22 @@ async def on_message(message: Message):
     now = datetime.utcnow()
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
-    guild_id = message.guild.id if message.guild else None
     bot_id = bot.user.id
 
-    # Bot only responds in servers when pinged
+    # Respond only if bot mentioned in server
+    if not is_dm and bot.user not in message.mentions:
+        return
 
-    if not is_dm:
-        if bot.user not in message.mentions:
-            return
-
-    # Strip mention safely
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
-    # Load or set default mode
+    # Load/set mode
     saved_mode = memory.get_channel_mode(chan_id)
     channel_modes[chan_id] = saved_mode if saved_mode else "funny"
     if not saved_mode:
         memory.save_channel_mode(chan_id, "funny")
 
-    # Ensure mem slots
+    # Ensure states
     channel_mutes.setdefault(chan_id, None)
     channel_chess.setdefault(chan_id, False)
     channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
@@ -465,7 +477,6 @@ async def on_message(message: Message):
                 channel_mutes[chan_id] = datetime.utcnow() + timedelta(seconds=sec)
                 await send_human_reply(message.channel, f"I'll stop yapping for {format_duration(num, match.group(2))}.")
             return
-
         if content_lower.startswith("!speak"):
             channel_mutes[chan_id] = None
             await send_human_reply(message.channel, "YOO I'm back 😎🔥")
@@ -481,120 +492,85 @@ async def on_message(message: Message):
         memory.save_channel_mode(chan_id, "roast")
         await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
-
     if content_lower.startswith("!funmode"):
         channel_modes[chan_id] = "funny"
         memory.save_channel_mode(chan_id, "funny")
         await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
-
     if content_lower.startswith("!seriousmode"):
         channel_modes[chan_id] = "serious"
         memory.save_channel_mode(chan_id, "serious")
         await send_human_reply(message.channel, "🤓 Serious mode ON")
         return
-
     if content_lower.startswith("!chessmode"):
         channel_chess[chan_id] = True
         chess_engine.new_board(chan_id)
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # ---------------- SAFE IMAGE CHECK ----------------
-    has_image = False
-
-    # attachments
-    if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
-        has_image = True
-
-    # embeds
-    elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
-        has_image = True
-
-    # image-urls only
-    else:
-        urls = re.findall(r"(https?://\S+)", message.content)
-        img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-        if any(url.lower().endswith(img_exts) for url in urls):
-            has_image = True
-
+    # ---------------- IMAGE CHECK ----------------
+    has_image = any(a.content_type and a.content_type.startswith("image/") for a in message.attachments)
+    has_image |= any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds)
+    urls = re.findall(r"(https?://\S+)", message.content)
+    img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
+    has_image |= any(url.lower().endswith(img_exts) for url in urls)
     if has_image:
         image_reply = await handle_image_message(message, mode)
-        if image_reply is not None:
+        if image_reply:
             await send_human_reply(message.channel, image_reply)
             return
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
-
         board = chess_engine.get_board(chan_id)
 
+        # Game over → normal chat
+        if board.is_game_over():
+            channel_chess[chan_id] = False
+            await send_human_reply(message.channel, "GG 😎 wanna play again?")
+            return
+
+        # Resign
         if is_resign_message(content):
-            await send_human_reply(
-                message.channel,
-                f"GG 😄 {message.author.display_name} resigned. Wanna analyze the game?"
-            )
+            await send_human_reply(message.channel, f"GG 😄 {message.author.display_name} resigned!")
             channel_chess[chan_id] = False
             return
-            
-        if looks_like_chess_move(content):
-            move_san = normalize_move_input(board, content)
 
-            if not move_san:
-                await send_human_reply(
-                    message.channel,
-                    "That’s not a legal move 🤔 Try again or ask for a hint!"
-                )
-                return
-
-            move_obj = board.parse_san(move_san)
-            board.push(move_obj)
-
-            if board.is_checkmate():
-                await send_human_reply(
-                    message.channel,
-                    f"Checkmate 😳 YOU WIN! ({move_san})"
-                )
-                channel_chess[chan_id] = False
-                return
-
-            best_move = chess_engine.get_best_move(chan_id)
-            if best_move:
-                bot_move = board.parse_uci(best_move["uci"])
-                board.push(bot_move)
-
-                await send_human_reply(
-                    message.channel,
-                    f"My move: `{best_move['uci']}` / **{best_move['san']}**"
-                )
-
-                if board.is_checkmate():
-                    await send_human_reply(
-                        message.channel,
-                        f"Checkmate 💀 I win ({best_move['san']})"
-                    )
-                    channel_chess[chan_id] = False
+        # Natural language chat (hints, questions)
+        if looks_like_chess_chat(content):
+            chess_prompt = (
+                PERSONAS["funny"] +
+                "\nYou are a chess-savvy friend helping during a live game.\n" +
+                f"Current FEN: {board.fen()}\n" +
+                f"User says: {content}\n" +
+                "Give hints, explanations, or chess knowledge. DO NOT invent moves.\nReply:"
+            )
+            response = await call_groq(prompt=chess_prompt, model="llama-3.3-70b-versatile", temperature=0.6)
+            await send_human_reply(message.channel, humanize_and_safeify(response))
             return
 
-        chess_prompt = (
-            PERSONAS["funny"]
-            + "\nThe user is currently playing a chess game against you.\n"
-            + "Answer as a chess-savvy friend.\n"
-            + "You know openings, tactics, famous players, tournaments, and can give hints. You basically know everything.\n\n"
-            + f"User: {content}\nReply:"
-        )
+        # Try real move
+        move_san = normalize_move_input(board, content)
+        if not move_san:
+            await send_human_reply(message.channel, "🤔 That doesn’t look like a legal move — want a hint?")
+            return
 
-        response = await call_groq(
-            prompt=chess_prompt,
-            model="llama-3.3-70b-versatile",
-            temperature=0.7
-        )
+        move_obj = board.parse_san(move_san)
+        board.push(move_obj)
 
-        await send_human_reply(
-            message.channel,
-            humanize_and_safeify(response)
-        )
-        return
+        if board.is_checkmate():
+            await send_human_reply(message.channel, f"😮 Checkmate! YOU WIN ({move_san})")
+            channel_chess[chan_id] = False
+            return
+
+        # Engine move
+        best = chess_engine.get_best_move(chan_id)
+        bot_move = board.parse_uci(best["uci"])
+        board.push(bot_move)
+        await send_human_reply(message.channel, f"My move: `{best['uci']}` / **{best['san']}**")
+        if board.is_checkmate():
+            await send_human_reply(message.channel, f"💀 Checkmate — I win ({best['san']})")
+            channel_chess[chan_id] = False
 
     # ---------------- ROAST MODE ----------------
     if mode == "roast":
