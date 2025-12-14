@@ -146,6 +146,7 @@ PERSONAS = {
         "(User ID: 1220934047794987048). For further information, please contact him directly.\""
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
         "Dont say anything like [BOS] or [EOS] or anything like that."
+        "You should always know the username by looking at their username"
     ),
 
     "roast": (
