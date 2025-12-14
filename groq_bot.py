@@ -519,6 +519,9 @@ def normalize_move_input(board, move_input: str):
 
     return None
 
+# global (near other channel_* dicts)
+channel_last_chess_result = {}
+
 # ---------------- ON_MESSAGE ----------------
 @bot.event
 async def on_message(message: Message):
@@ -623,12 +626,8 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, image_reply)
             return
 
-# global (near other channel_* dicts)
-channel_last_chess_result = {}
-
 	# ---------------- CHESS MODE ----------------
 	if channel_chess.get(chan_id):
-
 		board = chess_engine.get_board(chan_id)
 
 		# -------- GAME OVER (ENGINE / POSITION) --------
