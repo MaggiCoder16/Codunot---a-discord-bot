@@ -1,28 +1,28 @@
-import json, os
+import json
+import os
 from datetime import datetime
-from slang_normalizer import apply_slang_map
 
 CACHE_FILE = "chat_cache.json"
 
-def load_cache():
+
+def save_to_cache(user_text: str, bot_reply: str):
+    entry = {
+        "user": user_text.strip().lower(),
+        "reply": bot_reply.strip(),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
     if not os.path.exists(CACHE_FILE):
-        return {}
-    with open(CACHE_FILE, "r") as f:
-        return json.load(f)
+        with open(CACHE_FILE, "w") as f:
+            json.dump([], f)
 
-def save_cache(cache):
+    try:
+        with open(CACHE_FILE, "r") as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        data = []
+
+    data.append(entry)
+
     with open(CACHE_FILE, "w") as f:
-        json.dump(cache, f, indent=2)
-
-def save_interaction(user_text, bot_reply):
-    cache = load_cache()
-
-    canonical = apply_slang_map(user_text)
-
-    cache.setdefault(canonical, [])
-    cache[canonical].append({
-        "reply": bot_reply,
-        "time": datetime.utcnow().isoformat()
-    })
-
-    save_cache(cache)
+        json.dump(data, f, indent=2)
