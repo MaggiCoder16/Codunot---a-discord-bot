@@ -15,6 +15,9 @@ from memory import MemoryManager
 from humanizer import maybe_typo
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
+from chat_cache import save_to_cache
+from slang_normalizer import apply_slang_map
+
 import chess
 import aiohttp
 import base64
@@ -229,6 +232,8 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 
     reply = humanize_and_safeify(response) if response else choose_fallback()
     await send_human_reply(message.channel, reply)
+    normalized = apply_slang_map(content)
+    save_to_cache(normalized, reply)
 
     if response:
         channel_memory[chan_id].append(f"{BOT_NAME}: {response}")
