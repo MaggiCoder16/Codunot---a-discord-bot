@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 
-CACHE_FILE = "chat_cache.json"
+CACHE_FILE = os.path.join(os.getcwd(), "chat_cache.json")
 MAX_CACHE_ENTRIES = 150_000
 
 
@@ -36,3 +36,4 @@ def save_to_cache(user_text: str, bot_reply: str):
     with open(CACHE_FILE, "w") as f:
         json.dump(data, f, indent=2)
     print(f"[CACHE] Entry saved. Current cache size: {len(data)} items.")
+    print("[CACHE] File path:", os.path.abspath(CACHE_FILE))
