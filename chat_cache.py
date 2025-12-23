@@ -35,3 +35,4 @@ def save_to_cache(user_text: str, bot_reply: str):
     # Save back
     with open(CACHE_FILE, "w") as f:
         json.dump(data, f, indent=2)
+    print(f"[CACHE] Entry saved. Current cache size: {len(data)} items.")
