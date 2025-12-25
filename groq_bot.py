@@ -319,36 +319,80 @@ async def handle_image_message(message, mode):
     ocr_text = await ocr_image(image_bytes)
     print(f"[DEBUG] OCR RESULT: {ocr_text}")
 
-    # 2. Build prompt
     persona = PERSONAS.get(mode, PERSONAS["serious"])
-    prompt = (
-        persona + "\n"
-        "The user sent an image. I extracted text using OCR.\n"
-        "Here is the extracted text:\n"
-        f"----\n{ocr_text}\n----\n"
-        "Help the user based ONLY on this extracted text. "
-        "Never say that OCR isn't working."
-        "If there is no text in the image at all, help the user normally by seeing the image, dont consider the text if OCR returns nothing."
-        "Never say the image has text or not. Just help the user with whatever they want if the image doesnt have text."
+
+    # 2. Decide mode in CODE
+    has_real_text = (
+        ocr_text
+        and ocr_text.strip()
+        and not ocr_text.startswith("[")
     )
 
     try:
+        if has_real_text:
+            # ---------- OCR MODE (TEXT ONLY) ----------
+            messages = [
+                {
+                    "role": "system",
+                    "content": persona
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+You are given text extracted from an image.
+Use ONLY the text below to respond.
+Do NOT mention images, OCR, or text extraction.
+
+Text:
+{ocr_text}
+"""
+                }
+            ]
+
+        else:
+            # ---------- VISION MODE (IMAGE ONLY) ----------
+            messages = [
+                {
+                    "role": "system",
+                    "content": persona
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "You are looking at an image sent by the user.\n"
+                                "Respond naturally and helpfully.\n"
+                                "Do not mention OCR, text extraction, or technical details."
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64," + base64.b64encode(image_bytes).decode()
+                            },
+                        },
+                    ],
+                }
+            ]
+
         response = await call_groq(
-            prompt=prompt,
+            messages=messages,
             model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7
         )
+
         if response:
             print(f"[DEBUG] Model returned: {response}")
             return response.strip()
-        else:
-            return "i cant see images rn.. :((( maybe later???? :::::::::::::::::::))))))"
+
+        return "i cant see images rn.. :((( maybe later????"
 
     except Exception as e:
-        print(f"[OCR ERROR] {e}")
+        print(f"[VISION ERROR] {e}")
         return "i cannot see images rn sowwwwyyyyyy.... maybe later?"
 
-        
 # ---------------- CHESS UTILS ----------------
 
 RESIGN_PHRASES = [
