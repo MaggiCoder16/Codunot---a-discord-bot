@@ -28,9 +28,8 @@ load_dotenv()
 
 # ---------------- OCR ENGINE ----------------
 ocr_engine = PaddleOCR(
-    use_angle_cls=True,
-    lang="en",
-    show_log=False
+    use_textline_orientation=True,
+    lang="en"
 )
 
 # ---------------- CONFIG ----------------
