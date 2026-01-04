@@ -45,6 +45,7 @@ intents.message_content = True
 bot = discord.Client(intents=intents)
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
+IMAGE_PROCESSING_CHANNELS = set()
 
 # ---------------- STATES ----------------
 message_queue = asyncio.Queue()
@@ -341,50 +342,62 @@ async def handle_image_message(message, mode):
         print("[VISION ERROR] extract_image_bytes returned None")
         return None
 
+    channel_id = message.channel.id
+    is_large_image = len(image_bytes) > MAX_IMAGE_BYTES
+
     # ---------------- IMAGE SIZE GUARD ----------------
-    if len(image_bytes) > MAX_IMAGE_BYTES:
+    if is_large_image:
         print(f"[IMAGE] Large image detected: {len(image_bytes)} bytes")
+
+        # lock channel
+        IMAGE_PROCESSING_CHANNELS.add(channel_id)
+
+        # immediate ack
         await send_human_reply(message.channel, "wait a min, pls.")
 
-    # 1. OCR
-    ocr_text = await ocr_image(image_bytes)
-    print(f"[DEBUG] OCR RESULT: {ocr_text}")
-
-    # 2. Choose persona
-    persona = PERSONAS.get(mode, PERSONAS["serious"])
-
-    # 3. Build prompt based on whether OCR found text
-    if ocr_text.strip():  # If OCR found any text
-        prompt = (
-            persona + "\n"
-            "The user sent an image. I extracted text using OCR.\n"
-            "Here is the extracted text:\n"
-            f"----\n{ocr_text}\n----\n"
-            "Help the user based ONLY on this extracted text. "
-            "Do not mention OCR or whether there was text in the image."
-        )
-    else:  # No OCR text found
-        prompt = (
-            persona + "\n"
-            "The user sent an image. There is no readable text in it.\n"
-            "Help the user based on the image content itself, without considering OCR."
-        )
-
     try:
+        # 1. OCR
+        ocr_text = await ocr_image(image_bytes)
+        print(f"[DEBUG] OCR RESULT: {ocr_text}")
+
+        # 2. Choose persona
+        persona = PERSONAS.get(mode, PERSONAS["serious"])
+
+        # 3. Build prompt
+        if ocr_text.strip():
+            prompt = (
+                persona + "\n"
+                "The user sent an image. I extracted text using OCR.\n"
+                "Here is the extracted text:\n"
+                f"----\n{ocr_text}\n----\n"
+                "Help the user based ONLY on this extracted text. "
+                "Do not mention OCR or whether there was text in the image."
+            )
+        else:
+            prompt = (
+                persona + "\n"
+                "The user sent an image. There is no readable text in it.\n"
+                "Help the user based on the image content itself, without considering OCR."
+            )
+
         response = await call_groq(
             prompt=prompt,
             model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7
         )
+
         if response:
             print(f"[DEBUG] Model returned: {response}")
             return response.strip()
-        else:
-            return "i cant see images rn.. :((( maybe later???? :::::::::::::::::::))))))"
+
+        return "i cant see images rn.. :((( maybe later???? :::::::::::::::::::))))))"
 
     except Exception as e:
         print(f"[OCR ERROR] {e}")
         return "i cannot see images rn sowwwwyyyyyy.... maybe later?"
+
+    finally:
+        IMAGE_PROCESSING_CHANNELS.discard(channel_id)
 
 # ---------------- CHESS UTILS ----------------
 
@@ -583,6 +596,11 @@ async def on_message(message: Message):
     if not is_dm:
         if bot.user not in message.mentions:
             return
+
+    # ---------------- IMAGE PROCESSING LOCK ----------------
+    if message.channel.id in IMAGE_PROCESSING_CHANNELS:
+        print("[LOCK] Ignoring message during image processing")
+        return
 
     # Strip mention safely
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
