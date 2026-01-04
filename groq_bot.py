@@ -37,6 +37,7 @@ BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 OWNER_ID = 1220934047794987048
 MAX_MEMORY = 45
 RATE_LIMIT = 900
+MAX_IMAGE_BYTES = 40_000  # 40 KB
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -339,6 +340,11 @@ async def handle_image_message(message, mode):
     if not image_bytes:
         print("[VISION ERROR] extract_image_bytes returned None")
         return None
+
+    # ---------------- IMAGE SIZE GUARD ----------------
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        print(f"[IMAGE] Large image detected: {len(image_bytes)} bytes")
+        await send_human_reply(message.channel, "wait a min, pls.")
 
     # 1. OCR
     ocr_text = await ocr_image(image_bytes)
