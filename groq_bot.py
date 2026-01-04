@@ -1,9 +1,9 @@
 import os
-import pytesseract
 import io
 import asyncio
 import random
 import re
+import numpy as np
 from datetime import datetime, timedelta, timezone
 from collections import deque
 
@@ -21,9 +21,17 @@ from slang_normalizer import apply_slang_map
 import chess
 import aiohttp
 import base64
+from paddleocr import PaddleOCR
 from PIL import Image
 
 load_dotenv()
+
+# ---------------- OCR ENGINE ----------------
+ocr_engine = PaddleOCR(
+    use_angle_cls=True,
+    lang="en",
+    show_log=False
+)
 
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -244,16 +252,36 @@ async def generate_and_reply(chan_id, message, content, current_mode):
 
 async def ocr_image(image_bytes: bytes) -> str:
     try:
-        img = Image.open(io.BytesIO(image_bytes))  # Open the .webp image
-        text = pytesseract.image_to_string(img)   # Run OCR on the image
-        text = text.strip()  # Clean up text
-        if text:
-            return text
-        return "[No readable text detected]"
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        result = ocr_engine.ocr(
+            np.array(img),
+            cls=True
+        )
+
+        if not result:
+            return ""
+
+        lines = []
+        for block in result:
+            for line in block:
+                text, confidence = line[1]
+                if confidence > 0.5:
+                    lines.append(text)
+
+        ocr_text = "\n".join(lines).strip()
+
+        # ---------------- CLEAN OCR TEXT ----------------
+        ocr_text = re.sub(r"[ \t]+", " ", ocr_text)           # collapse spaces/tabs
+        ocr_text = re.sub(r"\n{3,}", "\n\n", ocr_text)       # collapse excessive newlines
+        ocr_text = re.sub(r"\n\s+\n", "\n\n", ocr_text)      # remove lines with only spaces
+
+        return ocr_text
+
     except Exception as e:
         print(f"[OCR ERROR] {e}")
-        return "[OCR failed]"
-
+        return ""
+        
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
 
 async def extract_image_bytes(message):
