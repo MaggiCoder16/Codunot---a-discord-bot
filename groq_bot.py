@@ -372,6 +372,7 @@ async def handle_image_message(message, mode):
                 f"----\n{ocr_text}\n----\n"
                 "Help the user based ONLY on this extracted text. "
                 "Do not mention OCR or whether there was text in the image."
+                "Remember the image and the text in the image, for future questions by the user. Remember the latest image."
             )
         else:
             prompt = (
