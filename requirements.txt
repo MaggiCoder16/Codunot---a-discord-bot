@@ -8,3 +8,6 @@ paddlepaddle
 paddleocr
 numpy
 pillow
+pdfplumber
+pdf2image
+python-docx
