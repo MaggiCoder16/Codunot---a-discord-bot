@@ -235,6 +235,7 @@ PERSONAS = {
         "Always use emojis based on your roast (not too many, only 1-2)"
         "If the user asks you to roast someone, roast the person they asked you to roast, not the USER."
         "You CANNOT generate images. If the user asks you to generate one, roast them."
+        "If the user asks you to change languages, or roast in a specific language, dont roast them in that message-roast in the language they mention."
     )
 }
 
