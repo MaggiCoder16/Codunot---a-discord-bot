@@ -451,87 +451,54 @@ async def handle_file_message(message, mode):
 # ---------------- MERMAID----------------
 import urllib.parse
 
+def sanitize_mermaid(code: str) -> str:
+    """
+    Cleans the LLM output to ensure only valid Mermaid code remains.
+    """
+    # 1. Remove markdown code blocks if present
+    code = re.sub(r"```(?:mermaid)?", "", code, flags=re.IGNORECASE)
+    code = code.strip("` \n\t")
+    
+    # 2. Ensure it starts with a valid graph type if missing
+    if not code.lower().startswith("graph") and not code.lower().startswith("flowchart"):
+        code = "graph TD\n" + code
+        
+    return code
+
+def mermaid_to_url(code: str) -> str:
+    """
+    Encodes Mermaid code using Base64 for maximum reliability.
+    """
+    safe_code = sanitize_mermaid(code)
+    # Convert string to bytes
+    sample_string_bytes = safe_code.encode("ascii")
+    # Base64 encode
+    base64_bytes = base64.b64encode(sample_string_bytes)
+    base64_string = base64_bytes.decode("ascii")
+    
+    # mermaid.ink uses a specific format for base64
+    return f"https://mermaid.ink/img/{base64_string}"
+
 async def generate_mermaid(user_text: str) -> str:
-    """
-    Generates a clean Mermaid diagram from user instructions.
-    Ensures valid Mermaid syntax (graph TD, arrows, one node per concept).
-    """
     prompt = (
-        "You are an assistant that converts user instructions into a MERMAID diagram.\n"
+        "You are a Mermaid diagram generator. Output ONLY the raw Mermaid code.\n"
         "STRICT RULES:\n"
-        "- Use graph TD (top-down flow)\n"
-        "- One node per concept, connected with --> arrows\n"
-        "- Do NOT include backticks, markdown, or explanations\n"
-        "- Only output valid Mermaid code\n"
-        f"User instruction:\n{user_text}\n\n"
-        "Mermaid code:"
+        "- Start with 'graph TD'\n"
+        "- No explanations, no markdown, no backticks.\n"
+        "- Use [Bracketed Text] for nodes to avoid syntax errors with spaces.\n"
+        f"User instruction: {user_text}"
     )
 
     try:
         resp = await call_groq(
             prompt=prompt,
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            temperature=0
+            model="llama-3.3-70b-versatile", # Use the larger model for better logic
+            temperature=0.2
         )
-        if not resp:
-            return None
-
-        code = sanitize_mermaid(resp)
-        if code:
-            # Ensure the diagram starts with graph TD
-            if not code.strip().startswith("graph TD"):
-                code = "graph TD\n" + code
-            return code
-
-        return None
-
+        return resp.strip() if resp else None
     except Exception as e:
         print(f"[MERMAID ERROR] {e}")
         return None
-
-def sanitize_mermaid(code: str) -> str:
-    """
-    Converts any Mermaid code into a fully linear, top-down TD chain,
-    safe for Discord embedding.
-    """
-    if not code.strip().startswith("graph"):
-        code = "graph TD\n" + code
-
-    # Extract all nodes and connections
-    lines = code.splitlines()
-    nodes = []
-    for line in lines:
-        # Match lines like: A --> B
-        match = re.findall(r"(\w+)\s*-->\s*(\w+)", line)
-        if match:
-            for parent, child in match:
-                nodes.append((parent, child))
-
-    # Flatten into linear chain
-    if not nodes:
-        return code  # nothing to flatten
-
-    linear_lines = []
-    visited = set()
-    for parent, child in nodes:
-        if parent not in visited:
-            linear_lines.append(f"{parent} --> {child}")
-            visited.add(parent)
-        else:
-            # append new child to the last child of parent
-            last_child = linear_lines[-1].split(" --> ")[-1]
-            linear_lines.append(f"{last_child} --> {child}")
-
-    return "graph TD\n" + "\n".join(linear_lines)
-
-
-def mermaid_to_url(code: str) -> str:
-    """
-    Encodes sanitized Mermaid code to a mermaid.ink URL.
-    """
-    safe_code = sanitize_mermaid(code)
-    encoded = urllib.parse.quote(safe_code)
-    return f"https://mermaid.ink/img/{encoded}"
 
 # ---------------- CHESS UTILS ----------------
 
