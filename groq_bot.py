@@ -57,11 +57,58 @@ channel_chess = {}
 channel_memory = {}
 rate_buckets = {}
 
+# ---------------- MODELS ----------------
+SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+VERSATILE_MODEL = "llama-3.3-70b-versatile"
+
+SCOUT_COOLDOWN_UNTIL = None
+SCOUT_COOLDOWN_DURATION = timedelta(hours=1)
+
+# ---------------- MODEL HEALTH ----------------
+async def call_groq_with_health(prompt, temperature=0.7):
+    global SCOUT_COOLDOWN_UNTIL
+
+    model = pick_model()
+
+    try:
+        return await call_groq(
+            prompt=prompt,
+            model=model,
+            temperature=temperature
+        )
+
+    except Exception as e:
+        msg = str(e)
+
+        # Scout overload detection
+        if model == SCOUT_MODEL and ("503" in msg or "over capacity" in msg):
+            SCOUT_COOLDOWN_UNTIL = datetime.utcnow() + SCOUT_COOLDOWN_DURATION
+            print(
+                f"[GROQ] Scout overloaded — "
+                f"cooling down until {SCOUT_COOLDOWN_UNTIL.isoformat()}"
+            )
+
+            # Immediate retry with versatile
+            return await call_groq(
+                prompt=prompt,
+                model=VERSATILE_MODEL,
+                temperature=temperature
+            )
+
+        raise e
+
 # ---------------- MODEL PICKER ----------------
-def pick_model(mode: str):
-    if mode in ["funny", "roast", "serious"]:
-        return "llama-3.3-70b-versatile"
-    return "llama-3.3-70b-versatile"  # fallback
+def pick_model(mode: str = ""):
+    global SCOUT_COOLDOWN_UNTIL
+
+    now = datetime.utcnow()
+
+    # If Scout is cooling down → use versatile
+    if SCOUT_COOLDOWN_UNTIL and now < SCOUT_COOLDOWN_UNTIL:
+        return VERSATILE_MODEL
+
+    # Otherwise prefer Scout
+    return SCOUT_MODEL
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
@@ -230,11 +277,9 @@ async def generate_and_reply(chan_id, message, content, current_mode):
     image_bytes = None
 
     try:
-        response = await call_groq(
+        response = await call_groq_with_health(
             prompt=prompt,
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7,
-            image_bytes=image_bytes
         )
     except Exception as e:
         print(f"[API ERROR] {e}")
@@ -383,9 +428,8 @@ async def handle_image_message(message, mode):
                 "Help the user based on the image content itself, without considering OCR."
             )
 
-        response = await call_groq(
+        response = await call_groq_with_health(
             prompt=prompt,
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7
         )
 
@@ -481,9 +525,8 @@ async def handle_file_message(message, mode):
     prompt = f"{persona}\nThe user uploaded a file `{filename}`. Content:\n{text}\n\nHelp the user based on this content."
 
     try:
-        response = await call_groq(
+        response = await call_groq_with_health(
             prompt=prompt,
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.7
         )
         if response:
@@ -774,9 +817,8 @@ async def decide_response_type(user_text: str) -> str:
     )
 
     try:
-        resp = await call_groq(
+        resp = await call_groq_with_health(
             prompt=prompt,
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0
         )
         return resp.strip().lower()
