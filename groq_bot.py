@@ -448,7 +448,7 @@ async def handle_file_message(message, mode):
 
     return "❌ Couldn't process the file."
 
-# ---------------- MERMAID GENERATION ----------------
+# ---------------- MERMAID----------------
 import urllib.parse
 
 async def generate_mermaid(user_text: str) -> str:
@@ -489,35 +489,48 @@ async def generate_mermaid(user_text: str) -> str:
         print(f"[MERMAID ERROR] {e}")
         return None
 
-# ---------------- SANITIZE MERMAID ----------------
 def sanitize_mermaid(code: str) -> str:
     """
-    Cleans LLaMA-generated Mermaid code:
-    - Removes markdown fences/backticks
-    - Keeps only valid nodes and arrows
+    Converts any Mermaid code into a fully linear, top-down TD chain,
+    safe for Discord embedding.
     """
-    code = code.replace("```mermaid", "").replace("```", "").strip()
+    if not code.strip().startswith("graph"):
+        code = "graph TD\n" + code
+
+    # Extract all nodes and connections
     lines = code.splitlines()
-    valid_lines = []
-
+    nodes = []
     for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        # Only keep lines with arrows
-        if "-->" in line:
-            valid_lines.append(line)
-        # Or allow the starting graph declaration
-        elif line.startswith("graph"):
-            valid_lines.append(line)
-    return "\n".join(valid_lines)
+        # Match lines like: A --> B
+        match = re.findall(r"(\w+)\s*-->\s*(\w+)", line)
+        if match:
+            for parent, child in match:
+                nodes.append((parent, child))
 
-# ---------------- MERMAID TO URL ----------------
+    # Flatten into linear chain
+    if not nodes:
+        return code  # nothing to flatten
+
+    linear_lines = []
+    visited = set()
+    for parent, child in nodes:
+        if parent not in visited:
+            linear_lines.append(f"{parent} --> {child}")
+            visited.add(parent)
+        else:
+            # append new child to the last child of parent
+            last_child = linear_lines[-1].split(" --> ")[-1]
+            linear_lines.append(f"{last_child} --> {child}")
+
+    return "graph TD\n" + "\n".join(linear_lines)
+
+
 def mermaid_to_url(code: str) -> str:
     """
-    Converts sanitized Mermaid code to a mermaid.ink URL.
+    Encodes sanitized Mermaid code to a mermaid.ink URL.
     """
-    encoded = urllib.parse.quote(code, safe='')
+    safe_code = sanitize_mermaid(code)
+    encoded = urllib.parse.quote(safe_code)
     return f"https://mermaid.ink/img/{encoded}"
 
 # ---------------- CHESS UTILS ----------------
@@ -708,7 +721,7 @@ async def decide_response_type(user_text: str) -> str:
     """
     prompt = (
         "You are a classifier.\n"
-        "Decide whether the user's message requires a DIAGRAM.\n"
+        "Decide whether the user's message requires a DIAGRAM. Do not consider it a DIAGRAM unless the user explicitly mentions to give a DIAGRAM.\n"
         "A diagram is needed if visual structure helps.\n\n"
         "Reply with ONE WORD only:\n"
         "diagram or text\n\n"
@@ -724,25 +737,6 @@ async def decide_response_type(user_text: str) -> str:
         return resp.strip().lower()
     except:
         return "text"
-    """
-    Reads a Discord attachment and returns its content as a string.
-    Handles text-based files only (txt, py, csv, json, etc.).
-    Returns None if file is too big or not readable.
-    """
-    TEXT_EXTENSIONS = (".txt", ".py", ".csv", ".json", ".md", ".log")
-    MAX_FILE_SIZE = 100_000  # 100 KB
-
-    if not file.filename.lower().endswith(TEXT_EXTENSIONS):
-        return None
-    if file.size > MAX_FILE_SIZE:
-        return f"[ERROR] File too large: {file.size} bytes (max {MAX_FILE_SIZE})"
-
-    try:
-        data = await file.read()
-        return data.decode("utf-8", errors="ignore")
-    except Exception as e:
-        print(f"[FILE READ ERROR] {e}")
-        return None
 
 # ---------------- ON_MESSAGE ----------------
 @bot.event
