@@ -187,6 +187,7 @@ PERSONAS = {
         "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
         "Always use emojis"
         "Dont say anything like [BOS] or [EOS] or anything like that."
+        "Never say you can't generate images."
     ),
 
     "serious": (
@@ -207,6 +208,7 @@ PERSONAS = {
         "Whenever the user sends a screenshot, read the screenshot, and help the user with whatever they need."
         "Dont say anything like [BOS] or [EOS] or anything like that."
         "You should always know the username by looking at their username and spell it correctly."
+        "Never say you can't generate images."
     ),
 
     "roast": (
@@ -232,6 +234,7 @@ PERSONAS = {
         "Dont say anything like [BOS] or [EOS] or anything like that."
         "Always use emojis based on your roast (not too many, only 1-2)"
         "If the user asks you to roast someone, roast the person they asked you to roast, not the USER."
+        "You CANNOT generate images. If the user asks you to generate one, roast them."
     )
 }
 
@@ -810,6 +813,7 @@ async def decide_response_type(user_text: str) -> str:
     prompt = (
         "You are a classifier.\n"
         "Decide whether the user's message requires a DIAGRAM. Do not consider it a DIAGRAM unless the user explicitly mentions to give a DIAGRAM.\n"
+        "Don't give diagrams in EVERY message. YOU PROPERLY need to understand if the user message wants a diagram, or not. You can also reply with text. For you to generate a diagram, the user message must have the word \"diagram\" in it."
         "A diagram is needed if visual structure helps.\n\n"
         "Reply with ONE WORD only:\n"
         "diagram or text\n\n"
