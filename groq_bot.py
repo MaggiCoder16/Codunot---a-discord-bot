@@ -4,7 +4,6 @@ import asyncio
 import random
 import re
 import numpy as np
-import urllib.parse
 from datetime import datetime, timedelta, timezone
 from collections import deque
 
@@ -478,17 +477,23 @@ async def generate_mermaid(user_text: str) -> str:
         return None
 
 # ---------------- MERMAID TO URL ----------------
+import urllib.parse
+
 def mermaid_to_url(code: str) -> str:
     """
-    Converts Mermaid code into a URL that renders the diagram as an image.
-    Uses the official mermaid.ink service.
+    Converts Mermaid code into a URL that renders the diagram as an image on mermaid.ink.
+    This version strips extra whitespace, removes code fences, and safely encodes the URL.
     """
-    # Remove ```mermaid fences if present
-    code = re.sub(r"^```mermaid\s*|```$", "", code.strip(), flags=re.MULTILINE)
+    # Remove ```mermaid or ``` if LLaMA included them
+    code = code.strip()
+    code = code.replace("```mermaid", "").replace("```", "").strip()
 
-    base = "https://mermaid.ink/img/"
-    encoded = urllib.parse.quote(code)
-    return f"{base}{encoded}"
+    # Replace multiple newlines with a single newline
+    code = "\n".join(line.strip() for line in code.splitlines() if line.strip())
+
+    # URL encode
+    encoded = urllib.parse.quote(code, safe='')  # safe='' ensures all special chars encoded
+    return f"https://mermaid.ink/img/{encoded}"
 
 # ---------------- CHESS UTILS ----------------
 
