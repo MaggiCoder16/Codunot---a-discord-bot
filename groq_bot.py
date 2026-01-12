@@ -6,6 +6,7 @@ import re
 import numpy as np
 from datetime import datetime, timedelta, timezone
 from collections import deque
+import urllib.parse
 
 import discord
 from discord import Message
@@ -22,6 +23,7 @@ import aiohttp
 import base64
 from paddleocr import PaddleOCR
 from PIL import Image
+from typing import Optional
 
 load_dotenv()
 
@@ -449,53 +451,85 @@ async def handle_file_message(message, mode):
     return "❌ Couldn't process the file."
 
 # ---------------- MERMAID----------------
-import urllib.parse
-
+# ---------------- SANITIZE ----------------
 def sanitize_mermaid(code: str) -> str:
     """
-    Cleans the LLM output to ensure only valid Mermaid code remains.
+    Cleans LLM output: removes markdown blocks, backticks, and ensures valid graph headers.
     """
-    # 1. Remove markdown code blocks if present
     code = re.sub(r"```(?:mermaid)?", "", code, flags=re.IGNORECASE)
-    code = code.strip("` \n\t")
+    code = code.replace("`", "").strip()
     
-    # 2. Ensure it starts with a valid graph type if missing
-    if not code.lower().startswith("graph") and not code.lower().startswith("flowchart"):
+    # Ensure it starts with a valid graph type
+    if not (code.lower().startswith("graph") or code.lower().startswith("flowchart")):
         code = "graph TD\n" + code
         
     return code
 
+# ---------------- FLATTEN ----------------
+def flatten_mermaid(code: str) -> str:
+    """
+    Converts any Mermaid graph into a flat linear chain to avoid multi-parent errors.
+    Preserves node definitions.
+    """
+    lines = code.splitlines()
+    nodes = []
+    edges = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Node definitions: A[Label]
+        if re.match(r"^\w+\[.*\]$", line):
+            nodes.append(line)
+        # Edge definitions: A --> B
+        else:
+            matches = re.findall(r"(\w+)\s*-->\s*(\w+)", line)
+            if matches:
+                edges.extend(matches)
+
+    flat_edges = [f"{src} --> {dst}" for src, dst in edges]
+    return "graph TD\n" + "\n".join(nodes + flat_edges)
+
+# ---------------- URL ENCODING ----------------
 def mermaid_to_url(code: str) -> str:
     """
-    Encodes Mermaid code using Base64 for maximum reliability.
+    Converts Mermaid code into a mermaid.ink URL using URL-safe Base64.
     """
     safe_code = sanitize_mermaid(code)
-    # Convert string to bytes
-    sample_string_bytes = safe_code.encode("ascii")
-    # Base64 encode
-    base64_bytes = base64.b64encode(sample_string_bytes)
-    base64_string = base64_bytes.decode("ascii")
-    
-    # mermaid.ink uses a specific format for base64
-    return f"https://mermaid.ink/img/{base64_string}"
+    safe_code = flatten_mermaid(safe_code)
+    b64_string = base64.urlsafe_b64encode(safe_code.encode("utf-8")).decode("utf-8").rstrip("=")
+    return f"https://mermaid.ink/img/{b64_string}"
 
-async def generate_mermaid(user_text: str) -> str:
+# ---------------- GENERATE MERMAID ----------------
+async def generate_mermaid(user_text: str) -> Optional[str]:
+    """
+    Calls LLM to generate a valid Mermaid diagram and returns a mermaid.ink URL.
+    """
     prompt = (
-        "You are a Mermaid diagram generator. Output ONLY the raw Mermaid code.\n"
+        "You are a Mermaid.js diagram generator.\n"
         "STRICT RULES:\n"
-        "- Start with 'graph TD'\n"
-        "- No explanations, no markdown, no backticks.\n"
-        "- Use [Bracketed Text] for nodes to avoid syntax errors with spaces.\n"
+        "1. Start with 'graph TD'.\n"
+        "2. Define nodes separately: A[Node Name].\n"
+        "3. Connect only IDs: A --> B.\n"
+        "4. Avoid multiple parents for a single node in one line.\n"
+        "5. NO markdown, NO backticks, NO explanations.\n"
+        "ONLY raw Mermaid code.\n"
         f"User instruction: {user_text}"
     )
 
     try:
         resp = await call_groq(
             prompt=prompt,
-            model="llama-3.3-70b-versatile", # Use the larger model for better logic
+            model="llama-3.3-70b-versatile",
             temperature=0.2
         )
-        return resp.strip() if resp else None
+
+        if not resp:
+            return None
+
+        return mermaid_to_url(resp.strip())
+
     except Exception as e:
         print(f"[MERMAID ERROR] {e}")
         return None
@@ -827,15 +861,15 @@ async def on_message(message: Message):
     if decision == "diagram":
         await send_human_reply(message.channel, "🧠 Generating diagram...")
 
-        mermaid_code = await generate_mermaid(content)
-        if not mermaid_code:
+        mermaid_url = await generate_mermaid(content)  # this returns the URL
+        if not mermaid_url:
             await send_human_reply(
                 message.channel,
                 "❌ I couldn't generate that diagram."
             )
             return
 
-        await message.channel.send(mermaid_to_url(mermaid_code))
+        await message.channel.send(mermaid_url)
         return
 
     # ---------------- CHESS MODE ----------------
