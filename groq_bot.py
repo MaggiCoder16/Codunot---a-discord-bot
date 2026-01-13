@@ -61,17 +61,19 @@ channel_memory = {}
 rate_buckets = {}
 
 # ---------------- MODELS ----------------
-SCOUT_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"
-VERSATILE_MODEL = "llama-3.3-70b-versatile"
+SCOUT_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"  # seriousmode
+VERSATILE_MODEL = "llama-3.3-70b-versatile"                    # fun/roast
 
 SCOUT_COOLDOWN_UNTIL = None
 SCOUT_COOLDOWN_DURATION = timedelta(hours=1)
 
 # ---------------- MODEL HEALTH ----------------
-async def call_groq_with_health(prompt, temperature=0.7):
-    global SCOUT_COOLDOWN_UNTIL
-
-    model = pick_model()
+async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
+    """
+    Handles calling Groq with model selection and overload handling.
+    mode: 'serious', 'funny', 'roast' (or empty string)
+    """
+    model = pick_model(mode)
 
     try:
         return await call_groq(
@@ -83,15 +85,15 @@ async def call_groq_with_health(prompt, temperature=0.7):
     except Exception as e:
         msg = str(e)
 
-        # Scout overload detection
+        # Only handle Maverick overload (for seriousmode)
         if model == SCOUT_MODEL and ("503" in msg or "over capacity" in msg):
+            global SCOUT_COOLDOWN_UNTIL
             SCOUT_COOLDOWN_UNTIL = datetime.utcnow() + SCOUT_COOLDOWN_DURATION
             print(
-                f"[GROQ] Scout overloaded — "
+                f"[GROQ] Maverick overloaded — "
                 f"cooling down until {SCOUT_COOLDOWN_UNTIL.isoformat()}"
             )
-
-            # Immediate retry with versatile
+            # Retry with Versatile for fallback
             return await call_groq(
                 prompt=prompt,
                 model=VERSATILE_MODEL,
@@ -102,18 +104,19 @@ async def call_groq_with_health(prompt, temperature=0.7):
 
 # ---------------- MODEL PICKER ----------------
 def pick_model(mode: str = ""):
-    global SCOUT_COOLDOWN_UNTIL
+    """
+    Returns the model to use based on mode:
+    - seriousmode -> Maverick (SCOUT_MODEL)
+    - funmode / roastmode -> Versatile (VERSATILE_MODEL)
+    """
+    mode = mode.lower()
 
-    now = datetime.utcnow()
+    if mode == "serious":
+        return SCOUT_MODEL
 
-    # If Scout is cooling down → use versatile
-    if SCOUT_COOLDOWN_UNTIL and now < SCOUT_COOLDOWN_UNTIL:
-        return VERSATILE_MODEL
-
-    # Otherwise prefer Scout
-    return SCOUT_MODEL
-
-
+    # funny / roast / default
+    return VERSATILE_MODEL
+    
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
     units = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
