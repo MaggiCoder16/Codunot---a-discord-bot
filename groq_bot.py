@@ -61,8 +61,9 @@ channel_memory = {}
 rate_buckets = {}
 
 # ---------------- MODELS ----------------
-SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-VERSATILE_MODEL = "llama-3.3-70b-versatile"
+# Qwen models on Groq
+SCOUT_MODEL = "qwen/qwen3-32b"           # fast, chat/reasoning optimized (Scout equivalent)
+VERSATILE_MODEL = "qwen/qwen3-32b"       # large context, all-purpose fallback (Versatile equivalent)
 
 SCOUT_COOLDOWN_UNTIL = None
 SCOUT_COOLDOWN_DURATION = timedelta(hours=1)
@@ -112,6 +113,7 @@ def pick_model(mode: str = ""):
 
     # Otherwise prefer Scout
     return SCOUT_MODEL
+
 
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
