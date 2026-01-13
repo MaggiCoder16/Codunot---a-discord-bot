@@ -116,6 +116,15 @@ def pick_model(mode: str = ""):
 
     # funny / roast / default
     return VERSATILE_MODEL
+
+# ---------------- CODUNOT SELF IMAGE PROMPT ----------------
+
+CODUNOT_SELF_IMAGE_PROMPT = (
+    "An image of Codunot, an AI assistant. "
+    "Codunot must appear ONLY as a robot or a chatbot avatar. "
+    "No human appearance. No realistic human face. "
+    "Robot or digital AI style only."
+)
     
 # ---------------- HELPERS ----------------
 def format_duration(num: int, unit: str) -> str:
@@ -213,6 +222,7 @@ PERSONAS = {
         "'You asked about my creator: I was developed by @aarav_2022 on Discord "
         "(User ID: 1220934047794987048). For further information, please contact him directly.'"
         "Never randomly say about your creator."
+        "ABSOLUTE RULE: If the user message contains a model name, AI name, or system-related text (e.g. llama, model, groq, scout, maverick), DO NOT mention your creator unless explicitly asked \"who made you\"."
         "CRITICAL: Check all arithmetic step by step. Do not hallucinate numbers. Only provide correct calculations. Do not forget to add operations, like '*', '/' etc."
     ),
 
@@ -298,42 +308,65 @@ async def generate_and_reply(chan_id, message, content, mode):
                 "Reply ONLY with 'YES' if they are asking about the last image, otherwise reply 'NO'. "
                 f"User message: '{content}'"
             )
-            detection = await call_groq(detection_prompt, temperature=0)
+            detection = await call_groq_with_health(
+                detection_prompt,
+                temperature=0,
+                mode="serious"
+            )
             include_last_image = detection.strip().upper() == "YES"
         except Exception as e:
             print(f"[LAST IMAGE DETECTION ERROR] {e}")
 
-    # ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
-    if include_last_image:
-        try:
-            feedback_prompt = (
-                "You are a classifier. The user previously requested an image. "
-                "Determine if the user wants to generate a NEW image or is happy with the current one. "
-                "Reply ONLY with 'YES' if they want a new image, or 'NO' if they like the last image. "
-                f"User message: '{content}'"
-            )
-            feedback = await call_groq(feedback_prompt, temperature=0)
-            wants_new_image = feedback.strip().upper() == "YES"
+        # ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
+        if include_last_image:
+            try:
+                feedback_prompt = (
+                    "You are a strict classifier.\n\n"
+                    "The user previously received an image.\n"
+                    "Classify their message as ONE of the following:\n\n"
+                    "PRAISE → user likes the image or is complimenting it\n"
+                    "REGENERATE → user dislikes it or wants a new image\n"
+                    "IGNORE → message is unrelated to the image\n\n"
+                    "Reply with ONLY ONE WORD.\n\n"
+                    f"User message: '{content}'"
+                )
 
-            if not wants_new_image:
-                reply = "😊 glad you like it!"
-                await send_human_reply(message.channel, reply)
-                channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-                channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-                memory.add_message(chan_id, BOT_NAME, reply)
-                memory.persist()
-                return  # stop here, do not generate a new image
-            # if wants_new_image=True → fall through to generate a new image
+                feedback = await call_groq_with_health(
+                    feedback_prompt,
+                    temperature=0,
+                    mode="serious"
+                )
 
-        except Exception as e:
-            print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
+                result = feedback.strip().upper()
+
+                if result not in ["PRAISE", "REGENERATE", "IGNORE"]:
+                    result = "IGNORE"
+
+                if result == "PRAISE":
+                    reply = "😊 glad you like it!"
+                    await send_human_reply(message.channel, reply)
+
+                    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+                    channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+                    memory.add_message(chan_id, BOT_NAME, reply)
+                    memory.persist()
+
+                    return  # STOP — do NOT generate a new image
+
+                if result == "IGNORE":
+                    pass  # continue normal text handling
+
+                # result == "REGENERATE" → fall through to image generation
+
+            except Exception as e:
+                print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
 
     # ---------------- BUILD PROMPT ----------------
     prompt = build_general_prompt(chan_id, mode, content, include_last_image=include_last_image)
 
     # ---------------- GENERATE RESPONSE ----------------
     try:
-        response = await call_groq_with_health(prompt, temperature=0.7)
+        response = await call_groq_with_health(prompt, temperature=0.7, mode=mode)
     except Exception as e:
         print(f"[API ERROR] {e}")
         response = None
@@ -494,7 +527,8 @@ async def handle_image_message(message, mode):
 
         response = await call_groq_with_health(
             prompt=prompt,
-            temperature=0.7
+            temperature=0.7,
+            mode=mode
         )
 
         if response:
@@ -591,7 +625,8 @@ async def handle_file_message(message, mode):
     try:
         response = await call_groq_with_health(
             prompt=prompt,
-            temperature=0.7
+            temperature=0.7,
+            mode=mode
         )
         if response:
             await send_human_reply(message.channel, response.strip())
@@ -623,8 +658,8 @@ async def decide_visual_type(user_text: str) -> str:
         "visual explanation, labeled picture, or says 'diagram' or 'image'. Basically, an image for education purposes.\n"
         "- fun → if the user wants a normal image (meme, photo, artistic image). Basically, for normal talks, fun.\n"
         "- text → otherwise. The AI will reply in text.\n\n"
-        "Consider maths questions as text, like 20x20 = 400, not pixels (20x20)"
-        "Memes go in text. If the user asks for a meme, return TEXT"
+        "Consider maths questions as text, like 20x20 = 400, not pixels (20x20)\n"
+        "Memes go in text. If the user asks for a meme, return TEXT\n"
         "ONE WORD ONLY.\n\n"
         f"User message:\n{user_text}"
     )
@@ -637,6 +672,22 @@ async def decide_visual_type(user_text: str) -> str:
 
 async def build_image_prompt(user_text: str) -> str:
     return build_diagram_prompt(user_text)
+
+# ---------------- DETECT IF USER IS ASKING CODUNOT FOR IT'S OWN IMAGE ----------------
+
+async def is_codunot_self_image(user_text: str) -> bool:
+    prompt = (
+        "Answer only YES or NO.\n\n"
+        "Is the user asking for an image or picture of Codunot itself "
+        "(the AI assistant or bot)?\n\n"
+        f"User message:\n{user_text}"
+    )
+
+    try:
+        resp = await call_groq_with_health(prompt, temperature=0)
+        return resp.strip().lower().startswith("y")
+    except:
+        return False
         
 # ---------------- CHESS UTILS ----------------
 
@@ -935,45 +986,61 @@ async def on_message(message: Message):
             return
 
     # ---------------- IMAGE OR TEXT ----------------
-    visual_type = await decide_visual_type(content)  # returns "diagram", "fun", or "text"
+
+    # HARD STOP: only one image generation per message
+    if getattr(message, "_image_done", False):
+        return
+    message._image_done = True
+
+    visual_type = await decide_visual_type(content)
+
     if visual_type in ["diagram", "fun"]:
         await send_human_reply(message.channel, "🖼️ Generating image... hang tight!")
 
-        is_diagram = visual_type == "diagram"
-        image_prompt = await build_image_prompt(content) if is_diagram else content
+        # Check if user wants Codunot itself
+        if await is_codunot_self_image(content):
+            image_prompt = CODUNOT_SELF_IMAGE_PROMPT + " Clean digital art, no humans."
+            is_diagram = False
+        else:
+            is_diagram = visual_type == "diagram"
+            image_prompt = (
+                await build_image_prompt(content)
+                if is_diagram
+                else content
+            )
 
+        channel_images.setdefault(chan_id, deque(maxlen=3))
+        channel_images[chan_id].append(image_prompt)
+        
         try:
-            # Generate the image
-            image_bytes = await generate_image(image_prompt, diagram=is_diagram)
+            image_bytes = await generate_image(
+                image_prompt,
+                diagram=is_diagram
+            )
 
-            # --- Resize if too large ---
-            MAX_BYTES = 5_000_000  # 5 MB
+            MAX_BYTES = 5_000_000
             if len(image_bytes) > MAX_BYTES:
                 img = Image.open(io.BytesIO(image_bytes))
                 scale = (MAX_BYTES / len(image_bytes)) ** 0.5
-                new_size = (int(img.width * scale), int(img.height * scale))
-                img = img.resize(new_size, Image.ANTIALIAS)
-
+                img = img.resize(
+                    (int(img.width * scale), int(img.height * scale)),
+                    Image.ANTIALIAS
+                )
                 out = io.BytesIO()
                 img.save(out, format="PNG")
                 image_bytes = out.getvalue()
 
-            # Store image in memory
-            channel_images.setdefault(chan_id, None)
-            channel_images[chan_id] = image_bytes  # store raw bytes
-
-            channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-            channel_memory[chan_id].append(f"{BOT_NAME}: [image generated for '{content}']")
-            memory.add_message(chan_id, BOT_NAME, f"[image generated for '{content}']")
-            memory.persist()
-
             file = discord.File(io.BytesIO(image_bytes), filename="image.png")
             await message.channel.send(file=file)
 
-        except Exception as e:
-            await send_human_reply(message.channel, f"Couldn't generate image right now. Please try again later.")
+        except Exception:
+            await send_human_reply(
+                message.channel,
+                "Couldn't generate image right now. Please try again later."
+            )
 
         return
+        
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
