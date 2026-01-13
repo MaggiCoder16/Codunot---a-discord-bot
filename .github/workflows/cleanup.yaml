@@ -1,0 +1,25 @@
+name: Discord Bot Cleanup
+
+on:
+  workflow_dispatch:  # manual trigger
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -U discord.py
+
+      - name: Run cleanup script
+        run: python cleanup.py
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
