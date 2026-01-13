@@ -283,10 +283,10 @@ async def handle_roast_mode(chan_id, message, user_message):
 
 async def generate_and_reply(chan_id, message, content, mode):
     guild_id = message.guild.id if message.guild else None
-    if guild_id is not None and not await can_send_in_guild(guild_id):
+    if guild_id and not await can_send_in_guild(guild_id):
         return
 
-    # ---------------- AI-DRIVEN LAST IMAGE DETECTION ----------------
+    # Last image detection
     include_last_image = False
     if chan_id in channel_images and channel_images[chan_id]:
         try:
@@ -299,41 +299,28 @@ async def generate_and_reply(chan_id, message, content, mode):
             include_last_image = detection.strip().upper() == "YES"
         except Exception as e:
             print(f"[LAST IMAGE DETECTION ERROR] {e}")
-            include_last_image = False
 
-    # ---------------- BUILD PROMPT ----------------
-    prompt = build_general_prompt(chan_id, mode, content, include_last_image=include_last_image)
+    # Build prompt once
+    prompt = build_general_prompt(chan_id, mode, content)
 
-    # ---------------- GENERATE RESPONSE ----------------
-    response = None
+    # Generate AI response
     try:
         response = await call_groq_with_health(prompt, temperature=0.7)
     except Exception as e:
         print(f"[API ERROR] {e}")
         response = None
 
-    # ---------------- HUMANIZE / SAFEIFY ----------------
-    if response:
-        if mode == "funny":
-            reply = humanize_and_safeify(response)
-        else:
-            # Serious mode: no slang, emojis, or random typos
-            reply = response.strip()
-            if reply and not reply.endswith(('.', '!', '?')):
-                reply += '.'
-    else:
-        reply = choose_fallback()
+    # Humanize / fallback
+    reply = humanize_and_safeify(response) if response else choose_fallback()
 
-    # ---------------- SEND REPLY ----------------
+    # Send reply
     await send_human_reply(message.channel, reply)
 
-    # ---------------- SAVE TO MEMORY ----------------
-    if response:
-        channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-        channel_memory[chan_id].append(f"{BOT_NAME}: {response}")
-        memory.add_message(chan_id, BOT_NAME, response)
-        memory.persist()
-
+    # Save to memory
+    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+    channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+    memory.add_message(chan_id, BOT_NAME, reply)
+    memory.persist()
 
     prompt = build_general_prompt(chan_id, current_mode, message)
     image_bytes = None
