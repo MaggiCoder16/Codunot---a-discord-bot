@@ -27,7 +27,7 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# PUBLIC IMAGE GENERATOR (FULL FEATURED)
+# PUBLIC IMAGE GENERATOR (FIXED)
 # ============================================================
 
 async def generate_image_hf(
@@ -43,7 +43,7 @@ async def generate_image_hf(
     )
 ) -> bytes:
     """
-    Generates an image using Hugging Face Inference API.
+    Generates an image using Hugging Face InferenceClient.
     Supports diagram prompts, width/height, steps, and negative prompts.
     Automatically falls back to a secondary model.
     Returns raw PNG bytes.
@@ -53,28 +53,32 @@ async def generate_image_hf(
 
     client = InferenceClient(api_key=HF_API_KEY)
 
-    # --- Prepare payload ---
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "width": width,
-            "height": height,
-            "num_inference_steps": steps,
-            "negative_prompt": negative_prompt,
-            "guidance_scale": 7.5
-        }
-    }
-
     # --- Primary model ---
     try:
-        results = client.text_to_image(HF_MODEL_PRIMARY, **payload)
+        results = client.text_to_image(
+            prompt=prompt,
+            model=HF_MODEL_PRIMARY,
+            width=width,
+            height=height,
+            num_inference_steps=steps,
+            negative_prompt=negative_prompt,
+            guidance_scale=7.5
+        )
         return results[0].content
     except Exception as e:
         print(f"[HF PRIMARY FAILED] {e}")
 
     # --- Fallback model ---
     try:
-        results = client.text_to_image(HF_MODEL_FALLBACK, **payload)
+        results = client.text_to_image(
+            prompt=prompt,
+            model=HF_MODEL_FALLBACK,
+            width=width,
+            height=height,
+            num_inference_steps=steps,
+            negative_prompt=negative_prompt,
+            guidance_scale=7.5
+        )
         return results[0].content
     except Exception as e:
         print(f"[HF FALLBACK FAILED] {e}")
