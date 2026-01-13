@@ -28,55 +28,50 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# PUBLIC IMAGE GENERATOR (WORKING)
+# PUBLIC IMAGE GENERATOR (ACTUALLY WORKS)
 # ============================================================
 
 async def generate_image_hf(
     prompt: str,
     *,
     diagram: bool = False,
-    width: int = 1024,
-    height: int = 1024,
-    steps: int = 28,
-    negative_prompt: str = (
-        "blurry, low quality, distorted text, watermark, logo, "
-        "photorealistic, shadows, textures, extra limbs"
-    )
 ) -> bytes:
     """
     Generates an image using Hugging Face InferenceClient.
-    Uses `parameters` dict for model options (width, height, steps, etc.).
-    Automatically falls back to a secondary model.
+    Uses ONLY supported arguments.
     Returns raw PNG bytes.
     """
+
     if diagram:
         prompt = build_diagram_prompt(prompt)
 
     client = InferenceClient(api_key=HF_API_KEY)
 
-    parameters = {
-        "width": width,
-        "height": height,
-        "num_inference_steps": steps,
-        "negative_prompt": negative_prompt,
-        "guidance_scale": 7.5
-    }
-
-    # --- Primary model ---
+    # ---------- PRIMARY ----------
     try:
-        img = client.text_to_image(model=HF_MODEL_PRIMARY, prompt=prompt, parameters=parameters)
-        with io.BytesIO() as buf:
-            img.save(buf, format="PNG")
-            return buf.getvalue()
+        img = client.text_to_image(
+            prompt,
+            model=HF_MODEL_PRIMARY
+        )
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
     except Exception as e:
         print(f"[HF PRIMARY FAILED] {e}")
 
-    # --- Fallback model ---
+    # ---------- FALLBACK ----------
     try:
-        img = client.text_to_image(model=HF_MODEL_FALLBACK, prompt=prompt, parameters=parameters)
-        with io.BytesIO() as buf:
-            img.save(buf, format="PNG")
-            return buf.getvalue()
+        img = client.text_to_image(
+            prompt,
+            model=HF_MODEL_FALLBACK
+        )
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
     except Exception as e:
         print(f"[HF FALLBACK FAILED] {e}")
         raise RuntimeError("All Hugging Face image models failed")
