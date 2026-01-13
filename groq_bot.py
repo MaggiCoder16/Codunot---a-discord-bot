@@ -191,6 +191,7 @@ PERSONAS = {
         "Always use emojis"
         "Dont say anything like [BOS] or [EOS] or anything like that."
         "Never say you can't generate images."
+        "If the user says bye, gtg, l8r, see ya, or any goodbye, just reply with a short, friendly farewell (like 'L8r! 👋'). "
     ),
 
     "serious": (
