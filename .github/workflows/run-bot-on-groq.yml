@@ -48,7 +48,7 @@ jobs:
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          HF_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
+          HUGGINGFACE_API_KEY_IMAGE_GEN: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
         run: |
           python -u groq_bot.py
 
