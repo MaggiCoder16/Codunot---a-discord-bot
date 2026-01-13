@@ -6,9 +6,9 @@ import asyncio
 # CONFIG
 # ============================================================
 
-HF_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+HF_API_KEY = os.getenv("HUGGINGFACE_API_KEY_IMAGE_GEN")
 if not HF_API_KEY:
-    raise RuntimeError("HUGGINGFACE_API_KEY not set")
+    raise RuntimeError("HUGGINGFACE_API_KEY_IMAGE_GEN not set")
 
 HEADERS = {
     "Authorization": f"Bearer {HF_API_KEY}",
