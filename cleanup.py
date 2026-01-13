@@ -2,6 +2,7 @@ import asyncio
 import discord
 import os
 
+# Bot token from GitHub Actions secret
 TOKEN = os.environ["DISCORD_TOKEN"]
 
 # Hardcoded DM channel ID
@@ -22,7 +23,8 @@ async def on_ready():
 
         deleted = 0
 
-        async for message in channel.history(limit=50):
+        async for message in channel.history(limit=100):
+            # Only delete messages sent by your bot
             if message.author.id == client.user.id:
                 try:
                     await message.delete()
@@ -30,7 +32,7 @@ async def on_ready():
                 except discord.Forbidden:
                     pass
 
-                if deleted >= 20:
+                if deleted >= 45:  # Stop after deleting 45 messages
                     break
 
         print(f"Deleted {deleted} bot messages")
