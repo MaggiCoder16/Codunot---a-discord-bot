@@ -291,8 +291,9 @@ async def generate_and_reply(chan_id, message, content, mode):
     if chan_id in channel_images and channel_images[chan_id]:
         try:
             detection_prompt = (
-                "You are a classifier. Detect if the user wants to know about the last image you generated. "
-                "Reply ONLY with 'YES' if they are asking about the last image, otherwise reply 'NO'. "
+                "You are a classifier. Detect if the user is referring to the last image you generated. "
+                "Reply ONLY with 'YES' if they are commenting on or asking about the last image, "
+                "otherwise reply 'NO'. "
                 f"User message: '{content}'"
             )
             detection = await call_groq(detection_prompt, temperature=0)
@@ -301,14 +302,20 @@ async def generate_and_reply(chan_id, message, content, mode):
             print(f"[LAST IMAGE DETECTION ERROR] {e}")
 
     # ---------------- BUILD PROMPT ----------------
-    prompt = build_general_prompt(chan_id, mode, content, include_last_image=include_last_image)
+    # Let the AI know whether this is about the last image
+    prompt = build_general_prompt(
+        chan_id,
+        mode,
+        content,
+        include_last_image=include_last_image
+    )
 
     # ---------------- GENERATE RESPONSE ----------------
+    response = None
     try:
         response = await call_groq_with_health(prompt, temperature=0.7)
     except Exception as e:
         print(f"[API ERROR] {e}")
-        response = None
 
     # ---------------- HUMANIZE / SAFEIFY ----------------
     if response:
