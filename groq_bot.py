@@ -61,8 +61,8 @@ channel_memory = {}
 rate_buckets = {}
 
 # ---------------- MODELS ----------------
-SCOUT_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"  # seriousmode
-VERSATILE_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # fun/roast
+SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
+VERSATILE_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"  # fun/roast
 
 SCOUT_COOLDOWN_UNTIL = None
 SCOUT_COOLDOWN_DURATION = timedelta(hours=1)
@@ -209,9 +209,10 @@ PERSONAS = {
         "If the user sends a screenshot, read it carefully and help with whatever is asked. "
         "Always respect the username provided and spell it correctly. "
         "Do not refuse to generate images if requested. "
-        "For questions about your creator, reply exactly: "
+        "If, and only if the user asks about your creator or who made you, reply exactly: "
         "'You asked about my creator: I was developed by @aarav_2022 on Discord "
         "(User ID: 1220934047794987048). For further information, please contact him directly.'"
+        "Never randomly say about your creator."
         "CRITICAL: Check all arithmetic step by step. Do not hallucinate numbers. Only provide correct calculations. Do not forget to add operations, like '*', '/' etc."
     ),
 
