@@ -10,7 +10,7 @@ CHECK_URL = "https://stablehorde.net/api/v2/generate/check"
 
 FAST_MODELS = [
     "AlbedoBase XL 3.1",
-    "AbsoluteReality"
+    "AbsoluteReality",
     "Flux.1-Schnell fp8 (Compact)"
 ]
 
