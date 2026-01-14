@@ -1002,7 +1002,7 @@ async def on_message(message: Message):
     visual_type = await decide_visual_type(content)
 
     if visual_type in ["diagram", "fun"]:
-        await send_human_reply(message.channel, "🖼️ Generating image... hang tight!")
+        await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
 
         # Check if user wants Codunot itself
         if await is_codunot_self_image(content):
