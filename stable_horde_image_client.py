@@ -19,7 +19,7 @@ CHECK_URL = "https://stablehorde.net/api/v2/generate/check"
 def build_diagram_prompt(user_text: str) -> str:
     """
     Used by groq_bot.py.
-    Simple, SD 1.5–friendly diagram style.
+    Simple SDXL-friendly diagram style.
     """
     return (
         "Simple clean diagram, flat vector style, white background, "
@@ -28,10 +28,14 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# INTERNAL: submit + poll once
+# INTERNAL: submit + poll
 # ============================================================
 
-async def _generate_once(prompt: str, timeout: int) -> bytes | None:
+async def _generate_once(prompt: str, timeout: int = 180) -> bytes | None:
+    """
+    Submits prompt to Stable Horde and polls until result is ready.
+    Returns image bytes or None on failure.
+    """
     headers = {"Content-Type": "application/json"}
     if STABLE_HORDE_API_KEY:
         headers["apikey"] = STABLE_HORDE_API_KEY
@@ -43,9 +47,9 @@ async def _generate_once(prompt: str, timeout: int) -> bytes | None:
             "width": 512,
             "height": 512,
             "cfg_scale": 7,
-            "sampler_name": "k_euler"
+            "sampler_name": "k_euler_a"
         },
-        "models": ["stable_diffusion"],  # SD 1.5 ONLY (fastest + reliable)
+        "models": ["AlbedoBase XL"],  # default fast + SDXL
         "nsfw": False,
         "shared": True,
         "trusted_workers": False,
@@ -62,7 +66,7 @@ async def _generate_once(prompt: str, timeout: int) -> bytes | None:
             data = await resp.json()
             job_id = data.get("id")
             if not job_id:
-                print("[Stable Horde ERROR] no job id")
+                print("[Stable Horde ERROR] no job id returned")
                 return None
 
             print("[Stable Horde] Job submitted:", job_id)
@@ -82,12 +86,9 @@ async def _generate_once(prompt: str, timeout: int) -> bytes | None:
                     continue
 
                 data = await resp.json()
-
-                print(
-                    "[Stable Horde]",
-                    "waiting:", data.get("waiting"),
-                    "queue:", data.get("queue_position")
-                )
+                waiting = data.get("waiting", 0)
+                queue = data.get("queue_position", 0)
+                print(f"[Stable Horde] waiting: {waiting}, queue: {queue}")
 
                 if not data.get("done"):
                     continue
@@ -102,23 +103,21 @@ async def _generate_once(prompt: str, timeout: int) -> bytes | None:
                     print("[Stable Horde ERROR] empty image")
                     return None
 
-                print("[Stable Horde] Image generated")
+                print("[Stable Horde] Image generated successfully")
                 return base64.b64decode(img_b64)
 
-# ============================================================
-# PUBLIC API (USED BY groq_bot.py)
-# ============================================================
 
 async def generate_image_horde(prompt: str) -> bytes | None:
     """
     Free, GitHub-safe, retrying Stable Horde image generation.
+    Tries up to 3 times for reliability.
     """
-
-    for attempt in range(2):
-        print(f"[Stable Horde] Attempt {attempt + 1}")
-        image = await _generate_once(prompt, timeout=90)
+    for attempt in range(3):
+        print(f"[Stable Horde] Attempt {attempt + 1}/3")
+        image = await _generate_once(prompt)
         if image:
             return image
+        print("[Stable Horde] Retrying...")
 
     print("[Stable Horde] All attempts failed")
     return None
