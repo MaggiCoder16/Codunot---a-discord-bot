@@ -25,7 +25,7 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# IMAGE GENERATOR (ASYNC FIXED)
+# IMAGE GENERATOR (WAIT UNTIL FINISHED)
 # ============================================================
 async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: int = 120) -> bytes:
     if diagram:
@@ -47,38 +47,30 @@ async def generate_image_horde(prompt: str, *, diagram: bool = False, timeout: i
         "nsfw": False
     }
 
-    print("[Stable Horde] Sending payload:", payload)
-
     async with aiohttp.ClientSession() as session:
-        # Submit job
         async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=timeout) as resp:
-            text = await resp.text()
-            if resp.status not in (200, 202):
-                print(f"[Stable Horde ERROR] Status {resp.status}: {text}")
-                raise RuntimeError(f"[Stable Horde] Failed with status {resp.status}: {text}")
-
             data = await resp.json()
-            print("[Stable Horde] Job response:", data)
+            job_id = data.get("id")
+            if not job_id:
+                raise RuntimeError(f"No job ID returned: {data}")
 
-        job_id = data.get("id")
-        if not job_id:
-            raise RuntimeError(f"[Stable Horde] No job ID returned: {data}")
-
-        # Poll until image is ready
-        for _ in range(timeout // 2):
+        start_time = asyncio.get_event_loop().time()
+        while True:
             await asyncio.sleep(2)
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed > timeout:
+                raise RuntimeError("Timeout waiting for image")
+
             try:
                 async with session.get(f"{STABLE_HORDE_CHECK_URL}/{job_id}", headers=headers, timeout=30) as check_resp:
-                    if check_resp.status == 404:
-                        # Job not ready yet
-                        continue
+                    if check_resp.status in (404, 202):
+                        continue  # Job not ready yet
+
                     check_data = await check_resp.json()
-                    if "generations" in check_data and check_data["generations"]:
-                        img_b64 = check_data["generations"][0].get("img")
+                    generations = check_data.get("generations", [])
+                    if generations:
+                        img_b64 = generations[0].get("img")
                         if img_b64:
-                            print("[Stable Horde] Image generated successfully")
                             return base64.b64decode(img_b64)
             except Exception as e:
                 print("[Stable Horde ERROR] Polling failed:", e)
-
-        raise RuntimeError("[Stable Horde] Timeout waiting for image")
