@@ -15,7 +15,7 @@ if not REPLICATE_API_TOKEN:
 
 client = replicate.Client(api_token=REPLICATE_API_TOKEN)
 
-DEFAULT_MODEL = "stability-ai/stable-diffusion-2"
+DEFAULT_MODEL = "google/imagen-4-ultra"
 
 # ============================================================
 # PROMPT HELPER (for diagrams)
