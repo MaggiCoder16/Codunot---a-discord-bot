@@ -9,8 +9,9 @@ SUBMIT_URL = "https://stablehorde.net/api/v2/generate/async"
 CHECK_URL = "https://stablehorde.net/api/v2/generate/check"
 
 FAST_MODELS = [
-    "CyberRealistic Pony",
-    "stable_diffusion"
+    "AlbedoBase XL 3.1",
+    "AbsoluteReality"
+    "Flux.1-Schnell fp8 (Compact)"
 ]
 
 def build_diagram_prompt(user_text: str) -> str:
