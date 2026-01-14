@@ -50,15 +50,26 @@ async def generate_image_horde(
     payload = {
         "prompt": prompt,
         "params": {
-            "steps": 25,
+            "steps": 28,
             "width": 512,
             "height": 512,
-            "cfg_scale": 7.0,
-            "sampler_name": "k_euler"
+            "cfg_scale": 7.5,
+            "sampler_name": "k_euler",
+            "seed": None
         },
-        "nsfw": False
+        "models": [
+            "stable_diffusion",
+            "anything-v4",
+            "dreamshaper",
+            "deliberate"
+        ],
+        "nsfw": False,
+        "r2": True,
+        "shared": True,
+        "trusted_workers": False,
+        "slow_workers": True,
+        "workers": 1
     }
-
     print("[Stable Horde] Submitting job...")
     print("[Stable Horde] Prompt:", prompt)
 
