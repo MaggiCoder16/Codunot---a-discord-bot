@@ -1020,10 +1020,7 @@ async def on_message(message: Message):
         channel_images[chan_id].append(image_prompt)
         
         try:
-            image_bytes = await generate_image(
-                image_prompt,
-                diagram=is_diagram
-            )
+            image_bytes = await generate_image(image_prompt)
 
             MAX_BYTES = 5_000_000
             if len(image_bytes) > MAX_BYTES:
