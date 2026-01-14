@@ -49,6 +49,7 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           HUGGINGFACE_API_KEY_IMAGE_GEN: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
+          STABLE_HORDE_API_KEY: ${{ secrets.STABLE_HORDE_API_KEY }}
         run: |
           python -u groq_bot.py
 
