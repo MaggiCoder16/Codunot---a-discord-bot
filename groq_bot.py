@@ -993,7 +993,6 @@ async def on_message(message: Message):
 
     # ---------------- IMAGE OR TEXT ----------------
 
-    # HARD STOP: only one image generation per message
     if message.id in processed_image_messages:
         return
 
@@ -1004,7 +1003,6 @@ async def on_message(message: Message):
     if visual_type in ["diagram", "fun"]:
         await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
 
-        # Check if user wants Codunot itself
         if await is_codunot_self_image(content):
             image_prompt = CODUNOT_SELF_IMAGE_PROMPT + " Clean digital art, no humans."
             is_diagram = False
@@ -1018,9 +1016,10 @@ async def on_message(message: Message):
 
         channel_images.setdefault(chan_id, deque(maxlen=3))
         channel_images[chan_id].append(image_prompt)
-        
+
         try:
-            image_bytes = await generate_image(image_prompt)
+            aspect = "1:1" if is_diagram else "16:9"
+            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=20)
 
             MAX_BYTES = 5_000_000
             if len(image_bytes) > MAX_BYTES:
@@ -1042,7 +1041,7 @@ async def on_message(message: Message):
             await send_human_reply(
                 message.channel,
                 "Couldn't generate image right now. Please try again later."
-            )    
+            )
         
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
