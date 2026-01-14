@@ -1,161 +1,106 @@
 import os
-import io
 import base64
 import aiohttp
 import asyncio
-from PIL import Image
-
-# ============================================================
-# CONFIG
-# ============================================================
 
 STABLE_HORDE_API_KEY = os.getenv("STABLE_HORDE_API_KEY", "")
 
-STABLE_HORDE_URL = "https://stablehorde.net/api/v2/generate/async"
-STABLE_HORDE_CHECK_URL = "https://stablehorde.net/api/v2/generate/check"
+SUBMIT_URL = "https://stablehorde.net/api/v2/generate/async"
+CHECK_URL = "https://stablehorde.net/api/v2/generate/check"
 
 # ============================================================
-# PROMPT BUILDER (FOR DIAGRAMS)
+# INTERNAL: submit + wait once
 # ============================================================
 
-def build_diagram_prompt(user_text: str) -> str:
-    return (
-        "Clean educational diagram, flat vector style, "
-        "white background, clear black text labels, arrows, "
-        "simple shapes, top-to-bottom layout, "
-        "no realism, no shadows, no textures.\n\n"
-        f"{user_text}"
-    )
-
-# ============================================================
-# IMAGE GENERATOR (JUGGERNAUT XL)
-# ============================================================
-
-async def generate_image_horde(
-    prompt: str,
-    *,
-    diagram: bool = False,
-    timeout: int = 180
-) -> bytes | None:
-    """
-    Submits an image job to Stable Horde using Juggernaut XL
-    and waits until it is finished.
-    Returns raw image bytes, or None on failure.
-    """
-
-    if diagram:
-        prompt = build_diagram_prompt(prompt)
-
-    headers = {
-        "Content-Type": "application/json"
-    }
-
+async def _generate_once(prompt: str, timeout: int) -> bytes | None:
+    headers = {"Content-Type": "application/json"}
     if STABLE_HORDE_API_KEY:
         headers["apikey"] = STABLE_HORDE_API_KEY
 
     payload = {
         "prompt": prompt,
         "params": {
-            "steps": 30,
-            "width": 1024,
-            "height": 1024,
-            "cfg_scale": 6,
+            "steps": 20,
+            "width": 512,
+            "height": 512,
+            "cfg_scale": 7,
             "sampler_name": "k_euler"
         },
-        "models": [
-            "Juggernaut XL"
-        ],
+        "models": ["stable_diffusion"],  # SD 1.5 ONLY
         "nsfw": False,
         "shared": True,
         "trusted_workers": False,
         "slow_workers": True
     }
 
-    print("[Stable Horde] Submitting job...")
-    print("[Stable Horde] Prompt:", prompt)
-
     async with aiohttp.ClientSession() as session:
+        # ---------------- submit ----------------
+        async with session.post(SUBMIT_URL, json=payload, headers=headers) as resp:
+            if resp.status not in (200, 202):
+                print("[Horde ERROR] submit failed:", resp.status)
+                return None
 
-        # ----------------------------------------------------
-        # Submit job
-        # ----------------------------------------------------
-        try:
-            async with session.post(
-                STABLE_HORDE_URL,
-                json=payload,
-                headers=headers,
-                timeout=30
-            ) as resp:
+            data = await resp.json()
+            job_id = data.get("id")
+            if not job_id:
+                print("[Horde ERROR] no job id")
+                return None
 
-                text = await resp.text()
+            print("[Stable Horde] Job submitted:", job_id)
 
-                if resp.status not in (200, 202):
-                    print(f"[Stable Horde ERROR] Submission failed ({resp.status}): {text}")
-                    return None
-
-                data = await resp.json()
-                job_id = data.get("id")
-
-                if not job_id:
-                    print("[Stable Horde ERROR] No job ID returned:", data)
-                    return None
-
-                print("[Stable Horde] Job submitted successfully! ID:", job_id)
-
-        except Exception as e:
-            print("[Stable Horde ERROR] Job submission exception:", e)
-            return None
-
-        # ----------------------------------------------------
-        # Poll until finished
-        # ----------------------------------------------------
-        start_time = asyncio.get_event_loop().time()
+        # ---------------- poll ----------------
+        start = asyncio.get_event_loop().time()
 
         while True:
             await asyncio.sleep(3)
 
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > timeout:
-                print(f"[Stable Horde ERROR] Timeout after {timeout}s waiting for job {job_id}")
+            if asyncio.get_event_loop().time() - start > timeout:
+                print("[Horde ERROR] timeout")
                 return None
 
-            try:
-                async with session.get(
-                    f"{STABLE_HORDE_CHECK_URL}/{job_id}",
-                    headers=headers,
-                    timeout=30
-                ) as check_resp:
+            async with session.get(f"{CHECK_URL}/{job_id}", headers=headers) as resp:
+                if resp.status != 200:
+                    continue
 
-                    if check_resp.status != 200:
-                        print(f"[Stable Horde] Waiting... HTTP {check_resp.status}")
-                        continue
+                data = await resp.json()
 
-                    check_data = await check_resp.json()
+                print(
+                    "[Stable Horde]",
+                    "waiting:", data.get("waiting"),
+                    "queue:", data.get("queue_position")
+                )
 
-                    # Debug info (very useful)
-                    print(
-                        "[Stable Horde]",
-                        "waiting:", check_data.get("waiting"),
-                        "queue:", check_data.get("queue_position")
-                    )
+                if not data.get("done"):
+                    continue
 
-                    if not check_data.get("done", False):
-                        print(f"[Stable Horde] Job {job_id} still running...")
-                        continue
+                gens = data.get("generations", [])
+                if not gens:
+                    print("[Horde ERROR] worker failed (no image)")
+                    return None
 
-                    generations = check_data.get("generations", [])
-                    if not generations:
-                        print("[Stable Horde ERROR] Job finished but no generations returned")
-                        return None
+                img_b64 = gens[0].get("img")
+                if not img_b64:
+                    print("[Horde ERROR] empty image")
+                    return None
 
-                    img_b64 = generations[0].get("img")
-                    if not img_b64:
-                        print("[Stable Horde ERROR] Generation missing image data")
-                        return None
+                print("[Stable Horde] Image generated")
+                return base64.b64decode(img_b64)
 
-                    print("[Stable Horde] Image generated successfully!")
-                    return base64.b64decode(img_b64)
+# ============================================================
+# PUBLIC FUNCTION (RETRY WRAPPER)
+# ============================================================
 
-            except Exception as e:
-                print("[Stable Horde ERROR] Polling exception:", e)
-                continue
+async def generate_image_horde(prompt: str) -> bytes | None:
+    """
+    Fastest + most reliable FREE Stable Horde image generation.
+    Retries once if a worker fails.
+    """
+
+    for attempt in range(2):
+        print(f"[Stable Horde] Attempt {attempt + 1}")
+        image = await _generate_once(prompt, timeout=90)
+        if image:
+            return image
+
+    print("[Stable Horde] All attempts failed")
+    return None
