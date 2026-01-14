@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import maybe_typo
-from huggingface_image_client import generate_image_hf as generate_image
-from huggingface_image_client import build_diagram_prompt
+from stable_horde_image_client import generate_image_horde as generate_image
+from stable_horde_image_client import build_diagram_prompt
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
@@ -642,27 +642,31 @@ async def handle_file_message(message, mode):
 
 async def decide_visual_type(user_text: str) -> str:
     """
-    Returns:
-    - 'diagram' → for educational diagrams, charts, graphs, flowcharts
-    - 'fun' → for normal images
-    - 'text' → for normal chat
-    """
+    Classifies user message into:
+    - 'diagram' → educational image / chart / flowchart
+    - 'fun' → normal image / artistic / meme
+    - 'text' → everything else
 
+    Rule: Only classify as 'diagram' or 'fun' if the user explicitly
+    mentions words like 'image', 'generate', 'picture', 'draw', etc.
+    Otherwise, always return 'text'.
+    """
     user_text_lower = user_text.lower()
     
+    # Quick hardcoded check for memes
     if "meme" in user_text_lower:
         return "text"
     
     prompt = (
         "You are a strict classifier.\n\n"
-        "Reply ONLY with:\n"
-        "- diagram → if the user wants a diagram, chart, graph, flowchart, illustration, "
-        "visual explanation, labeled picture, or says 'diagram' or 'image'. Basically, an image for education purposes.\n"
-        "- fun → if the user wants a normal image (meme, photo, artistic image). Basically, for normal talks, fun.\n"
-        "- text → otherwise. The AI will reply in text.\n\n"
-        "Consider maths questions as text, like 20x20 = 400, not pixels (20x20)\n"
-        "Memes go in text. If the user asks for a meme, return TEXT\n"
-        "ONE WORD ONLY.\n\n"
+        "Classify the user's message as ONE of the following:\n"
+        "- diagram → if the user explicitly wants an educational diagram, chart, graph, flowchart, or labeled illustration.\n"
+        "- fun → if the user explicitly wants a normal image, artistic image, or picture.\n"
+        "- text → otherwise. Everything else should be text.\n\n"
+        "CRITICAL RULE: Only classify as 'diagram' or 'fun' if the user message specifically contains words like "
+        "'image', 'generate', 'picture', 'draw', or anything similar indicating they want an image.\n"
+        "Do not classify as diagram or fun just because the message sounds like a description.\n"
+        "Return ONE WORD ONLY: diagram, fun, or text.\n\n"
         f"User message:\n{user_text}"
     )
 
