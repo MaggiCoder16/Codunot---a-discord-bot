@@ -1,8 +1,6 @@
 import os
-import io
 import asyncio
 import replicate
-import requests
 
 # ============================================================
 # CONFIG
@@ -12,11 +10,11 @@ REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
 if not REPLICATE_API_TOKEN:
     raise RuntimeError("REPLICATE_API_TOKEN not set")
 
-# Replicate uses env var automatically
-print("🔥 USING REPLICATE Imagen 4 via replicate.run 🔥")
+# Replicate reads token automatically from env
+print("🔥 USING REPLICATE Imagen 4 (google/imagen-4) 🔥")
 
 # ============================================================
-# DIAGRAM PROMPT HELPER
+# DIAGRAM PROMPT HELPER (USED BY groq_bot.py)
 # ============================================================
 
 def build_diagram_prompt(user_text: str) -> str:
@@ -27,14 +25,16 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# IMAGE GENERATION
+# IMAGE GENERATION (PUBLIC API)
 # ============================================================
 
-async def generate_image(prompt: str, is_diagram: bool = False) -> bytes:
-    loop = asyncio.get_event_loop()
+async def generate_image(prompt: str) -> bytes:
+    """
+    Generates an image using Google Imagen 4 via Replicate.
+    Returns raw PNG bytes.
+    """
 
-    if is_diagram:
-        prompt = build_diagram_prompt(prompt)
+    loop = asyncio.get_event_loop()
 
     def sync_call():
         try:
@@ -42,7 +42,7 @@ async def generate_image(prompt: str, is_diagram: bool = False) -> bytes:
                 "google/imagen-4",
                 input={
                     "prompt": prompt,
-                    "aspect_ratio": "1:1",
+                    "aspect_ratio": "1:1",  # safe default for Discord
                     "output_format": "png",
                     "safety_filter_level": "block_medium_and_above"
                 }
