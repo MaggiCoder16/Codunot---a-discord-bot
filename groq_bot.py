@@ -1040,13 +1040,12 @@ async def on_message(message: Message):
             file = discord.File(io.BytesIO(image_bytes), filename="image.png")
             await message.channel.send(file=file)
 
-        except Exception:
+        except Exception as e:
+            print("[Codunot ERROR]", e)
             await send_human_reply(
                 message.channel,
                 "Couldn't generate image right now. Please try again later."
-            )
-
-        return
+            )    
         
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
