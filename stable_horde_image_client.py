@@ -26,12 +26,13 @@ def build_diagram_prompt(user_text: str) -> str:
     )
 
 # ============================================================
-# PUBLIC IMAGE GENERATOR
+# PUBLIC IMAGE GENERATOR (DEBUG-READY)
 # ============================================================
 async def generate_image_horde(prompt: str, *, diagram: bool = False) -> bytes:
     """
     Generate an image using Stable Horde.
     Returns raw PNG bytes.
+    Logs request, response, and errors for debugging.
     """
     if diagram:
         prompt = build_diagram_prompt(prompt)
@@ -52,16 +53,41 @@ async def generate_image_horde(prompt: str, *, diagram: bool = False) -> bytes:
         "nsfw": False
     }
 
+    # --- Log payload ---
+    print("[Stable Horde] Sending payload:", payload)
+
     async with aiohttp.ClientSession() as session:
-        async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=120) as resp:
-            if resp.status != 200:
+        try:
+            async with session.post(STABLE_HORDE_URL, json=payload, headers=headers, timeout=120) as resp:
                 text = await resp.text()
-                raise RuntimeError(f"[Stable Horde] Failed with status {resp.status}: {text}")
-            data = await resp.json()
+                if resp.status != 200:
+                    print(f"[Stable Horde ERROR] Status {resp.status}: {text}")
+                    raise RuntimeError(f"[Stable Horde] Failed with status {resp.status}: {text}")
+
+                # Try parsing JSON
+                try:
+                    data = await resp.json()
+                except Exception as e:
+                    print("[Stable Horde ERROR] Failed to parse JSON:", e, "Response text:", text)
+                    raise
+
+                # --- Log raw response ---
+                print("[Stable Horde] Raw response:", data)
+
+        except Exception as e:
+            print("[Stable Horde ERROR] Request failed:", e)
+            raise
 
     # Extract and decode image
     try:
         img_b64 = data["generations"][0]["img"]
+        if not img_b64:
+            print("[Stable Horde ERROR] 'img' field empty in response:", data)
+            raise RuntimeError("[Stable Horde] Image field is empty")
+
+        print("[Stable Horde] Image generated successfully")
         return base64.b64decode(img_b64)
-    except (KeyError, IndexError):
+
+    except (KeyError, IndexError) as e:
+        print(f"[Stable Horde ERROR] {e} - full response: {data}")
         raise RuntimeError("[Stable Horde] No image returned from API")
