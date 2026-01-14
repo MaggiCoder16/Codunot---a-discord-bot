@@ -2,6 +2,7 @@ import aiohttp
 import io
 import base64
 import os
+from PIL import Image
 
 STABLE_HORDE_URL = "https://stablehorde.net/api/v2/generate/text2img"
 STABLE_HORDE_API_KEY = os.getenv("STABLE_HORDE_API_KEY", "")
@@ -9,13 +10,7 @@ STABLE_HORDE_API_KEY = os.getenv("STABLE_HORDE_API_KEY", "")
 async def generate_image_horde(prompt: str, *, diagram: bool = False) -> bytes:
     """
     Generate an image using Stable Horde (free).
-    
-    Args:
-        prompt (str): The text prompt for image generation.
-        diagram (bool): If True, modifies the prompt to create a clean educational diagram.
-
-    Returns:
-        bytes: PNG image bytes.
+    Returns raw PNG bytes.
     """
     # Optional diagram style
     if diagram:
