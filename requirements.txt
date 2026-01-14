@@ -12,3 +12,5 @@ pdfplumber
 pdf2image
 python-docx
 huggingface_hub>=0.15.1
+replicate
+requests
