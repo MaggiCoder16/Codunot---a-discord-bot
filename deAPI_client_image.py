@@ -4,6 +4,7 @@ import aiohttp
 import io
 import re
 import random
+import base64  # <- needed for decoding
 
 # ============================================================
 # CONFIG
@@ -50,6 +51,7 @@ async def generate_image(
     """
 
     prompt = clean_prompt(prompt)
+    steps = min(steps, 10)  # cap at 10 to satisfy API
 
     width = height = DEFAULT_WIDTH
     if aspect_ratio == "16:9":
@@ -60,7 +62,6 @@ async def generate_image(
         width, height = 384, 768
 
     async with aiohttp.ClientSession() as session:
-        # 1️⃣ Send generation request
         payload = {
             "model": MODEL_NAME,
             "prompt": prompt,
@@ -68,7 +69,7 @@ async def generate_image(
             "height": height,
             "steps": steps,
             "negative_prompt": "",
-            "seed": random.randint(1, 2**32 - 1)  # let deAPI generate a random seed
+            "seed": random.randint(1, 2**32 - 1)  # required by deAPI
         }
         headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
 
@@ -87,8 +88,8 @@ async def generate_image(
         if not request_id:
             raise RuntimeError(f"deAPI did not return a request_id: {data}")
 
-        # 2️⃣ Poll for the result
-        for _ in range(60):  # wait max ~30s (0.5s interval)
+        # Polling for result
+        for _ in range(60):  # max ~30s (0.5s interval)
             async with session.get(
                 f"https://api.deapi.ai/api/v1/client/txt2img/{request_id}",
                 headers=headers
