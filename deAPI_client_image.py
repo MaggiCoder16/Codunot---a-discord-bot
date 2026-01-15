@@ -14,7 +14,7 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-MODEL_NAME = "Flux1schnell"  # Make sure this matches your deAPI account
+MODEL_NAME = "Flux1schnell"
 print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
 
 # ============================================================
