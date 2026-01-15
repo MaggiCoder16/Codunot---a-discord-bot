@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 import io
 import re
+import random
 
 # ============================================================
 # CONFIG
@@ -67,7 +68,7 @@ async def generate_image(
             "height": height,
             "steps": steps,
             "negative_prompt": "",
-            "seed": None  # let deAPI generate a random seed
+            "seed": random.randint(1, 2**32 - 1)  # let deAPI generate a random seed
         }
         headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
 
