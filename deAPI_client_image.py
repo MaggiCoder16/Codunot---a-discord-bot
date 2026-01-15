@@ -5,6 +5,7 @@ import io
 import re
 import random
 import base64
+from typing import Optional
 
 # ============================================================
 # CONFIG
@@ -14,14 +15,18 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-MODEL_NAME = "Flux1schnell"  # slug from deAPI
+MODEL_NAME = "Flux1schnell"
+
 DEFAULT_STEPS = 4
-MAX_STEPS = 10  # hard limit enforced by deAPI
+MAX_STEPS = 10
+
 DEFAULT_WIDTH = 768
 DEFAULT_HEIGHT = 768
 
 TXT2IMG_URL = "https://api.deapi.ai/api/v1/client/txt2img"
 POLL_URL = "https://api.deapi.ai/api/v1/client/inference"
+
+MAX_POLL_SECONDS = 120  # hard stop (2 minutes)
 
 # ============================================================
 # PROMPT HELPERS
@@ -56,10 +61,10 @@ async def generate_image(
 
     prompt = clean_prompt(prompt)
 
-    # Enforce step limit (CRITICAL)
+    # ---- SAFETY: ENFORCE STEP LIMIT ----
     steps = min(int(steps), MAX_STEPS)
 
-    # Determine width/height
+    # ---- RESOLUTION ----
     width = height = DEFAULT_WIDTH
     if aspect_ratio == "16:9":
         width, height = 768, 432
@@ -84,14 +89,16 @@ async def generate_image(
     }
 
     async with aiohttp.ClientSession() as session:
-        # ---------------- SEND REQUEST ----------------
+        # ====================================================
+        # SEND GENERATION REQUEST
+        # ====================================================
         async with session.post(
             TXT2IMG_URL,
             json=payload,
             headers=headers,
         ) as resp:
+            text = await resp.text()
             if resp.status != 200:
-                text = await resp.text()
                 raise RuntimeError(
                     f"deAPI txt2img failed ({resp.status}): {text}"
                 )
@@ -100,29 +107,40 @@ async def generate_image(
 
         request_id = data.get("data", {}).get("request_id")
         if not request_id:
-            raise RuntimeError(f"No request_id returned: {data}")
+            raise RuntimeError(f"deAPI returned no request_id: {data}")
 
-        # ---------------- POLL RESULT ----------------
-        # 2 minutes max (safe for Flux under load)
-        for _ in range(120):
+        print(f"[deAPI] request_id = {request_id}", flush=True)
+
+        # ====================================================
+        # POLL FOR RESULT
+        # ====================================================
+        waited = 0
+
+        while waited < MAX_POLL_SECONDS:
             async with session.get(
                 f"{POLL_URL}/{request_id}",
                 headers=headers,
             ) as poll_resp:
+                print(f"[deAPI POLL] HTTP {poll_resp.status}", flush=True)
+
                 if poll_resp.status == 404:
+                    print("[deAPI POLL] not ready yet (404)", flush=True)
                     await asyncio.sleep(1)
+                    waited += 1
                     continue
 
                 poll_data = await poll_resp.json()
+                print("[deAPI POLL DATA]", poll_data, flush=True)
+
                 status = poll_data.get("data", {}).get("status")
 
-                # Debug aid (comment out if noisy)
-                # print("[deAPI STATUS]", status)
-
                 if status == "succeeded":
-                    image_base64 = (
-                        poll_data["data"]["result"]["image_base64"]
-                    )
+                    result = poll_data.get("data", {}).get("result", {})
+                    image_base64 = result.get("image_base64")
+                    if not image_base64:
+                        raise RuntimeError(
+                            f"deAPI succeeded but no image returned: {poll_data}"
+                        )
                     return base64.b64decode(image_base64)
 
                 if status == "failed":
@@ -130,7 +148,15 @@ async def generate_image(
                         f"deAPI image generation failed: {poll_data}"
                     )
 
-                # queued / processing / running → keep waiting
-            await asyncio.sleep(1)
+                # queued / processing / running
+                print(f"[deAPI] status = {status}", flush=True)
 
-        raise RuntimeError("deAPI image generation timed out")
+            await asyncio.sleep(1)
+            waited += 1
+
+        # ====================================================
+        # TIMEOUT
+        # ====================================================
+        raise RuntimeError(
+            "deAPI image servers overloaded — job stuck in queue too long"
+        )
