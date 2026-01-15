@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from humanizer import maybe_typo
-from replicate_client_image import generate_image
-from replicate_client_image import build_diagram_prompt
+from deAPI_client_image import generate_image
+from deAPI_client_image import build_diagram_prompt
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
