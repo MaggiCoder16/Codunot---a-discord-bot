@@ -885,7 +885,6 @@ async def on_message(message: Message):
     bot_id = bot.user.id
 
     # Bot only responds in servers when pinged
-
     if not is_dm:
         if bot.user not in message.mentions:
             return
@@ -933,22 +932,34 @@ async def on_message(message: Message):
         return
 
     # ---------------- MODE SWITCHING ----------------
-    if content_lower.startswith("!roastmode"):
-        channel_modes[chan_id] = "roast"
-        memory.save_channel_mode(chan_id, "roast")
-        await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
-        return
-
     if content_lower.startswith("!funmode"):
         channel_modes[chan_id] = "funny"
         memory.save_channel_mode(chan_id, "funny")
-        await send_human_reply(message.channel, "😎 Fun mode activated!")
+        if channel_chess.get(chan_id):
+            channel_chess[chan_id] = False
+            await send_human_reply(message.channel, "😎 Fun mode activated! ♟️ Chess mode ended.")
+        else:
+            await send_human_reply(message.channel, "😎 Fun mode activated!")
         return
 
     if content_lower.startswith("!seriousmode"):
         channel_modes[chan_id] = "serious"
         memory.save_channel_mode(chan_id, "serious")
-        await send_human_reply(message.channel, "🤓 Serious mode ON")
+        if channel_chess.get(chan_id):
+            channel_chess[chan_id] = False
+            await send_human_reply(message.channel, "🤓 Serious mode ON. ♟️ Chess mode ended.")
+        else:
+            await send_human_reply(message.channel, "🤓 Serious mode ON")
+        return
+
+    if content_lower.startswith("!roastmode"):
+        channel_modes[chan_id] = "roast"
+        memory.save_channel_mode(chan_id, "roast")
+        if channel_chess.get(chan_id):
+            channel_chess[chan_id] = False
+            await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED. ♟️ Chess mode ended.")
+        else:
+            await send_human_reply(message.channel, "🔥 ROAST MODE ACTIVATED")
         return
 
     if content_lower.startswith("!chessmode"):
@@ -989,7 +1000,6 @@ async def on_message(message: Message):
             return
 
     # ---------------- IMAGE OR TEXT ----------------
-
     if message.id in processed_image_messages:
         return
 
@@ -1040,7 +1050,7 @@ async def on_message(message: Message):
                 message.channel,
                 "Couldn't generate image right now. Please try again later."
             )
-        
+
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
         board = chess_engine.get_board(chan_id)
