@@ -411,7 +411,7 @@ async def ocr_image(image_bytes: bytes) -> str:
             for word_info in line:
                 text = word_info[1][0]
                 confidence = word_info[1][1]
-                if confidence >= 0.3:  # Wordle letters are small
+                if confidence >= 0.3:
                     lines.append(text)
 
         return "\n".join(lines).strip()
