@@ -1019,7 +1019,7 @@ async def on_message(message: Message):
 
         try:
             aspect = "1:1" if is_diagram else "16:9"
-            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=20)
+            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
 
             MAX_BYTES = 5_000_000
             if len(image_bytes) > MAX_BYTES:
