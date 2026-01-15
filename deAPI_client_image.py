@@ -95,7 +95,8 @@ async def generate_image(
                 "prompt": prompt,
                 "width": width,
                 "height": height,
-                "steps": steps
+                "steps": steps,
+                "negative_prompt": ""
             }
             response = requests.post(url, json=payload, headers=headers)
             response.raise_for_status()
