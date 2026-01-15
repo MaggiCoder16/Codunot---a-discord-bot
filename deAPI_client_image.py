@@ -1,10 +1,8 @@
 import os
+import asyncio
+import aiohttp
 import io
 import re
-import asyncio
-import random
-import requests
-import base64
 
 # ============================================================
 # CONFIG
@@ -14,39 +12,27 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-MODEL_NAME = "Flux1schnell"
-print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
+MODEL_NAME = "Flux1schnell"  # use the slug
+DEFAULT_STEPS = 4
+DEFAULT_WIDTH = 768
+DEFAULT_HEIGHT = 768
 
 # ============================================================
-# DIAGRAM PROMPT HELPER
+# PROMPT HELPERS
 # ============================================================
 
 def build_diagram_prompt(user_text: str) -> str:
-    """
-    Builds a clean diagram-style prompt for educational or fun images.
-    """
     return (
         "Simple clean diagram, flat vector style, white background, "
         "clear labels, arrows, minimal design, educational, no realism.\n\n"
         + user_text
     )
 
-# ============================================================
-# PROMPT CLEANING / FALLBACK
-# ============================================================
-
 def clean_prompt(prompt: str) -> str:
-    """
-    Ensures the prompt is valid: non-empty, no newlines, max 900 chars.
-    If empty, returns a safe default.
-    """
-    if not prompt:
-        prompt = "A simple artistic illustration"
-    prompt = prompt.strip()
-    prompt = re.sub(r'[\r\n]+', ' ', prompt)
-    if len(prompt) > 900:
-        prompt = prompt[:900]
-    return prompt
+    if not prompt or not prompt.strip():
+        return "A clean, simple diagram"  # fallback if empty
+    prompt = re.sub(r'[\r\n]+', ' ', prompt.strip())
+    return prompt[:900]
 
 # ============================================================
 # IMAGE GENERATION
@@ -55,67 +41,64 @@ def clean_prompt(prompt: str) -> str:
 async def generate_image(
     prompt: str,
     aspect_ratio: str = "1:1",
-    steps: int = 4,  # low steps for cheap generation
-    seed: int | None = None
+    steps: int = DEFAULT_STEPS
 ) -> bytes:
     """
-    Generate image using deAPI (Flux.1 schnell or other models).
+    Generate image using deAPI (Flux1schnell or other models).
     Returns raw PNG bytes.
     """
 
     prompt = clean_prompt(prompt)
-    steps = min(steps, 10)  # deAPI max is 10
-    seed = seed or random.randint(0, 2**32 - 1)
 
-    # Width/height rules
-    if MODEL_NAME.lower() == "flux.1 schnell":
-        width = height = 768  # safe, divisible by 8, inside 256–2048
-    else:
-        if aspect_ratio == "16:9":
-            width, height = 768, 432
-        elif aspect_ratio == "9:16":
-            width, height = 432, 768
-        elif aspect_ratio == "1:2":
-            width, height = 384, 768
-        else:
-            width, height = 768, 768
+    width = height = DEFAULT_WIDTH
+    if aspect_ratio == "16:9":
+        width, height = 768, 432
+    elif aspect_ratio == "9:16":
+        width, height = 432, 768
+    elif aspect_ratio == "1:2":
+        width, height = 384, 768
 
-    # Async wrapper for synchronous requests
-    loop = asyncio.get_event_loop()
+    async with aiohttp.ClientSession() as session:
+        # 1️⃣ Send generation request
+        payload = {
+            "model": MODEL_NAME,
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+            "steps": steps,
+            "negative_prompt": "",
+            "seed": None  # let deAPI generate a random seed
+        }
+        headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
 
-    def sync_call():
-        try:
-            url = "https://api.deapi.ai/api/v1/client/txt2img"
-            headers = {
-                "Authorization": f"Bearer {DEAPI_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": MODEL_NAME,
-                "prompt": prompt,
-                "width": width,
-                "height": height,
-                "steps": steps,
-                "seed": seed,
-                "negative_prompt": ""
-            }
-            response = requests.post(url, json=payload, headers=headers)
+        async with session.post(
+            "https://api.deapi.ai/api/v1/client/txt2img",
+            json=payload,
+            headers=headers
+        ) as resp:
+            if resp.status == 422:
+                text = await resp.text()
+                print(f"❌ API validation error: {text}")
+            resp.raise_for_status()
+            data = await resp.json()
 
-            # If API returned JSON, it's likely an error
-            content_type = response.headers.get("Content-Type", "")
-            if "application/json" in content_type:
-                print(f"❌ API returned JSON instead of image: {response.text}")
-                return None
+        request_id = data.get("data", {}).get("request_id")
+        if not request_id:
+            raise RuntimeError(f"deAPI did not return a request_id: {data}")
 
-            response.raise_for_status()
-            return io.BytesIO(response.content).getvalue()
-        except Exception as e:
-            print("[deAPI ERROR]", e)
-            return None
+        # 2️⃣ Poll for the result
+        for _ in range(60):  # wait max ~30s (0.5s interval)
+            async with session.get(
+                f"https://api.deapi.ai/api/v1/client/txt2img/{request_id}",
+                headers=headers
+            ) as poll_resp:
+                poll_data = await poll_resp.json()
+                status = poll_data.get("data", {}).get("status")
+                if status == "succeeded":
+                    image_base64 = poll_data["data"]["result"]["image_base64"]
+                    return io.BytesIO(base64.b64decode(image_base64)).getvalue()
+                elif status == "failed":
+                    raise RuntimeError(f"deAPI image generation failed: {poll_data}")
+            await asyncio.sleep(0.5)
 
-    image_bytes = await loop.run_in_executor(None, sync_call)
-
-    if not image_bytes:
-        raise RuntimeError("deAPI failed to generate image")
-
-    return image_bytes
+        raise RuntimeError("deAPI image generation timed out")
