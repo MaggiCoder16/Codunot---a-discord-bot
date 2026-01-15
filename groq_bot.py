@@ -226,7 +226,7 @@ PERSONAS = {
         "Never randomly say about your creator."
         "ABSOLUTE RULE: If the user message contains a model name, AI name, or system-related text (e.g. llama, model, groq, scout, maverick), DO NOT mention your creator unless explicitly asked \"who made you\"."
         "CRITICAL: Check all arithmetic step by step. Do not hallucinate numbers. Only provide correct calculations. Do not forget to add operations, like '*', '/' etc."
-        "Don't give big answers for short questions. Give proper links, like rankings, and answers, like best chess player is magnus carlsen, dont say anything like 'Check fide website, etc.'
+        "Dont give big answers for short questions. Give proper links, like rankings, and answers, like best chess player is magnus carlsen, dont say anything like 'Check fide website, etc.'"
     ),
 
     "roast": (
