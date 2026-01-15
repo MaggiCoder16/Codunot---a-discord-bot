@@ -4,7 +4,7 @@ import aiohttp
 import io
 import re
 import random
-import base64  # <- needed for decoding
+import base64
 
 # ============================================================
 # CONFIG
@@ -14,7 +14,7 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-MODEL_NAME = "Flux1schnell"  # use the slug
+MODEL_NAME = "Flux1schnell"  # slug from deAPI
 DEFAULT_STEPS = 4
 DEFAULT_WIDTH = 768
 DEFAULT_HEIGHT = 768
@@ -46,13 +46,13 @@ async def generate_image(
     steps: int = DEFAULT_STEPS
 ) -> bytes:
     """
-    Generate image using deAPI (Flux1schnell or other models).
+    Generate image using deAPI (Flux1schnell).
     Returns raw PNG bytes.
     """
 
     prompt = clean_prompt(prompt)
-    steps = min(steps, 10)  # cap at 10 to satisfy API
 
+    # Determine width/height based on aspect ratio
     width = height = DEFAULT_WIDTH
     if aspect_ratio == "16:9":
         width, height = 768, 432
@@ -61,18 +61,19 @@ async def generate_image(
     elif aspect_ratio == "1:2":
         width, height = 384, 768
 
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "model": MODEL_NAME,
-            "prompt": prompt,
-            "width": width,
-            "height": height,
-            "steps": steps,
-            "negative_prompt": "",
-            "seed": random.randint(1, 2**32 - 1)  # required by deAPI
-        }
-        headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
+    headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
+    payload = {
+        "model": MODEL_NAME,
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+        "steps": steps,
+        "negative_prompt": "",
+        "seed": random.randint(1, 2**32 - 1)  # random seed
+    }
 
+    async with aiohttp.ClientSession() as session:
+        # 1️⃣ Send generation request
         async with session.post(
             "https://api.deapi.ai/api/v1/client/txt2img",
             json=payload,
@@ -81,19 +82,22 @@ async def generate_image(
             if resp.status == 422:
                 text = await resp.text()
                 print(f"❌ API validation error: {text}")
-            resp.raise_for_status()
+                resp.raise_for_status()
             data = await resp.json()
 
         request_id = data.get("data", {}).get("request_id")
         if not request_id:
             raise RuntimeError(f"deAPI did not return a request_id: {data}")
 
-        # Polling for result
-        for _ in range(60):  # max ~30s (0.5s interval)
+        # 2️⃣ Poll for result
+        for _ in range(60):  # ~30 seconds max
             async with session.get(
-                f"https://api.deapi.ai/api/v1/client/txt2img/{request_id}",
+                f"https://api.deapi.ai/api/v1/client/inference/{request_id}",
                 headers=headers
             ) as poll_resp:
+                if poll_resp.status == 404:
+                    await asyncio.sleep(0.5)
+                    continue
                 poll_data = await poll_resp.json()
                 status = poll_data.get("data", {}).get("status")
                 if status == "succeeded":
