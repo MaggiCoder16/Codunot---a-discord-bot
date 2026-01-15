@@ -13,7 +13,7 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
-# Use the exact slug of the model your account can access
+# Correct deAPI model slug
 MODEL_NAME = "Flux1schnell"
 print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
 
@@ -40,10 +40,12 @@ def clean_prompt(prompt: str) -> str:
     Ensures the prompt is valid: non-empty, no newlines, max 900 chars.
     If empty, returns a safe default.
     """
-    if not prompt or not prompt.strip():
-        prompt = "Simple diagram, white background"
+    if not prompt:
+        prompt = ""
     prompt = prompt.strip()
     prompt = re.sub(r'[\r\n]+', ' ', prompt)
+    if len(prompt) == 0:
+        prompt = "Simple diagram, white background"  # fallback default
     if len(prompt) > 900:
         prompt = prompt[:900]
     return prompt
@@ -55,33 +57,31 @@ def clean_prompt(prompt: str) -> str:
 async def generate_image(
     prompt: str,
     aspect_ratio: str = "1:1",
-    steps: int = 4,  # default steps low
-    negative_prompt: str = ""
+    steps: int = 4,  # default low steps
+    seed: int = None
 ) -> bytes:
     """
-    Generate image using deAPI (Flux1schnell or other models).
+    Generate image using deAPI (Flux1schnell).
     Returns raw PNG bytes.
     """
 
+    # Ensure prompt is valid
     prompt = clean_prompt(prompt)
 
     # Width/height rules
-    if MODEL_NAME.lower() == "flux1schnell" or MODEL_NAME.lower() == "flux.1 schnell":
-        width = height = 768
-    else:
-        if aspect_ratio == "16:9":
-            width, height = 768, 432
-        elif aspect_ratio == "9:16":
-            width, height = 432, 768
-        elif aspect_ratio == "1:2":
-            width, height = 384, 768
-        else:
-            width, height = 768, 768
+    width = height = 768  # safe default for Flux1schnell
+    if aspect_ratio == "16:9":
+        width, height = 768, 432
+    elif aspect_ratio == "9:16":
+        width, height = 432, 768
+    elif aspect_ratio == "1:2":
+        width, height = 384, 768
 
-    # Generate a random seed for reproducibility
-    seed = random.randint(0, 2**32 - 1)
+    # Ensure seed exists
+    if seed is None:
+        seed = random.randint(0, 2**32 - 1)
 
-    # Async wrapper for synchronous requests
+    # Async wrapper for sync requests
     loop = asyncio.get_event_loop()
 
     def sync_call():
@@ -97,7 +97,7 @@ async def generate_image(
                 "width": width,
                 "height": height,
                 "steps": steps,
-                "negative_prompt": negative_prompt,
+                "negative_prompt": "",
                 "seed": seed
             }
             response = requests.post(url, json=payload, headers=headers)
