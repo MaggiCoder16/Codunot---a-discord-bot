@@ -1,7 +1,8 @@
 import os
 import asyncio
 import requests
-import base64
+import io
+import re
 
 # ============================================================
 # CONFIG
@@ -12,7 +13,6 @@ if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY not set")
 
 MODEL_NAME = "Flux1schnell"
-
 print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
 
 # ============================================================
@@ -20,11 +20,32 @@ print(f"🔥 USING deAPI model {MODEL_NAME} 🔥")
 # ============================================================
 
 def build_diagram_prompt(user_text: str) -> str:
+    """
+    Builds a clean diagram-style prompt for educational or fun images.
+    """
     return (
         "Simple clean diagram, flat vector style, white background, "
         "clear labels, arrows, minimal design, educational, no realism.\n\n"
         + user_text
     )
+
+# ============================================================
+# PROMPT CLEANING
+# ============================================================
+
+def clean_prompt(prompt: str) -> str:
+    """
+    Ensures the prompt is valid: non-empty, no newlines, max 900 chars.
+    """
+    if not prompt:
+        prompt = ""
+    prompt = prompt.strip()
+    prompt = re.sub(r'[\r\n]+', ' ', prompt)
+    if len(prompt) == 0:
+        prompt = "Simple diagram, white background"
+    if len(prompt) > 900:
+        prompt = prompt[:900]
+    return prompt
 
 # ============================================================
 # IMAGE GENERATION (MATCHES groq_bot.py EXACTLY)
@@ -33,27 +54,20 @@ def build_diagram_prompt(user_text: str) -> str:
 async def generate_image(
     prompt: str,
     aspect_ratio: str = "1:1",
-    steps: int = 8  # lower steps by default
+    steps: int = 8  # low steps by default
 ) -> bytes:
     """
     Generate image using deAPI (Flux1schnell or other models).
     Returns raw PNG bytes.
     """
 
-    import os, asyncio, requests, io
+    prompt = clean_prompt(prompt)
 
-    DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
-    if not DEAPI_API_KEY:
-        raise RuntimeError("DEAPI_API_KEY not set")
-
-    # Set model
-    MODEL_NAME = "Flux1schnell"
-
-    # Determine width/height based on model
+    # Width/height rules
     if MODEL_NAME == "Flux1schnell":
         width = height = 768  # safe, divisible by 8, inside 256–2048
     else:
-        # other models (e.g., ZImageTurbo_INT8)
+        # Other models like ZImageTurbo_INT8 can support different aspect ratios
         if aspect_ratio == "16:9":
             width, height = 768, 432
         elif aspect_ratio == "9:16":
@@ -63,13 +77,16 @@ async def generate_image(
         else:
             width, height = 768, 768
 
-    # Async wrapper
+    # Async wrapper for synchronous requests
     loop = asyncio.get_event_loop()
 
     def sync_call():
         try:
             url = "https://api.deapi.ai/api/v1/client/txt2img"
-            headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
+            headers = {
+                "Authorization": f"Bearer {DEAPI_API_KEY}",
+                "Content-Type": "application/json"
+            }
             payload = {
                 "model": MODEL_NAME,
                 "prompt": prompt,
