@@ -399,30 +399,22 @@ async def generate_and_reply(chan_id, message, content, mode):
 async def ocr_image(image_bytes: bytes) -> str:
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img_np = np.array(img)
 
-        result = ocr_engine.predict(np.array(img))
+        result = ocr_engine.ocr(img_np, cls=True)
 
-        if not result or not isinstance(result, list):
+        if not result:
             return ""
 
         lines = []
-
-        for page in result:
-            texts = page.get("rec_texts", [])
-            scores = page.get("rec_scores", [])
-
-            for text, confidence in zip(texts, scores):
-                if confidence is not None and confidence > 0.5:
+        for line in result:
+            for word_info in line:
+                text = word_info[1][0]
+                confidence = word_info[1][1]
+                if confidence >= 0.3:  # Wordle letters are small
                     lines.append(text)
 
-        ocr_text = "\n".join(lines).strip()
-
-        # ---------------- CLEAN OCR TEXT ----------------
-        ocr_text = re.sub(r"[ \t]+", " ", ocr_text)
-        ocr_text = re.sub(r"\n{3,}", "\n\n", ocr_text)
-        ocr_text = re.sub(r"\n\s+\n", "\n\n", ocr_text)
-
-        return ocr_text
+        return "\n".join(lines).strip()
 
     except Exception as e:
         print(f"[OCR ERROR] {e}")
