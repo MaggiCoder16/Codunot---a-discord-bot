@@ -300,6 +300,7 @@ async def handle_roast_mode(chan_id, message, user_message):
     memory.persist()
 
 async def generate_and_reply(chan_id, message, content, mode):
+	image_intent = "NEW"
     guild_id = message.guild.id if message.guild else None
     if guild_id is not None and not await can_send_in_guild(guild_id):
         return
@@ -365,14 +366,13 @@ async def generate_and_reply(chan_id, message, content, mode):
                 memory.persist()
                 return  # STOP — do NOT generate a new image
 
-            if result == "IGNORE":
-                pass  # continue normal text handling
+            elif result == "MODIFY":
+                image_intent = "MODIFY"
 
-            if result == "MODIFY":
-                content = f"Modify the previous image with these changes:\n{content}"
-                # fall through to image generation
+            elif result == "REGENERATE":
+                image_intent = "NEW"
 
-            # REGENERATE → fall through
+            # IGNORE → do nothing
 
         except Exception as e:
             print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
@@ -1021,9 +1021,7 @@ async def on_message(message: Message):
         if await is_codunot_self_image(content):
             image_prompt = CODUNOT_SELF_IMAGE_PROMPT
         else:
-            # Merge new user text with previous prompt if any
-            previous_prompt = channel_images[chan_id][-1] if chan_id in channel_images and channel_images[chan_id] else ""
-            image_prompt = f"{previous_prompt}, {content}" if previous_prompt else content
+ 			image_prompt = content
 
         # Save current prompt for potential refinements
         channel_images.setdefault(chan_id, deque(maxlen=3))
