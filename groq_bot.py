@@ -691,6 +691,7 @@ async def is_codunot_self_image(user_text: str) -> bool:
         "Answer only YES or NO.\n\n"
         "Is the user asking for an image or picture of Codunot itself "
         "(the AI assistant or bot)?\n\n"
+		"Correct for typos or slang, interpret user intent.\n\n"
         f"User message:\n{user_text}"
     )
 
