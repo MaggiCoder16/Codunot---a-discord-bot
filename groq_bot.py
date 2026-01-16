@@ -300,7 +300,7 @@ async def handle_roast_mode(chan_id, message, user_message):
     memory.persist()
 
 async def generate_and_reply(chan_id, message, content, mode):
-	image_intent = "NEW"
+    image_intent = "NEW"
     guild_id = message.guild.id if message.guild else None
     if guild_id is not None and not await can_send_in_guild(guild_id):
         return
