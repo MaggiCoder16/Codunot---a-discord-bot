@@ -1013,7 +1013,7 @@ async def on_message(message: Message):
 
     processed_image_messages.add(message.id)
 
-    visual_type = await decide_visual_type(content)
+    visual_type = await decide_visual_type(content, chan_id)
 
     if visual_type in ["diagram", "fun"]:
         await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
