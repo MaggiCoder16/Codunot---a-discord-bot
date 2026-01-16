@@ -320,61 +320,60 @@ async def generate_and_reply(chan_id, message, content, mode):
         except Exception as e:
             print(f"[LAST IMAGE DETECTION ERROR] {e}")
 
-	# ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
-	if include_last_image:
-		try:
-			# last generated image prompt
-			last_image_prompt = channel_images.get(chan_id, [])[-1]
+    # ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
+    if include_last_image:
+        try:
+            # last generated image prompt
+            last_image_prompt = channel_images.get(chan_id, [])[-1]
 
-			feedback_prompt = (
-				"You are a strict classifier.\n\n"
-				"The assistant previously generated an image.\n\n"
-				"ORIGINAL IMAGE REQUEST:\n"
-				f"{last_image_prompt}\n\n"
-				"USER'S NEW MESSAGE:\n"
-				f"{content}\n\n"
-				"Classify the user's intent as ONE of the following:\n\n"
-				"PRAISE → user likes or compliments the image\n"
-				"MODIFY → user wants changes or refinements to the SAME image\n"
-				"REGENERATE → user wants a completely new image\n"
-				"IGNORE → message is unrelated to the image\n\n"
-				"Reply with ONLY ONE WORD."
-			)
+            feedback_prompt = (
+                "You are a strict classifier.\n\n"
+                "The assistant previously generated an image.\n\n"
+                "ORIGINAL IMAGE REQUEST:\n"
+                f"{last_image_prompt}\n\n"
+                "USER'S NEW MESSAGE:\n"
+                f"{content}\n\n"
+                "Classify the user's intent as ONE of the following:\n\n"
+                "PRAISE → user likes or compliments the image\n"
+                "MODIFY → user wants changes or refinements to the SAME image\n"
+                "REGENERATE → user wants a completely new image\n"
+                "IGNORE → message is unrelated to the image\n\n"
+                "Reply with ONLY ONE WORD."
+            )
 
-			feedback = await call_groq_with_health(
-				feedback_prompt,
-				temperature=0,
-				mode="serious"
-			)
+            feedback = await call_groq_with_health(
+                feedback_prompt,
+                temperature=0,
+                mode="serious"
+            )
 
-			result = feedback.strip().upper()
+            result = feedback.strip().upper()
 
-			if result not in ["PRAISE", "MODIFY", "REGENERATE", "IGNORE"]:
-				result = "IGNORE"
+            if result not in ["PRAISE", "MODIFY", "REGENERATE", "IGNORE"]:
+                result = "IGNORE"
 
-			if result == "PRAISE":
-				reply = "😊 glad you like it!"
-				await send_human_reply(message.channel, reply)
+            if result == "PRAISE":
+                reply = "😊 glad you like it!"
+                await send_human_reply(message.channel, reply)
 
-				channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-				channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-				memory.add_message(chan_id, BOT_NAME, reply)
-				memory.persist()
+                channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+                channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+                memory.add_message(chan_id, BOT_NAME, reply)
+                memory.persist()
+                return  # STOP — do NOT generate a new image
 
-				return  # STOP — do NOT generate a new image
+            if result == "IGNORE":
+                pass  # continue normal text handling
 
-			if result == "IGNORE":
-				pass  # continue normal text handling
+            if result == "MODIFY":
+                content = f"Modify the previous image with these changes:\n{content}"
+                # fall through to image generation
 
-			if result == "MODIFY":
-				content = f"Modify the previous image with these changes:\n{content}"
-				# fall through to image generation
+            # REGENERATE → fall through
 
-			# result == "REGENERATE" → fall through to image generation
-
-		except Exception as e:
-			print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
-
+        except Exception as e:
+            print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
+			
     # ---------------- BUILD PROMPT ----------------
     prompt = build_general_prompt(chan_id, mode, content, include_last_image=include_last_image)
 
