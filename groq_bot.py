@@ -37,7 +37,10 @@ ocr_engine = PaddleOCR(
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
-OWNER_ID = 1220934047794987048
+OWNER_IDS = [
+    1220934047794987048,
+    1443444307670335600
+]
 MAX_MEMORY = 45
 RATE_LIMIT = 900
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
@@ -678,15 +681,19 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
 async def is_codunot_self_image(user_text: str) -> bool:
     prompt = (
         "Answer only YES or NO.\n\n"
-        "Is the user asking for an image or picture of Codunot itself "
-        "(the AI assistant or bot)?\n\n"
-		"Correct for typos or slang, interpret user intent.\n\n"
+        "Determine if the user is explicitly asking for an image of Codunot itself "
+        "(the AI assistant/bot), not any other image or concept.\n"
+        "Do NOT say YES for vague or generic requests such as 'can you generate images?', "
+        "'make a picture', or any request that does not specifically mention Codunot or itself.\n"
+        "Only respond YES if the message clearly mentions Codunot, yourself, or you, "
+        "in combination with words like image, picture, drawing, or avatar.\n"
+        "Otherwise, respond NO.\n\n"
         f"User message:\n{user_text}"
     )
 
     try:
         resp = await call_groq_with_health(prompt, temperature=0)
-        return resp.strip().lower().startswith("y")
+        return resp.strip().lower() == "yes"
     except:
         return False
         
@@ -910,7 +917,7 @@ async def on_message(message: Message):
     mode = channel_modes[chan_id]
 
     # ---------------- OWNER COMMANDS ----------------
-    if message.author.id == OWNER_ID:
+    if message.author.id in OWNER_IDS:
         if content_lower.startswith("!quiet"):
             match = re.search(r"!quiet (\d+)([smhd])", content_lower)
             if match:
