@@ -63,6 +63,7 @@ channel_chess = {}
 channel_images = {}
 channel_memory = {}
 rate_buckets = {}
+channel_last_image_bytes = {}
 
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
@@ -282,6 +283,40 @@ def build_general_prompt(chan_id, mode, message, include_last_image=False):
     persona_text = PERSONAS.get(mode, PERSONAS["funny"])
     return f"{persona_text}\n\nRecent chat:\n{history_text}{last_img_info}\n\nReply as Codunot:"
 
+async def handle_last_generated_image(chan_id, message, content):
+    image_bytes = channel_last_image_bytes.get(chan_id)
+    if not image_bytes:
+        return False
+
+    vision_prompt = (
+        "You are Codunot.\n"
+        "You generated the image shown to the user.\n\n"
+        f"User message:\n{content}\n\n"
+        "Rules:\n"
+        "- NEVER deny generating the image\n"
+        "- If the user dislikes it, apologize briefly and offer to fix or regenerate\n"
+        "- If the user is confused, explain what the image shows\n"
+        "- If the user wants changes, ask what to modify or describe the changes\n"
+        "- Keep replies short and natural\n"
+    )
+
+    try:
+        reply = await call_groq(
+            prompt=vision_prompt,
+            image_bytes=image_bytes,
+            temperature=0.7
+        )
+
+        if reply:
+            await send_human_reply(message.channel, reply)
+            return True
+
+        return False
+
+    except Exception as e:
+        print("[LAST IMAGE HANDLER ERROR]", e)
+        return False
+
 def build_roast_prompt(user_message):
     return PERSONAS["roast"] + f"\nUser message: '{user_message}'\nGenerate ONE savage roast."
 
@@ -305,80 +340,12 @@ async def generate_and_reply(chan_id, message, content, mode):
     if guild_id is not None and not await can_send_in_guild(guild_id):
         return
 
-    # ---------------- AI-DRIVEN LAST IMAGE DETECTION ----------------
-    include_last_image = False
-    if chan_id in channel_images and channel_images[chan_id]:
-        include_last_image = True
-        try:
-            detection_prompt = (
-                "You are a classifier. Detect if the user wants to know about the last image you generated. "
-                "Reply ONLY with 'YES' if they are asking about the last image, otherwise reply 'NO'. "
-                f"User message: '{content}'"
-            )
-            detection = await call_groq_with_health(
-                detection_prompt,
-                temperature=0,
-                mode="serious"
-            )
-            include_last_image = detection.strip().upper() == "YES"
-        except Exception as e:
-            print(f"[LAST IMAGE DETECTION ERROR] {e}")
-
-    # ---------------- AI-DRIVEN IMAGE FEEDBACK ----------------
-    if include_last_image:
-        try:
-            # last generated image prompt
-            last_image_prompt = channel_images.get(chan_id, [])[-1]
-
-            feedback_prompt = (
-                "You are a strict classifier.\n\n"
-                "The assistant previously generated an image.\n\n"
-                "ORIGINAL IMAGE REQUEST:\n"
-                f"{last_image_prompt}\n\n"
-                "USER'S NEW MESSAGE:\n"
-                f"{content}\n\n"
-                "Classify the user's intent as ONE of the following:\n\n"
-                "PRAISE → user likes or compliments the image\n"
-                "MODIFY → user wants changes or refinements to the SAME image\n"
-                "REGENERATE → user wants a completely new image\n"
-                "IGNORE → message is unrelated to the image\n\n"
-                "Reply with ONLY ONE WORD."
-            )
-
-            feedback = await call_groq_with_health(
-                feedback_prompt,
-                temperature=0,
-                mode="serious"
-            )
-
-            result = feedback.strip().upper()
-
-            if result not in ["PRAISE", "MODIFY", "REGENERATE", "IGNORE"]:
-                result = "IGNORE"
-
-            if result == "PRAISE":
-                reply = "😊 glad you like it!"
-                await send_human_reply(message.channel, reply)
-
-                channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-                channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-                memory.add_message(chan_id, BOT_NAME, reply)
-                memory.persist()
-                return  # STOP — do NOT generate a new image
-
-            elif result == "MODIFY":
-                image_intent = "MODIFY"
-
-            elif result == "REGENERATE":
-                image_intent = "NEW"
-
-            # IGNORE → do nothing
-
-        except Exception as e:
-            print(f"[LAST IMAGE FEEDBACK ERROR] {e}")
+    handled = await handle_last_generated_image(chan_id, message, content)
+    if handled:
+        return
 			
     # ---------------- BUILD PROMPT ----------------
-    prompt = build_general_prompt(chan_id, mode, content, include_last_image=include_last_image)
+    prompt = build_general_prompt(chan_id, mode, message, include_last_image=False)
 
     # ---------------- GENERATE RESPONSE ----------------
     try:
@@ -1005,7 +972,7 @@ async def on_message(message: Message):
         if file_reply is not None:
             return
 
-    # ---------------- IMAGE OR TEXT ----------------
+    # ---------------- IMAGE GENERATION ----------------
     if message.id in processed_image_messages:
         return
 
@@ -1024,16 +991,13 @@ async def on_message(message: Message):
         else:
             image_prompt = content
 
-        # Save current prompt for potential refinements
-        channel_images.setdefault(chan_id, deque(maxlen=3))
-        channel_images[chan_id].append(image_prompt)
-
         try:
             # Set fixed aspect ratio
             aspect = "16:9"
 
             # Generate image
             image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
+            channel_last_image_bytes[chan_id] = image_bytes
 
             # Resize if too large
             MAX_BYTES = 5_000_000
@@ -1080,51 +1044,6 @@ async def on_message(message: Message):
             channel_chess[chan_id] = False
             await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
             return
-
-        # ---------------- BUILD IMAGE PROMPT ----------------
-        if await is_codunot_self_image(content):
-            image_prompt = CODUNOT_SELF_IMAGE_PROMPT
-        else:
-            if image_intent == "MODIFY" and chan_id in channel_images and channel_images[chan_id]:
-                image_prompt = f"{channel_images[chan_id][-1]}, {content}"
-            else:
-                image_prompt = content
-
-        # Save current prompt for potential refinements
-        channel_images.setdefault(chan_id, deque(maxlen=3))
-        channel_images[chan_id].append(image_prompt)
-
-        try:
-            # Set fixed aspect ratio
-            aspect = "16:9"
-
-            # Generate image
-            image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
-
-            # Resize if too large
-            MAX_BYTES = 5_000_000
-            if len(image_bytes) > MAX_BYTES:
-                img = Image.open(io.BytesIO(image_bytes))
-                scale = (MAX_BYTES / len(image_bytes)) ** 0.5
-                img = img.resize(
-                    (int(img.width * scale), int(img.height * scale)),
-                    Image.ANTIALIAS
-                )
-                out = io.BytesIO()
-                img.save(out, format="PNG")
-                image_bytes = out.getvalue()
-
-            # Send image
-            file = discord.File(io.BytesIO(image_bytes), filename="image.png")
-            await message.channel.send(file=file)
-            return
-
-        except Exception as e:
-            print("[Codunot ERROR]", e)
-            await send_human_reply(
-                message.channel,
-                "Couldn't generate image right now. Please try again later."
-            )
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
