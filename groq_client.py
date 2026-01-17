@@ -1,4 +1,3 @@
-# deAPI_client_image.py
 import aiohttp
 import os
 import asyncio
