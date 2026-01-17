@@ -22,17 +22,9 @@ from slang_normalizer import apply_slang_map
 import chess
 import aiohttp
 import base64
-from paddleocr import PaddleOCR
-from PIL import Image
 from typing import Optional
 
 load_dotenv()
-
-# ---------------- OCR ENGINE ----------------
-ocr_engine = PaddleOCR(
-    use_textline_orientation=True,
-    lang="en"
-)
 
 # ---------------- CONFIG ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -377,160 +369,57 @@ async def generate_and_reply(chan_id, message, content, mode):
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
 
-# ---------------- IMAGE HANDLING ----------------
-
-async def ocr_image(image_bytes: bytes) -> str:
-    try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        img_np = np.array(img)
-
-        result = ocr_engine.ocr(img_np)
-
-        if not result:
-            return ""
-
-        lines = []
-        for line in result:
-            for word_info in line:
-                text = word_info[1][0]
-                confidence = word_info[1][1]
-                if confidence >= 0.3:
-                    lines.append(text)
-
-        return "\n".join(lines).strip()
-
-    except Exception as e:
-        print(f"[OCR ERROR] {e}")
-        return ""
-        
-IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-
-async def extract_image_bytes(message):
-    async def download(url):
-        try:
-            print(f"[DEBUG] Downloading URL: {url}")
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as resp:
-                    print(f"[DEBUG] HTTP status for {url}: {resp.status}", flush=True)
-                    if resp.status == 200:
-                        ct = resp.headers.get("Content-Type", "")
-                        print(f"[DEBUG] Content-Type: {ct}", flush=True)
-                        if "image" in ct:
-                            data = await resp.read()
-                            print(f"[DEBUG] Downloaded {len(data)} bytes from {url}", flush=True)
-                            return data
-                        else:
-                            print(f"[IMAGE ERROR] URL {url} returned non-image content-type: {ct}", flush=True)
-                    else:
-                        print(f"[IMAGE ERROR] URL {url} returned HTTP {resp.status}", flush=True)
-        except Exception as e:
-            print(f"[IMAGE ERROR] Exception downloading {url}: {e}", flush=True)
-            import traceback; traceback.print_exc()
-        return None
-
-    # 1. Attachments
-    for a in message.attachments:
-        if a.content_type and "image" in a.content_type:
-            try:
-                data = await a.read()
-                print(f"[DEBUG] Read attachment {a.filename} ({len(data)} bytes)", flush=True)
-                return data
-            except Exception as e:
-                print(f"[IMAGE ERROR] Failed to read attachment {a.filename}: {e}", flush=True)
-                import traceback; traceback.print_exc()
-
-    # 2. Embeds (image + thumbnail)
-    for embed in message.embeds:
-        for attr in ["image", "thumbnail"]:
-            img = getattr(embed, attr, None)
-            if img and img.url:
-                data = await download(img.url)
-                if data:
-                    return data
-
-    # 3. URLs in text (any URL)
-    urls = re.findall(r"(https?://\S+)", message.content)
-    for url in urls:
-        data = await download(url)
-        if data:
-            return data
-
-    print("[IMAGE ERROR] No valid image found in message", flush=True)
-    return None
-
 async def handle_image_message(message, mode):
     """
-    Process an image sent by the user and generate a response using the vision model.
-    OCR is optional — vision model can see the image itself.
+    Handles images sent by the user.
+    Sends the image directly to the vision model (Scout) instead of OCR.
+    Returns the model's response as a string, or a fallback message.
     """
-    # Extract bytes
+
+    # Extract image bytes
     image_bytes = await extract_image_bytes(message)
     if not image_bytes:
-        print("[VISION ERROR] No valid image found in message")
+        print("[VISION ERROR] No image found in message")
         return None
 
     channel_id = message.channel.id
-    is_large_image = len(image_bytes) > MAX_IMAGE_BYTES
 
-    # ---------------- IMAGE SIZE GUARD ----------------
-    if is_large_image:
-        print(f"[IMAGE] Large image detected: {len(image_bytes)} bytes")
-        IMAGE_PROCESSING_CHANNELS.add(channel_id)
-        await send_human_reply(message.channel, "Wait a min, pls.")
-
+    # Lock channel for image processing
+    IMAGE_PROCESSING_CHANNELS.add(channel_id)
     try:
-        # 1. OCR (optional, vision model can still see the image)
-        ocr_text = ""
-        try:
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            img_np = np.array(img)
-            ocr_result = ocr_engine.ocr(img_np)  # NEW PaddleOCR syntax
-            if ocr_result:
-                lines = []
-                for line in ocr_result:
-                    for word_info in line:
-                        text = word_info[1][0]
-                        confidence = word_info[1][1]
-                        if confidence >= 0.3:
-                            lines.append(text)
-                ocr_text = "\n".join(lines).strip()
-            print(f"[DEBUG] OCR RESULT: {ocr_text}")
-        except Exception as e:
-            print(f"[OCR WARNING] OCR failed: {e}")
-
-        # 2. Choose persona
+        # ---------------- PROMPT ----------------
         persona = PERSONAS.get(mode, PERSONAS["serious"])
+        prompt = (
+            persona + "\n"
+            "You are Codunot, a helpful assistant. "
+            "The user sent the image attached to this message. "
+            "Explain, describe, or answer based on the image content only. "
+            "Keep replies short, clear, and helpful.\n"
+            "User message (optional context):\n"
+            f"{message.content}\n\n"
+            "Reply concisely as Codunot:"
+        )
 
-        # 3. Build prompt
-        if ocr_text:
-            prompt = (
-                persona + "\nThe user sent an image. OCR detected some text:\n"
-                f"----\n{ocr_text}\n----\n"
-                "Help the user based on both the image and the text above. Keep replies concise."
-            )
-        else:
-            prompt = (
-                persona + "\nThe user sent an image. There is no readable text.\n"
-                "Help the user based ONLY on the image content. Keep replies concise."
-            )
+        print(f"[VISION PROMPT] ({channel_id}) {prompt}")
 
-        # 4. Call vision model directly
-        response = await call_groq(
+        # ---------------- VISION MODEL CALL ----------------
+        from groq_vision_client import call_vision_model  # your vision wrapper
+        response = await call_vision_model(
             prompt=prompt,
-            image_bytes=image_bytes,  # vision model sees the image
-            temperature=0.7,
-            model=SCOUT_MODEL
+            image_bytes=image_bytes,
+            temperature=0.7
         )
 
         if response:
-            print(f"[DEBUG] Vision model returned: {response}")
+            print(f"[VISION MODEL RESPONSE] {response}")
             return response.strip()
 
-        return "I can't see images right now… maybe later?"
+        # Fallback if model fails
+        return "🤔 I can't interpret this image right now, try again later."
 
     except Exception as e:
         print(f"[VISION ERROR] {e}")
-        return "I cannot see images right now… sorry!"
+        return "🤔 Something went wrong while analyzing the image."
 
     finally:
         IMAGE_PROCESSING_CHANNELS.discard(channel_id)
@@ -582,16 +471,6 @@ async def handle_file_message(message, mode):
             except Exception as e:
                 print(f"[PDF ERROR] {e}")
                 text = None
-
-            # OCR fallback
-            if not text or not text.strip():
-                pages = convert_from_bytes(file_bytes)
-                ocr_text = ""
-                for img in pages:
-                    img_bytes = io.BytesIO()
-                    img.save(img_bytes, format="PNG")
-                    ocr_text += await ocr_image(img_bytes.getvalue()) + "\n"
-                text = ocr_text.strip()
 
         elif filename_lower.endswith(".docx"):
             doc = Document(io.BytesIO(file_bytes))
