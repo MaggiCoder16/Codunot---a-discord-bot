@@ -16,7 +16,7 @@ from memory import MemoryManager
 from humanizer import maybe_typo
 from deAPI_client_image import generate_image
 from bot_chess import OnlineChessEngine
-from groq_client import call_groq
+from groq_client import call_groq, call_groq_vision
 from slang_normalizer import apply_slang_map
 
 import chess
@@ -301,10 +301,10 @@ async def handle_last_generated_image(chan_id, message, content):
     )
 
     try:
-        reply = await call_groq(
+        reply = await call_groq_vision(
             prompt=vision_prompt,
             image_bytes=image_bytes,
-            temperature=0.7
+            image_mime="image/png"
         )
 
         if reply:
@@ -504,10 +504,10 @@ async def handle_image_message(message, mode):
                 "As there is no text, tell the user that you are an AI model that can only understand images with text, and you cannot find any text in that image."
             )
 
-        response = await call_groq_with_health(
+        response = await call_groq_vision(
             prompt=prompt,
-            temperature=0.7,
-            mode=mode
+            image_bytes=image_bytes,
+            image_mime="image/png"
         )
 
         if response:
