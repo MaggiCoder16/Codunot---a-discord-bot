@@ -1032,6 +1032,7 @@ async def on_message(message: Message):
             image_prompt = CODUNOT_SELF_IMAGE_PROMPT
         else:
             image_prompt = await boost_image_prompt(content)
+        print(f"[IMAGE PROMPT BOOSTED] ({chan_id}) {image_prompt}")
 
         try:
             # Set fixed aspect ratio
