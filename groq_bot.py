@@ -369,6 +369,42 @@ async def generate_and_reply(chan_id, message, content, mode):
     memory.add_message(chan_id, BOT_NAME, reply)
     memory.persist()
 
+# ---------------- IMAGE EXTRACTION ----------------
+async def extract_image_bytes(message) -> bytes | None:
+    """
+    Extract raw image bytes from a Discord message.
+    Supports attachments and embeds.
+    """
+
+    # Attachments
+    for attachment in message.attachments:
+        if attachment.content_type and attachment.content_type.startswith("image/"):
+            try:
+                return await attachment.read()
+            except Exception as e:
+                print(f"[IMAGE ERROR] Failed to read attachment: {e}")
+                return None
+
+    # Embeds (image previews, link embeds)
+    for embed in message.embeds:
+        url = None
+        if embed.image and embed.image.url:
+            url = embed.image.url
+        elif embed.thumbnail and embed.thumbnail.url:
+            url = embed.thumbnail.url
+
+        if url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            return await resp.read()
+            except Exception as e:
+                print(f"[IMAGE ERROR] Failed to download embed image: {e}")
+                return None
+
+    return None
+
 async def handle_image_message(message, mode):
     """
     Handles images sent by the user.
