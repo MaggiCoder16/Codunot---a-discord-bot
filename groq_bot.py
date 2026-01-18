@@ -418,6 +418,8 @@ async def handle_image_message(message, mode):
         print("[VISION ERROR] No image found in message")
         return None
 
+    channel_last_image_bytes[message.channel.id] = image_bytes
+
     channel_id = message.channel.id
     IMAGE_PROCESSING_CHANNELS.add(channel_id)
 
@@ -628,6 +630,15 @@ async def boost_image_prompt(user_prompt: str) -> str:
 
     # Fallback — NEVER break image generation
     return user_prompt
+
+def build_vision_followup_prompt(message):
+    return (
+        "You are Codunot.\n"
+        "The user is continuing a conversation about the previously shown image.\n"
+        "Answer their message using ONLY what you can see in that image.\n"
+        "If the question is unclear, describe the image briefly.\n\n"
+        f"User message:\n{message.content}"
+    )
         
 # ---------------- CHESS UTILS ----------------
 
@@ -990,6 +1001,21 @@ async def on_message(message: Message):
                 message.channel,
                 "Couldn't generate image right now. Please try again later."
             )
+
+    # ---------------- LAST IMAGE FOLLOW-UP ----------------
+    if (
+        chan_id in channel_last_image_bytes
+        and not message.attachments
+        and not message.embeds
+    ):
+        response = await call_groq(
+            prompt=build_vision_followup_prompt(message),
+            image_bytes=channel_last_image_bytes[chan_id],
+            temperature=0.7
+        )
+        if response:
+            await message.reply(response)
+            return
 
     # ---------------- CHESS MODE ----------------
     if channel_chess.get(chan_id):
