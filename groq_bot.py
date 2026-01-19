@@ -1138,48 +1138,36 @@ async def on_message(message: Message):
     visual_type = await decide_visual_type(content, chan_id)
 
     # Only proceed if AI thinks it's an image request
-    if visual_type == "fun":
-        await send_human_reply(message.channel, "🖼️ Generating image... please wait for some time.")
+if visual_type == "fun":
+        await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
 
         chan_id_str = str(message.channel.id)
 
-    # Daily limit
-    if not check_limit(chan_id_str, "images"):
-        await deny_limit(message, "images")
-        return
+        # Daily limit
+        if not check_limit(chan_id_str, "images"):
+            await deny_limit(message, "images")
+            return
 
-    # Daily limit
-    if not check_limit(chan_id_str, "images"):
-        await deny_limit(message, "images")
-        return
+        # Total lifetime limit
+        if not check_total_limit(chan_id_str, "images"):
+            await message.reply(
+                "🚫 You've hit your **total image generation limit**.\n"
+                "Contact aarav_2022 for an upgrade."
+            )
+            return
 
-    # Total lifetime limit
-    if not check_total_limit(chan_id_str, "images"):
-        await message.reply(
-            "🚫 You've hit your **total image generation limit**.\n"
-            "Contact aarav_2022 for an upgrade."
-        )
-        return
-
-    # After generating + sending image
-    consume(chan_id_str, "images")       # daily
-    consume_total(chan_id_str, "images") # total
-    save_usage()  # persist counts
-
-        # Handle Codunot self-image request
+        # Decide prompt
         if await is_codunot_self_image(content):
             image_prompt = CODUNOT_SELF_IMAGE_PROMPT
         else:
             image_prompt = await boost_image_prompt(content)
+
         print(f"[IMAGE PROMPT BOOSTED] ({chan_id}) {image_prompt}")
 
         try:
-            # Set fixed aspect ratio
-            aspect = "16:9"
-
             # Generate image
+            aspect = "16:9"
             image_bytes = await generate_image(image_prompt, aspect_ratio=aspect, steps=4)
-            channel_last_image_bytes[chan_id] = image_bytes
 
             # Resize if too large
             MAX_BYTES = 5_000_000
@@ -1194,22 +1182,23 @@ async def on_message(message: Message):
                 img.save(out, format="PNG")
                 image_bytes = out.getvalue()
 
+            # Save last image
             channel_last_image_bytes[chan_id] = image_bytes
-			
+
             # Send image
             file = discord.File(io.BytesIO(image_bytes), filename="image.png")
             await message.channel.send(file=file)
-			
-			consume(chan_id_str, "images")       # daily
+
+            # Update usage counts once
+            consume(chan_id_str, "images")       # daily
             consume_total(chan_id_str, "images") # total
-			save_usage()
-			return
+            save_usage()
 
         except Exception as e:
-            print("[Codunot ERROR]", e)
+            print("[IMAGE GEN ERROR]", e)
             await send_human_reply(
                 message.channel,
-                "Couldn't generate image right now. Please try again later."
+                "🤔 Couldn't generate image right now. Please try again later."
             )
 
     # ---------------- CHESS MODE ----------------
