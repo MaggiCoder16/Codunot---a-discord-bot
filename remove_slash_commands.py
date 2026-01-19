@@ -1,21 +1,17 @@
 import discord
-import asyncio
 import os
+import asyncio
 
-TOKEN = os.getenv("DISCORD_TOKEN")  # from GitHub Secrets
+DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 
-intents = discord.Intents.default()
-bot = discord.Bot(intents=intents)
+bot = discord.Bot()  # Pycord's bot with slash command support
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    print(f"Logged in as {bot.user}!")
+    # Clear all global commands
+    await bot.application_commands.clear()  # <- correct in latest Pycord
+    print("All slash commands removed!")
+    await bot.close()  # Stop the bot after clearing
 
-    # Remove all global slash commands
-    await bot.tree.clear_commands(guild=None)
-    await bot.tree.sync()
-    print("✅ All global slash commands removed")
-
-    await bot.close()
-
-bot.run(TOKEN)
+bot.run(DISCORD_TOKEN)
