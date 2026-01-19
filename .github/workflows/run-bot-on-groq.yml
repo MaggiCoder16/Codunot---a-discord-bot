@@ -37,7 +37,8 @@ jobs:
           sudo apt-get install -y \
             tesseract-ocr \
             libwebp-dev \
-            poppler-utils
+            poppler-utils \
+            python3-pil
 
       - name: Install Python dependencies
         run: |
@@ -53,10 +54,12 @@ jobs:
         run: |
           python -u groq_bot.py
 
-      - name: Persist chat cache
+      - name: Persist total usage
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add chat_cache.json
-          git commit -m "Update chat cache" || echo "No cache changes"
+          git add total_usage.json
+          git commit -m "Update total usage" || echo "No changes to commit"
           git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
