@@ -5,9 +5,9 @@ import aiohttp
 import asyncio
 import random
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING")
 if not DEAPI_API_KEY:
-    raise RuntimeError("DEAPI_API_KEY not set")
+    raise RuntimeError("DEAPI_API_KEY_IMAGE_EDITING not set")
 
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
 
