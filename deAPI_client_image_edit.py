@@ -22,13 +22,12 @@ async def edit_image(
     steps: int = DEFAULT_STEPS,
     seed: int | None = None
 ) -> bytes:
-    """
-    Edit an image using deAPI img2img (Qwen Image Edit Plus 4bit).
-    Returns raw PNG/JPEG bytes.
-    """
 
     steps = min(int(steps), MAX_STEPS)
     seed = seed or random.randint(1, 2**32 - 1)
+
+    # ---------- SANITIZE PROMPT ----------
+    safe_prompt = prompt.replace("\n", " ").replace("\r", " ").strip()
 
     headers = {
         "Authorization": f"Bearer {DEAPI_API_KEY}",
@@ -41,7 +40,7 @@ async def edit_image(
         filename="input.png",
         content_type="image/png"
     )
-    form.add_field("prompt", prompt)
+    form.add_field("prompt", safe_prompt)
     form.add_field("model", MODEL_NAME)
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
