@@ -1183,127 +1183,127 @@ def normalize_move_input(board, text: str):
                 )
                 return
 				
-    # ---------------- CHESS MODE ----------------
-    if channel_chess.get(chan_id):
-        board = chess_engine.get_board(chan_id)
+        # ---------------- CHESS MODE ----------------
+        if channel_chess.get(chan_id):
+            board = chess_engine.get_board(chan_id)
 
-        # -------- GAME OVER --------
-        if board.is_game_over():
-            result = board.result()
-            if result == "1-0":
-                msg = "GG 😎 you won!"
-            elif result == "0-1":
-                msg = "GG 😄 I win!"
-            else:
-                msg = "GG 🤝 it’s a draw!"
+            # -------- GAME OVER --------
+            if board.is_game_over():
+                result = board.result()
+                if result == "1-0":
+                    msg = "GG 😎 you won!"
+                elif result == "0-1":
+                    msg = "GG 😄 I win!"
+                else:
+                    msg = "GG 🤝 it’s a draw!"
 
-            channel_chess[chan_id] = False
-            await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
-            return
+                channel_chess[chan_id] = False
+                await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
+                return
 
-        # -------- RESIGN --------
-        cleaned = clean_chess_input(content, bot.user.id)
-        if cleaned.lower() in ["resign", "i resign", "quit"]:
-            channel_chess[chan_id] = False
+            # -------- RESIGN --------
+            cleaned = clean_chess_input(content, bot.user.id)
+            if cleaned.lower() in ["resign", "i resign", "quit"]:
+                channel_chess[chan_id] = False
+                await send_human_reply(
+                    message.channel,
+                    f"GG 😄 {message.author.display_name} resigned — I win ♟️"
+                )
+                return
+
+            # -------- CHESS CHAT --------
+            if looks_like_chess_chat(cleaned):
+                chess_prompt = (
+                    PERSONAS["funny"]
+                    + "\nYou are a strong chess player helping during a LIVE game.\n"
+                    + "Rules:\n"
+                    + "- Never invent engine lines\n"
+                    + "- Explain ideas, not forced moves\n\n"
+                    + f"Current FEN:\n{board.fen()}\n\n"
+                    + f"User says:\n{cleaned}\n\nReply:"
+                )
+
+                response = await call_groq(
+                    prompt=chess_prompt,
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.6
+                )
+
+                await send_human_reply(message.channel, humanize_and_safeify(response))
+                return
+
+            # -------- PLAYER MOVE --------
+            move_san = normalize_move_input(board, cleaned)
+
+            if not move_san:
+                await send_human_reply(
+                    message.channel,
+                    "🤔 That doesn’t look like a legal move. Try something like `e4` or `Bc4`."
+                )
+                return
+
+            try:
+                player_move = board.parse_san(move_san)
+            except:
+                await send_human_reply(
+                    message.channel,
+                    "⚠️ That move isn’t legal in this position."
+                )
+                return
+
+            board.push(player_move)
+
+            if board.is_checkmate():
+                channel_chess[chan_id] = False
+                await send_human_reply(
+                    message.channel,
+                    f"😮 Checkmate! YOU WIN ({move_san})"
+                )
+                return
+
+            # -------- ENGINE MOVE --------
+            best = chess_engine.get_best_move(chan_id)
+
+            if not best:
+                await send_human_reply(
+                    message.channel,
+                    "⚠️ Engine hiccup — your turn again!"
+                )
+                return
+
+            engine_move = board.parse_uci(best["uci"])
+            board.push(engine_move)
+
             await send_human_reply(
                 message.channel,
-                f"GG 😄 {message.author.display_name} resigned — I win ♟️"
+                f"My move: `{best['san']}`"
             )
+
+            if board.is_checkmate():
+                channel_chess[chan_id] = False
+                await send_human_reply(
+                    message.channel,
+                    f"💀 Checkmate — I win ({best['san']})"
+                )
+
             return
 
-        # -------- CHESS CHAT --------
-        if looks_like_chess_chat(cleaned):
-            chess_prompt = (
-                PERSONAS["funny"]
-                + "\nYou are a strong chess player helping during a LIVE game.\n"
-                + "Rules:\n"
-                + "- Never invent engine lines\n"
-                + "- Explain ideas, not forced moves\n\n"
-                + f"Current FEN:\n{board.fen()}\n\n"
-                + f"User says:\n{cleaned}\n\nReply:"
-            )
-
-            response = await call_groq(
-                prompt=chess_prompt,
-                model="llama-3.3-70b-versatile",
-                temperature=0.6
-            )
-
-            await send_human_reply(message.channel, humanize_and_safeify(response))
+        # ---------------- ROAST MODE ----------------
+        if mode == "roast":
+            await handle_roast_mode(chan_id, message, content)
             return
 
-        # -------- PLAYER MOVE --------
-        move_san = normalize_move_input(board, cleaned)
+        # ---------------- GENERAL CHAT ----------------
 
-        if not move_san:
-            await send_human_reply(
-                message.channel,
-                "🤔 That doesn’t look like a legal move. Try something like `e4` or `Bc4`."
-            )
+        if not check_limit(message, "messages"):
+            await deny_limit(message, "messages")
             return
 
-        try:
-            player_move = board.parse_san(move_san)
-        except:
-            await send_human_reply(
-                message.channel,
-                "⚠️ That move isn’t legal in this position."
-            )
-            return
+        consume(message, "messages")
+        asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
-        board.push(player_move)
-
-        if board.is_checkmate():
-            channel_chess[chan_id] = False
-            await send_human_reply(
-                message.channel,
-                f"😮 Checkmate! YOU WIN ({move_san})"
-            )
-            return
-
-        # -------- ENGINE MOVE --------
-        best = chess_engine.get_best_move(chan_id)
-
-        if not best:
-            await send_human_reply(
-                message.channel,
-                "⚠️ Engine hiccup — your turn again!"
-            )
-            return
-
-        engine_move = board.parse_uci(best["uci"])
-        board.push(engine_move)
-
-        await send_human_reply(
-            message.channel,
-            f"My move: `{best['san']}`"
-        )
-
-        if board.is_checkmate():
-            channel_chess[chan_id] = False
-            await send_human_reply(
-                message.channel,
-                f"💀 Checkmate — I win ({best['san']})"
-            )
-
-        return
-
-    # ---------------- ROAST MODE ----------------
-    if mode == "roast":
-        await handle_roast_mode(chan_id, message, content)
-        return
-
-    # ---------------- GENERAL CHAT ----------------
-
-    if not check_limit(message, "messages"):
-        await deny_limit(message, "messages")
-        return
-
-    consume(message, "messages")
-    asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
-
-    # ---------------- SAVE USER MESSAGE ----------------
-    channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
+        # ---------------- SAVE USER MESSAGE ----------------
+        channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 
 # ---------------- EVENTS ----------------
 @bot.event
