@@ -407,17 +407,17 @@ async def handle_image_message(message, mode):
 
     try:
         persona = PERSONAS.get(mode, PERSONAS["serious"])
-    prompt = (
-        persona + "\n"
-        "You are an image analysis model.\n"
-        "Describe ONLY what is visually present in the image.\n"
-        "Do NOT assume identity, personality, or intent.\n"
-        "Do NOT roleplay or refer to yourself.\n"
-        "If the user asks a question, answer ONLY if it can be answered from the image.\n"
-        "Be factual, concise, and neutral.\n\n"
-        f"User message (for context):\n{message.content}\n\n"
-        "Image description:"
-    )
+        prompt = (
+            persona + "\n"
+            "You are an image analysis model.\n"
+            "Describe ONLY what is visually present in the image.\n"
+            "Do NOT assume identity, personality, or intent.\n"
+            "Do NOT roleplay or refer to yourself.\n"
+            "If the user asks a question, answer ONLY if it can be answered from the image.\n"
+            "Be factual, concise, and neutral.\n\n"
+            f"User message (for context):\n{message.content}\n\n"
+            "Image description:"
+        )
 
         print(f"[VISION PROMPT] ({channel_id}) {prompt}")
 
