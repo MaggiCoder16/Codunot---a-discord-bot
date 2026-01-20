@@ -5,7 +5,7 @@ import aiohttp
 import asyncio
 import random
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING")
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING").strip()
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY_IMAGE_EDITING not set")
 
