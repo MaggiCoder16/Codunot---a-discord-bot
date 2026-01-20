@@ -1041,20 +1041,36 @@ def normalize_move_input(board, text: str):
 
         # ---------- AI IMAGE EDIT / MERGE (counts as image generation) ----------
         if image_bytes_list and content:
-            action = await decide_image_action(content, len(image_bytes_list))
+            # Decide what the user wants
+            try:
+                action = await decide_image_action(content, len(image_bytes_list))
+                print(f"[DEBUG] decide_image_action returned: {action}, images in message: {len(image_bytes_list)}")
+            except Exception as e:
+                print("[DEBUG] decide_image_action failed:", e)
+                action = None
 
+            # ---------- MERGE ----------
             if action == "MERGE" and len(image_bytes_list) >= 2:
+                print("[DEBUG] User requested MERGE")
                 await send_human_reply(message.channel, "🖼️ Merging images...")
 
-                merged_ref = pil_merge_images(image_bytes_list)
+                try:
+                    merged_ref = pil_merge_images(image_bytes_list)
+                    print(f"[DEBUG] Merged image bytes length: {len(merged_ref)}")
+                except Exception as e:
+                    print("[ERROR] pil_merge_images failed:", e)
+                    await send_human_reply(message.channel, "🤔 Couldn't merge the images right now.")
+                    return
 
                 try:
+                    print("[DEBUG] Calling edit_image for merged image")
                     result = await edit_image(
                         image_bytes=merged_ref,
                         prompt=content,
                         steps=15
                     )
-
+                    print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
+                    
                     await message.channel.send(
                         file=discord.File(io.BytesIO(result), filename="merged.png")
                     )
@@ -1063,9 +1079,10 @@ def normalize_move_input(board, text: str):
                     consume(message, "images")
                     consume_total(message, "images")
                     save_usage()
+                    print("[DEBUG] MERGE completed and limits consumed")
 
                 except Exception as e:
-                    print("[IMAGE MERGE ERROR]", e)
+                    print("[ERROR] IMAGE MERGE failed:", e)
                     await send_human_reply(
                         message.channel,
                         "🤔 Couldn't merge the images right now."
@@ -1073,8 +1090,10 @@ def normalize_move_input(board, text: str):
 
                 return
 
+            # ---------- EDIT ----------
             if action == "EDIT":
                 ref_image = image_bytes_list[0]
+                print("[DEBUG] User requested EDIT")
                 await send_human_reply(message.channel, "🎨 Editing image...")
 
                 try:
@@ -1083,7 +1102,8 @@ def normalize_move_input(board, text: str):
                         prompt=content,
                         steps=15
                     )
-
+                    print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
+                    
                     await message.channel.send(
                         file=discord.File(io.BytesIO(result), filename="edited.png")
                     )
@@ -1092,15 +1112,20 @@ def normalize_move_input(board, text: str):
                     consume(message, "images")
                     consume_total(message, "images")
                     save_usage()
+                    print("[DEBUG] EDIT completed and limits consumed")
 
                 except Exception as e:
-                    print("[IMAGE EDIT ERROR]", e)
+                    print("[ERROR] IMAGE EDIT failed:", e)
                     await send_human_reply(
                         message.channel,
                         "🤔 Couldn't edit the image right now."
                     )
 
                 return
+
+            # ---------- ACTION NONE ----------
+            if action not in ("EDIT", "MERGE"):
+                print(f"[DEBUG] No valid action returned by decide_image_action: {action}")
 
         # ---------- SAFE IMAGE CHECK ----------
         has_image = False
