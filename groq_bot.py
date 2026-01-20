@@ -391,6 +391,9 @@ async def handle_image_message(message, mode):
     Returns the model's response as a string, or a fallback message.
     """
 
+    is_dm = isinstance(message.channel, discord.DMChannel)
+    chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
+
     # Extract image bytes
     image_bytes = await extract_image_bytes(message)
     if not image_bytes:
