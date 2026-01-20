@@ -1,15 +1,14 @@
-name: Remove Discord Slash Commands
+name: Remove Discord Global Slash Commands
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 jobs:
-  remove_commands:
+  wipe_commands:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -19,9 +18,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install discord.py==2.3.0
+          pip install requests
 
-      - name: Remove slash commands
+      - name: Delete global slash commands
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
