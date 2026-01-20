@@ -997,22 +997,19 @@ async def on_message(message: Message):
             return
 
     # ---------------- LAST IMAGE FOLLOW-UP ----------------
-    if (
-        chan_id in channel_last_image_bytes
-        and not message.attachments
-        and not message.embeds
-    ):
-        # If user is asking for a NEW image, ignore last image context
+    if chan_id in channel_last_image_bytes:
+        mode = channel_modes.get(chan_id, "funny")  # preserve current mode
+
+        # Ask AI whether the new message is explicitly about the previous image
         visual_check = await decide_visual_type(content, chan_id)
-        if visual_check == "text":
-            response = await call_groq(
-                prompt=build_vision_followup_prompt(message),
-                image_bytes=channel_last_image_bytes[chan_id],
-                temperature=0.7
-            )
-            if response:
-                await message.reply(response)
-                return
+
+        if visual_check == "fun":
+            # User wants a new image → continue to image generation block
+            pass
+        else:
+            # User message is NOT about the image → normal chat
+            await generate_and_reply(chan_id, message, content, mode)
+            return
 
     # ---------------- IMAGE GENERATION ----------------
     if message.id in processed_image_messages:
