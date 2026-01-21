@@ -197,27 +197,20 @@ async def can_send_in_guild(guild_id):
 def pil_merge_images(image_bytes_list):
     images = [Image.open(io.BytesIO(b)).convert("RGBA") for b in image_bytes_list]
 
-    max_h = max(img.height for img in images)
+    widths, heights = zip(*(img.size for img in images))
+    total_width = sum(widths)
+    max_height = max(heights)
 
-    resized = [
-        img.resize(
-            (int(img.width * max_h / img.height), max_h),
-            Image.LANCZOS
-        )
-        for img in images
-    ]
+    merged = Image.new("RGBA", (total_width, max_height))
 
-    total_width = sum(img.width for img in resized)
-    canvas = Image.new("RGBA", (total_width, max_h), (255, 255, 255, 255))
-
-    x = 0
-    for img in resized:
-        canvas.paste(img, (x, 0))
-        x += img.width
+    x_offset = 0
+    for img in images:
+        merged.paste(img, (x_offset, 0))
+        x_offset += img.width
 
     out = io.BytesIO()
-    canvas.save(out, format="PNG")
-    return out.getvalue()
+    merged.save(out, format="PNG")
+    return out.getvalue() 
 
 # ---------------- PERSONAS ----------------
 PERSONAS = {
@@ -379,10 +372,9 @@ async def generate_and_reply(chan_id, message, content, mode):
 async def extract_image_bytes(message) -> bytes | None:
     """
     Extract raw image bytes from a Discord message.
-    Supports attachments and embeds.
+    Supports attachments, embeds, and replies to image messages.
     """
 
-    # Attachments
     for attachment in message.attachments:
         if attachment.content_type and attachment.content_type.startswith("image/"):
             try:
@@ -391,7 +383,6 @@ async def extract_image_bytes(message) -> bytes | None:
                 print(f"[IMAGE ERROR] Failed to read attachment: {e}")
                 return None
 
-    # Embeds (image previews, link embeds)
     for embed in message.embeds:
         url = None
         if embed.image and embed.image.url:
@@ -408,6 +399,47 @@ async def extract_image_bytes(message) -> bytes | None:
             except Exception as e:
                 print(f"[IMAGE ERROR] Failed to download embed image: {e}")
                 return None
+
+    if message.reference:
+        ref = message.reference.resolved
+
+        # If Discord didn't cache it, fetch manually
+        if not ref and message.reference.message_id:
+            try:
+                ref = await message.channel.fetch_message(
+                    message.reference.message_id
+                )
+            except Exception as e:
+                print(f"[IMAGE ERROR] Failed to fetch referenced message: {e}")
+                return None
+
+        if ref:
+            # Attachments in replied message
+            for attachment in ref.attachments:
+                if attachment.content_type and attachment.content_type.startswith("image/"):
+                    try:
+                        return await attachment.read()
+                    except Exception as e:
+                        print(f"[IMAGE ERROR] Failed to read replied attachment: {e}")
+                        return None
+
+            # Embeds in replied message
+            for embed in ref.embeds:
+                url = None
+                if embed.image and embed.image.url:
+                    url = embed.image.url
+                elif embed.thumbnail and embed.thumbnail.url:
+                    url = embed.thumbnail.url
+
+                if url:
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(url) as resp:
+                                if resp.status == 200:
+                                    return await resp.read()
+                    except Exception as e:
+                        print(f"[IMAGE ERROR] Failed to download replied embed image: {e}")
+                        return None
 
     return None
 
