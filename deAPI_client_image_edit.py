@@ -1,5 +1,4 @@
 # deAPI_client_image_edit.py
-
 import os
 import aiohttp
 import asyncio
@@ -19,11 +18,8 @@ DEFAULT_STEPS = 15
 MAX_STEPS = 40
 
 
-async def poll_deapi_result(session, request_id, timeout=60):
-    """
-    Poll DeAPI img2img result endpoint until image is ready.
-    Returns the final PNG bytes.
-    """
+async def poll_deapi_result(session, request_id, timeout=60) -> bytes:
+    """Poll DeAPI until the image is ready."""
     headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
 
     for _ in range(timeout):
@@ -38,14 +34,19 @@ async def poll_deapi_result(session, request_id, timeout=60):
                 await asyncio.sleep(1)
                 continue
 
-            # If DeAPI returns image directly
+            # Correct path for returned image
+            image_b64 = None
             if "image" in data:
-                try:
-                    return base64.b64decode(data["image"])
-                except Exception:
-                    raise RuntimeError(f"Failed to decode base64 image: {data}")
+                image_b64 = data["image"]
+            elif "data" in data and "image" in data["data"]:
+                image_b64 = data["data"]["image"]
 
-            # Check status
+            if image_b64:
+                try:
+                    return base64.b64decode(image_b64)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to decode base64 image: {e}")
+
             status = data.get("data", {}).get("status")
             if status in ("pending", "processing", "queued"):
                 await asyncio.sleep(1)
@@ -65,15 +66,10 @@ async def edit_image(
     steps: int = DEFAULT_STEPS,
     seed: int | None = None
 ) -> bytes:
-    """
-    Sends image + prompt to DeAPI img2img.
-    Returns final PNG bytes.
-    """
+    """Send image + prompt to DeAPI Qwen img2img and return PNG bytes."""
     steps = min(int(steps), MAX_STEPS)
     seed = seed or random.randint(1, 2**32 - 1)
-
     safe_prompt = prompt.replace("\n", " ").replace("\r", " ").strip()
-
     headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
 
     form = aiohttp.FormData()
@@ -85,29 +81,32 @@ async def edit_image(
 
     async with aiohttp.ClientSession() as session:
         async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
-            content_type = resp.headers.get("Content-Type", "")
             body = await resp.read()
+            content_type = resp.headers.get("Content-Type", "")
 
-            # If DeAPI returned an image immediately
+            # If DeAPI returns raw image
             if content_type.startswith("image/"):
                 return body
 
-            # Try parsing JSON
+            # Try JSON
             try:
                 data = await resp.json()
             except Exception:
-                raise RuntimeError(f"Failed to parse JSON response: {body.decode(errors='ignore')}")
+                raise RuntimeError(f"Failed to parse JSON: {body.decode(errors='ignore')}")
 
-            # Direct image in JSON
+            # Check top-level or nested image
+            image_b64 = None
             if "image" in data:
-                try:
-                    return base64.b64decode(data["image"])
-                except Exception:
-                    raise RuntimeError(f"Failed to decode base64 image: {data}")
+                image_b64 = data["image"]
+            elif "data" in data and "image" in data["data"]:
+                image_b64 = data["data"]["image"]
 
-            # Poll if request_id returned
+            if image_b64:
+                return base64.b64decode(image_b64)
+
+            # Poll if request_id exists
             request_id = data.get("data", {}).get("request_id")
             if not request_id:
-                raise RuntimeError(f"DeAPI img2img failed | Content-Type={content_type} | Body={body.decode(errors='ignore')}")
+                raise RuntimeError(f"No image or request_id returned: {data}")
 
             return await poll_deapi_result(session, request_id)
