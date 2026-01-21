@@ -2,56 +2,18 @@
 
 import os
 import aiohttp
-import asyncio
 import random
-import base64
+import io
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING", "").strip()
 if not DEAPI_API_KEY:
     raise RuntimeError("DEAPI_API_KEY_IMAGE_EDITING not set")
 
-# -------- ENDPOINTS --------
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
-IMG2IMG_RESULT_URL = "https://api.deapi.ai/api/v1/client/img2img/result"
 
 MODEL_NAME = "QwenImageEdit_Plus_NF4"
 DEFAULT_STEPS = 15
 MAX_STEPS = 40
-
-
-async def poll_deapi_result(session, request_id, timeout=60):
-    """
-    Poll DeAPI img2img result endpoint until image is ready.
-    """
-    headers = {
-        "Authorization": f"Bearer {DEAPI_API_KEY}",
-    }
-
-    for _ in range(timeout):
-        async with session.get(
-            f"{IMG2IMG_RESULT_URL}/{request_id}",
-            headers=headers
-        ) as resp:
-            if resp.status != 200:
-                await asyncio.sleep(1)
-                continue
-
-            data = await resp.json()
-
-            if "image" in data:
-                return base64.b64decode(data["image"])
-
-            status = data.get("data", {}).get("status")
-            if status in ("pending", "processing", "queued"):
-                await asyncio.sleep(1)
-                continue
-
-            if status == "failed":
-                raise RuntimeError(f"DeAPI img2img failed: {data}")
-
-        await asyncio.sleep(1)
-
-    raise RuntimeError("Timed out waiting for DeAPI image result")
 
 
 async def edit_image(
@@ -62,7 +24,7 @@ async def edit_image(
 ) -> bytes:
     """
     Sends image + prompt to DeAPI img2img.
-    Returns final PNG bytes.
+    Returns RAW PNG/JPEG BYTES.
     """
 
     steps = min(int(steps), MAX_STEPS)
@@ -76,8 +38,8 @@ async def edit_image(
 
     form = aiohttp.FormData()
     form.add_field(
-        "image",
-        image_bytes,
+        name="image",
+        value=io.BytesIO(image_bytes),
         filename="input.png",
         content_type="image/png"
     )
@@ -86,18 +48,16 @@ async def edit_image(
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
+    timeout = aiohttp.ClientTimeout(total=120)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            IMG2IMG_URL,
+            data=form,
+            headers=headers
+        ) as resp:
+
             if resp.status != 200:
                 raise RuntimeError(await resp.text())
 
-            data = await resp.json()
-
-            if "image" in data:
-                return base64.b64decode(data["image"])
-
-            request_id = data.get("data", {}).get("request_id")
-            if not request_id:
-                raise RuntimeError(f"JSON response missing request_id: {data}")
-
-            return await poll_deapi_result(session, request_id)
+            return await resp.read()
