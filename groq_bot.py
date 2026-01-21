@@ -445,7 +445,7 @@ async def extract_image_bytes(message) -> bytes | None:
 
 async def handle_image_message(message, mode):
     """
-    Handles images sent by the user.
+    Handles images sent by the user, including replies.
     Sends the image directly to the Groq vision model.
     Returns the model's response as a string, or a fallback message.
     """
@@ -453,14 +453,14 @@ async def handle_image_message(message, mode):
     is_dm = isinstance(message.channel, discord.DMChannel)
     chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
 
-    # Extract image bytes
+    # --- Extract image bytes using the helper that supports replies ---
     image_bytes = await extract_image_bytes(message)
+
     if not image_bytes:
-        print("[VISION ERROR] No image found in message")
+        print("[VISION ERROR] No image found in message or replied-to message")
         return None
 
     channel_last_image_bytes[chan_id] = image_bytes
-
     channel_id = message.channel.id
     IMAGE_PROCESSING_CHANNELS.add(channel_id)
 
@@ -472,8 +472,7 @@ async def handle_image_message(message, mode):
             "Describe ONLY what is visually present in the image.\n"
             "Do NOT assume identity, personality, or intent.\n"
             "Do NOT roleplay or refer to yourself.\n"
-            "If the user asks a question, answer ONLY if it can be answered from the image.\n"
-            "Be factual, concise, and neutral.\n\n"
+            "If the user asks a question, answer ONLY if it can be answered from the image.\n\n"
             f"User message (for context):\n{message.content}\n\n"
             "Image description:"
         )
@@ -950,27 +949,6 @@ def clean_chess_input(content: str, bot_id: int) -> str:
     content = content.replace(f"<@!{bot_id}>", "")
 
     return content.strip()
-
-def normalize_move_input(board, text: str):
-    move = text.strip()
-
-    if not move:
-        return None
-
-    if move.lower() in ["resign", "i resign", "quit"]:
-        return "resign"
-
-    move = move.replace("0-0-0", "O-O-O").replace("0-0", "O-O")
-
-    # pawn move like e4
-    if len(move) == 2 and move[0].islower() and move[1].isdigit():
-        return move
-
-    # piece move: bc4 → Bc4
-    if move[0].isalpha():
-        return move[0].upper() + move[1:]
-
-    return None
 	
 @bot.event
 async def on_message(message: Message):
