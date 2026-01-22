@@ -194,24 +194,6 @@ async def can_send_in_guild(guild_id):
         return True
     return False
 
-def pil_merge_images(image_bytes_list):
-    images = [Image.open(io.BytesIO(b)).convert("RGBA") for b in image_bytes_list]
-
-    widths, heights = zip(*(img.size for img in images))
-    total_width = sum(widths)
-    max_height = max(heights)
-
-    merged = Image.new("RGBA", (total_width, max_height))
-
-    x_offset = 0
-    for img in images:
-        merged.paste(img, (x_offset, 0))
-        x_offset += img.width
-
-    out = io.BytesIO()
-    merged.save(out, format="PNG")
-    return out.getvalue() 
-
 # ---------------- PERSONAS ----------------
 PERSONAS = {
     "funny": (
@@ -645,30 +627,28 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     result = feedback.strip().lower()
     return "fun" if result == "fun" else "text"
 
-# ---------------- MERGE, EDIT, OR NONE DETECTION ----------------
+# ---------------- EDIT OR TEXT DETECTION ----------------
 
-async def decide_image_action(user_text: str, image_count: int) -> str:
+sync def decide_image_action(user_text: str, image_count: int) -> str:
     """
-    Returns one of: 'MERGE', 'EDIT', 'NO'
+    Returns one of: 'EDIT' or 'NO'
     """
 
     prompt = (
         "You are an intent classifier.\n"
-        "Answer with ONLY ONE WORD: MERGE, EDIT, or NO.\n\n"
+        "Answer with ONLY ONE WORD: EDIT or NO.\n\n"
 
         "Definitions:\n"
-        "- MERGE: combine multiple images or people into ONE image\n"
-        "- EDIT: modify existing image(s) without combining people\n"
+        "- EDIT: modify an existing image\n"
         "- NO: user is not asking for image editing\n\n"
 
         "Examples:\n"
-        "User: 'merge these two' → MERGE\n"
-        "User: 'put us together in a park' → MERGE\n"
         "User: 'change the background' → EDIT\n"
         "User: 'make it anime style' → EDIT\n"
+        "User: 'merge these two' → NO\n"
+        "User: 'put us together' → NO\n"
         "User: 'who is this?' → NO\n\n"
 
-        f"Number of images: {image_count}\n\n"
         f"User message:\n{user_text}\n\n"
         "Answer:"
     )
@@ -680,9 +660,7 @@ async def decide_image_action(user_text: str, image_count: int) -> str:
             temperature=0
         )
         answer = response.strip().upper()
-        if answer in {"MERGE", "EDIT", "NO"}:
-            return answer
-        return "NO"
+        return "EDIT" if answer == "EDIT" else "NO"
     except Exception as e:
         print("[LLAMA IMAGE ACTION ERROR]", e)
         return "NO"
@@ -1048,7 +1026,7 @@ async def on_message(message: Message):
         await send_human_reply(message.channel, "♟️ Chess mode ACTIVATED. You are white, start!")
         return
 
-    # ---------- AI IMAGE EDIT / MERGE (counts as image generation) ----------
+    # ---------- AI IMAGE EDIT (counts as image generation) ----------
     if image_bytes_list and content:
         # Decide what the user wants
         try:
@@ -1057,48 +1035,6 @@ async def on_message(message: Message):
         except Exception as e:
             print("[DEBUG] decide_image_action failed:", e)
             action = None
-
-        # ---------- MERGE ----------
-        if action == "MERGE" and len(image_bytes_list) >= 2:
-            print("[DEBUG] User requested MERGE")
-            await send_human_reply(message.channel, "🖼️ Merging images...")
-
-            try:
-                merged_ref = pil_merge_images(image_bytes_list)
-                print(f"[DEBUG] Merged image bytes length: {len(merged_ref)}")
-            except Exception as e:
-                print("[ERROR] pil_merge_images failed:", e)
-                await send_human_reply(message.channel, "🤔 Couldn't merge the images right now.")
-                return
-
-            try:
-                print("[DEBUG] Calling edit_image for merged image")
-                safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
-                result = await edit_image(
-                    image_bytes=merged_ref,
-                    prompt=safe_prompt,
-                    steps=15
-                )
-                print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
-                
-                await message.channel.send(
-                    file=discord.File(io.BytesIO(result), filename="merged.png")
-                )
-
-                # ---------- Consume limits like normal image generation ----------
-                consume(message, "images")
-                consume_total(message, "images")
-                save_usage()
-                print("[DEBUG] MERGE completed and limits consumed")
-
-            except Exception as e:
-                print("[ERROR] IMAGE MERGE failed:", e)
-                await send_human_reply(
-                    message.channel,
-                    "🤔 Couldn't merge the images right now."
-                )
-
-            return
 
         # ---------- EDIT ----------
         if action == "EDIT":
