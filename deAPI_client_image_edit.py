@@ -16,13 +16,6 @@ DEFAULT_STEPS = 18
 MAX_STEPS = 40
 
 
-async def download_image(session: aiohttp.ClientSession, url: str) -> bytes:
-    async with session.get(url) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f"Failed to download image: {resp.status}")
-        return await resp.read()
-
-
 async def edit_image(
     image_bytes: bytes,
     prompt: str,
@@ -30,6 +23,10 @@ async def edit_image(
     seed: int | None = None,
     strength: float = 0.5,
 ) -> bytes:
+    """
+    Send image + prompt to DeAPI img2img and return raw image bytes.
+    Handles direct image, base64, or async job with result_url.
+    """
     steps = min(int(steps), MAX_STEPS)
     seed = seed or random.randint(1, 2**32 - 1)
     safe_prompt = prompt.replace("\n", " ").replace("\r", " ").strip()
@@ -60,7 +57,7 @@ async def edit_image(
             content_type = resp.headers.get("Content-Type", "")
             body = await resp.read()
 
-            # Direct image
+            # Direct image response
             if content_type.startswith("image/"):
                 return body
 
@@ -84,7 +81,15 @@ async def edit_image(
             raise RuntimeError(f"No image returned by DeAPI: {data}")
 
 
-async def poll_deapi_result(session, request_id, timeout=180) -> bytes:
+async def poll_deapi_result(
+    session: aiohttp.ClientSession,
+    request_id: str,
+    timeout: int = 180
+) -> bytes:
+    """
+    Poll DeAPI request-status endpoint until image is ready.
+    Supports result_url download.
+    """
     headers = {"Authorization": f"Bearer {DEAPI_API_KEY}"}
 
     for attempt in range(timeout):
@@ -104,10 +109,12 @@ async def poll_deapi_result(session, request_id, timeout=180) -> bytes:
             print(f"[DEBUG] Poll attempt {attempt}, status: {status}")
 
             if status == "done":
+                # Base64 result
                 image_b64 = payload.get("result")
                 if image_b64:
                     return base64.b64decode(image_b64)
 
+                # URL result (MOST COMMON)
                 result_url = payload.get("result_url")
                 if result_url:
                     async with session.get(result_url) as img_resp:
@@ -125,10 +132,6 @@ async def poll_deapi_result(session, request_id, timeout=180) -> bytes:
 
             if status == "error":
                 raise RuntimeError(f"DeAPI failed: {payload}")
-
-        await asyncio.sleep(1)
-
-    raise RuntimeError("Timed out waiting for DeAPI image result")
 
         await asyncio.sleep(1)
 
