@@ -3,6 +3,7 @@ import aiohttp
 import random
 import io
 import base64
+import asyncio
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING", "").strip()
 if not DEAPI_API_KEY:
@@ -43,13 +44,15 @@ async def edit_image(
     form.add_field("strength", str(strength))
     form.add_field("return_result_in_response", "true")
 
-    async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=120)
-    ) as session:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
+        # ---------------------------
+        # SUBMIT JOB
+        # ---------------------------
         async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
             body = await resp.read()
             ctype = resp.headers.get("Content-Type", "")
 
+            # If the image comes back immediately
             if ctype.startswith("image/"):
                 return body
 
@@ -65,4 +68,33 @@ async def edit_image(
                         return await img_resp.read()
                     raise RuntimeError("Failed to download result_url image")
 
-            raise RuntimeError(f"No image returned: {data}")
+            request_id = payload.get("request_id")
+            if not request_id:
+                raise RuntimeError(f"No image or request_id returned: {data}")
+
+        # ---------------------------
+        # WAIT 29 SECONDS
+        # ---------------------------
+        await asyncio.sleep(29)
+
+        # ---------------------------
+        # SINGLE STATUS CHECK
+        # ---------------------------
+        async with session.get(f"https://api.deapi.ai/api/v1/client/request-status/{request_id}", headers=headers) as status_resp:
+            status_data = await status_resp.json()
+            status_payload = status_data.get("data", {})
+            status = status_payload.get("status")
+
+            if status == "done":
+                result_url = status_payload.get("result_url")
+                if not result_url:
+                    raise RuntimeError("Edit done but no result_url returned")
+                async with session.get(result_url) as img_resp:
+                    if img_resp.status == 200:
+                        return await img_resp.read()
+                    raise RuntimeError("Failed to download edited image")
+
+            if status == "failed":
+                raise RuntimeError(f"Edit failed: {status_data}")
+
+            raise RuntimeError(f"Edit still processing (status={status}). Try again shortly.")
