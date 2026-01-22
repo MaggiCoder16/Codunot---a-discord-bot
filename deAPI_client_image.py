@@ -87,7 +87,7 @@ async def generate_image(
         # ---------------------------
         # WAIT 10 SECONDS
         # ---------------------------
-        await asyncio.sleep(10)
+        await asyncio.sleep(20)
 
         # ---------------------------
         # SINGLE STATUS CHECK
