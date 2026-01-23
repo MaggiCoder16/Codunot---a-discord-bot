@@ -1,6 +1,7 @@
 import os
 import io
 import asyncio
+import atexit
 import random
 import re
 import numpy as np
