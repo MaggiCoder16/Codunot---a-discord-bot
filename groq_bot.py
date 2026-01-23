@@ -1192,7 +1192,7 @@ async def on_message(message: Message):
 
     # ---------- VIDEO ----------
     if visual_type == "video":
-        await send_human_reply(message.channel, "🎬 Generating video... please wait.")
+        await send_human_reply(message.channel, "🎬 Video queued (may take up to 5 minutes, please wait)")
 
         if not check_limit(message, "images"):  # videos count against image limits
             await deny_limit(message, "images")
