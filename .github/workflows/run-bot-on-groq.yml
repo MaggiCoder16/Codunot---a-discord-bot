@@ -53,27 +53,31 @@ jobs:
           DEAPI_API_KEY: ${{ secrets.DEAPI_API_KEY }}
           DEAPI_API_KEY_IMAGE_EDITING: ${{ secrets.DEAPI_API_KEY_IMAGE_EDITING }}
         run: |
-          python -u groq_bot.py
-          # Ensure JSON gets saved at the end of script
-          python -c "import groq_bot; groq_bot.save_usage()"
+          # Run bot for 3 hours, then exit so data can be committed
+          timeout 3h python -u groq_bot.py || true
+
+      - name: Save usage one last time
+        run: |
+          python - <<EOF
+          import groq_bot
+          groq_bot.save_usage()
+          EOF
 
       - name: Debug JSON files
         run: |
-          echo "Listing files in repo root:"
+          echo "Repo files:"
           ls -lah
-          echo "Showing total_usage.json contents (if it exists):"
-          cat total_usage.json || echo "total_usage.json does not exist"
+          echo "daily_usage.json:"
+          cat daily_usage.json || echo "missing"
+          echo "total_usage.json:"
+          cat total_usage.json || echo "missing"
 
-      - name: Persist total usage
+      - name: Persist usage data
         run: |
-          if [ -f total_usage.json ]; then
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git add total_usage.json
-            git commit -m "Update total usage" || echo "No changes to commit"
-            git push
-          else
-            echo "total_usage.json not found — nothing to commit."
-          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add daily_usage.json total_usage.json
+          git commit -m "Update usage data" || echo "No changes to commit"
+          git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
