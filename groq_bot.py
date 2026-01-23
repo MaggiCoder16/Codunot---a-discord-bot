@@ -1,6 +1,7 @@
 import os
 import io
 import asyncio
+import sys
 import atexit
 import random
 import re
@@ -75,14 +76,15 @@ rate_buckets = {}
 channel_last_image_bytes = {}
 channel_recent_images = set()
 
-# ---------------- OWNER COMMANDS ----------------
+# ---------------- SHUT DOWN THE BOT (OWNER COMMAND) ----------------
+
 @bot.command()
 @commands.is_owner()
 async def shutdown(ctx):
-    await ctx.send("Shutting down...")
-    save_usage()  # save usage before closing
-    await bot.close()
-
+    await ctx.send("Shutting down... 🛑")
+    save_usage()
+    sys.exit(0)
+	
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
 VERSATILE_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # fun/roast
