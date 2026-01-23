@@ -639,6 +639,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- MEMES ALWAYS GO IN TEXT.\n"
         "- If the user asks for an image of something EXTREMELY sexually inappropriate "
         "(e.g. explicit nudity), return TEXT. Kissing and light romance go in FUN.\n\n"
+		"Only prompts with EXTREME SEXUAL CHARACTERISTICS go in text. EXTREMELY. Other sexual habits go in FUN"
         f"Recent conversation context:\n{recent_context}\n\n"
         f"Current user message:\n{user_text}\n\n"
         "Answer:"
