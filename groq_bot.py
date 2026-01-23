@@ -1103,7 +1103,7 @@ async def on_message(message: Message):
                 )
 
             return
-
+			
         # ---------- ACTION NONE ----------
         if action not in ("EDIT", "MERGE"):
             print(f"[DEBUG] No valid action returned by decide_image_action: {action}")
@@ -1211,7 +1211,7 @@ async def on_message(message: Message):
             video_prompt = await boost_image_prompt(content)
 
         try:
-            video_bytes = await text_to_video_512(video_prompt)
+            video_bytes = await text_to_video_512(prompt=video_prompt)
 
             await message.channel.send(
                 file=discord.File(io.BytesIO(video_bytes), filename="video.mp4")
