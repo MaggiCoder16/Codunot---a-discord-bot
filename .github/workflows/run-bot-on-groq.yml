@@ -57,6 +57,7 @@ jobs:
           timeout 3h python -u groq_bot.py || true
 
       - name: Save usage one last time
+        if: always()
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -70,6 +71,7 @@ jobs:
           EOF
 
       - name: Debug JSON files
+        if: always()
         run: |
           echo "Repo files:"
           ls -lah
@@ -79,6 +81,7 @@ jobs:
           cat total_usage.json || echo "missing"
 
       - name: Persist usage data
+        if: always()
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
