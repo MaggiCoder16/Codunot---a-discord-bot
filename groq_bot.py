@@ -755,6 +755,7 @@ async def boost_image_prompt(user_prompt: str) -> str:
 
         if boosted:
             return boosted.strip()
+			print("[BOOSTED PROMPT]", boosted)
 
     except Exception as e:
         print("[PROMPT BOOST ERROR]", e)
