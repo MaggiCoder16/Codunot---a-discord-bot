@@ -1074,7 +1074,7 @@ async def on_message(message: Message):
         if action == "EDIT":
             ref_image = image_bytes_list[0]
             print("[DEBUG] User requested EDIT")
-            await send_human_reply(message.channel, "🎨 Editing image...")
+            await send_human_reply(message.channel, "🎨 Editing image... please wait for one minute.")
 
             try:
                 safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
