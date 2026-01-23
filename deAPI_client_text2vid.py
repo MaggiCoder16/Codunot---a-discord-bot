@@ -8,8 +8,8 @@ DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_TEXT2VID", "").strip()
 BASE_URL = "https://api.deapi.ai/api/v1/client"
 
 TXT2VID_ENDPOINT = f"{BASE_URL}/txt2video"
-RESULT_ENDPOINT = f"{BASE_URL}/results"
 
+RESULT_ENDPOINT = f"{BASE_URL}/request-status"
 
 class Text2VidError(Exception):
     pass
@@ -59,6 +59,7 @@ async def _submit_job(
         print(f"[VIDEO GEN] Submitted | request_id={request_id} | seed={seed}")
         return request_id, seed
 
+
 async def _poll_once(
     session: aiohttp.ClientSession,
     request_id: str,
@@ -75,6 +76,7 @@ async def _poll_once(
         raise Text2VidError(
             f"Unexpected polling status ({resp.status}): {await resp.text()}"
         )
+
 
 async def text_to_video_512(
     *,
@@ -110,7 +112,7 @@ async def text_to_video_512(
             result = await _poll_once(
                 session,
                 request_id=request_id,
-                wait_seconds=180,  # 3 minutes
+                wait_seconds=180,
             )
 
             if result is None:
@@ -118,16 +120,13 @@ async def text_to_video_512(
                 continue
 
             status = result.get("data", {}).get("status")
+            
+            if status == "done":
 
-            if status == "completed":
-                video_url = (
-                    result.get("data", {})
-                    .get("output", {})
-                    .get("video_url")
-                )
+                video_url = result.get("data", {}).get("result_url")
 
                 if not video_url:
-                    raise Text2VidError("Completed but no video_url")
+                    raise Text2VidError("Completed but no result_url")
 
                 async with session.get(video_url) as vresp:
                     if vresp.status != 200:
@@ -136,7 +135,7 @@ async def text_to_video_512(
                     print(f"[VIDEO GEN] Success")
                     return await vresp.read()
 
-            if status in ("failed", "error"):
+            if status == "error":
                 raise Text2VidError(f"Generation failed: {result}")
 
             raise Text2VidError(f"Unexpected status: {status}")
