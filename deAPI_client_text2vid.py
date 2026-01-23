@@ -1,6 +1,7 @@
 import os
 import aiohttp
 import asyncio
+import random
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_TEXT2VID", "").strip()
 BASE_URL = "https://api.deapi.ai/api/v1/client"
@@ -14,18 +15,12 @@ class Text2VidError(Exception):
 async def text_to_video_512(
     *,
     prompt: str,
-    frames: int = 120,  # 4 seconds at 30 fps
+    frames: int = 120,   # 4 seconds at 30 fps
     fps: int = 30,
     model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
     negative_prompt: str | None = None,
-    poll_delay: float = 40.0,  # wait 40s before fetching
+    poll_delay: float = 30.0,  # wait 30s before fetching
 ):
-    """
-    Generate a 512x512 text-to-video clip.
-    Uses DEAPI Ltxv model (1 step, 0 guidance).
-    Returns raw mp4 bytes.
-    """
-
     if not prompt or not prompt.strip():
         raise Text2VidError("Prompt is required")
 
@@ -34,7 +29,8 @@ async def text_to_video_512(
         "Accept": "application/json",
     }
 
-    # ── MULTIPART FORM ───────────
+    seed = random.randint(1, 2**32 - 1)
+
     form = aiohttp.FormData()
     form.add_field("prompt", prompt)
     form.add_field("width", "512")
@@ -44,11 +40,11 @@ async def text_to_video_512(
     form.add_field("frames", str(frames))
     form.add_field("fps", str(fps))
     form.add_field("model", model)
+    form.add_field("seed", str(seed))  # random seed
     if negative_prompt:
         form.add_field("negative_prompt", negative_prompt)
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        # ── SUBMIT JOB ──────────────
         async with session.post(TXT2VID_ENDPOINT, data=form, timeout=aiohttp.ClientTimeout(total=60)) as resp:
             if resp.status != 200:
                 raise Text2VidError(f"txt2video submit failed ({resp.status}): {await resp.text()}")
@@ -57,9 +53,8 @@ async def text_to_video_512(
             request_id = payload.get("data", {}).get("request_id")
             if not request_id:
                 raise Text2VidError("No request_id returned")
-            print(f"[VIDEO GEN] Request submitted. request_id = {request_id}")
+            print(f"[VIDEO GEN] Request submitted. request_id = {request_id}, seed = {seed}")
 
-        # ── WAIT THEN FETCH RESULT ONCE ──────────────
         await asyncio.sleep(poll_delay)
 
         async with session.get(f"{RESULT_ENDPOINT}/{request_id}") as resp:
