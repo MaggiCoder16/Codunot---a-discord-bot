@@ -16,7 +16,7 @@ async def text_to_video_512(
     prompt: str,
     guidance: float = 7.5,
     steps: int = 20,
-    frames: int = 48,
+    frames: int = 120,
     seed: int = 42,
     fps: int = 30,
     model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
