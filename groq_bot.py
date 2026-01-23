@@ -18,6 +18,7 @@ from memory import MemoryManager
 from humanizer import maybe_typo
 from deAPI_client_image import generate_image
 from deAPI_client_image_edit import edit_image
+from deAPI_client_text2vid import text_to_video_512
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
@@ -599,38 +600,54 @@ async def handle_file_message(message, mode):
 
     return "❌ Couldn't process the file."
 
-# ---------------- IMAGE TYPE DETECTION ----------------
+# ---------------- IMAGE / VIDEO TYPE DETECTION ----------------
 
 async def decide_visual_type(user_text: str, chan_id: str) -> str:
     """
-    Determines if the user is explicitly requesting an image (fun/diagram) or just text.
+    Determines if the user is explicitly requesting an image, a video, or just text.
     Includes last 4 messages for context.
     """
+
     recent_messages = channel_memory.get(chan_id, [])
     recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
     prompt = (
-        "You are a very strict intent classifier.\n\n"
-        "Determine if the user is explicitly asking to generate or create an image.\n\n"
+        "You are a VERY strict intent classifier.\n\n"
+        "Determine if the user is explicitly asking to generate a visual output.\n\n"
         "Return ONE WORD ONLY:\n"
-        "- fun → if the user clearly asks to generate or create an image, picture, or visual\n"
-        "- text → everything else (including talking about images, referencing images, or game inputs)\n\n"
-        "IMPORTANT:\n"
-        "- Simply mentioning 'image' or 'picture' is NOT enough.\n"
-        "- Talking about existing images is NOT a generation request.\n"
-        "- Game inputs or guesses are ALWAYS text.\n"
-        "- The user must explicitly ask to generate, create, draw, or produce an image.\n\n"
-		"- MEMES ALWAYS GO IN TEXT."
-		"If the user asks for an image of something EXTREMELY SEXUALLY INAPPROPRIATE, like body without clothes on, return TEXT. Kissing and stuff goes in image."
+        "- fun → if the user clearly asks to generate or create a STATIC image, picture, or visual\n"
+        "- video → if the user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
+        "- text → everything else\n\n"
+        "IMPORTANT RULES:\n"
+        "- The user must EXPLICITLY ask to generate or create the output.\n"
+        "- Simply mentioning images, pictures, or videos is NOT enough.\n"
+        "- Talking about existing images or videos is NOT a generation request.\n"
+        "- Game inputs, guesses, or commands are ALWAYS text.\n"
+        "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
+        "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
+        "- MEMES ALWAYS GO IN TEXT.\n"
+        "- If the user asks for an image of something EXTREMELY sexually inappropriate "
+        "(e.g. explicit nudity), return TEXT. Kissing and light romance go in FUN.\n\n"
         "Recent conversation context:\n"
         f"{recent_context}\n\n"
         "Current user message:\n"
-        f"{user_text}"
+        f"{user_text}\n\n"
+        "Answer:"
     )
 
-    feedback = await call_groq_with_health(prompt, temperature=0, mode="serious")
+    feedback = await call_groq_with_health(
+        prompt,
+        temperature=0,
+        mode="serious"
+    )
+
     result = feedback.strip().lower()
-    return "fun" if result == "fun" else "text"
+
+    if result == "video":
+        return "video"
+    if result == "fun":
+        return "fun"
+    return "text"
 
 # ---------------- EDIT OR TEXT DETECTION ----------------
 
@@ -1111,7 +1128,7 @@ async def on_message(message: Message):
             await generate_and_reply(chan_id, message, content, mode)
             return
 
-    # ---------- IMAGE GENERATION ----------
+    # ---------- VISUAL GENERATION ----------
     if message.id in processed_image_messages:
         return
 
@@ -1119,6 +1136,7 @@ async def on_message(message: Message):
 
     visual_type = await decide_visual_type(content, chan_id)
 
+    # ---------- IMAGE ----------
     if visual_type == "fun":
         await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
 
@@ -1157,6 +1175,46 @@ async def on_message(message: Message):
             await send_human_reply(
                 message.channel,
                 "🤔 Couldn't generate image right now. Please try again later."
+            )
+            return
+
+    # ---------- VIDEO ----------
+    if visual_type == "video":
+        await send_human_reply(message.channel, "🎬 Generating video... please wait.")
+
+        if not check_limit(message, "images"):  # videos count against image limits
+            await deny_limit(message, "images")
+            return
+
+        if not check_total_limit(message, "images"):
+            await message.reply(
+                "🚫 You've hit your **total image generation limit**.\n"
+                "Contact aarav_2022 for an upgrade."
+            )
+            return
+
+        if await is_codunot_self_image(content):
+            video_prompt = CODUNOT_SELF_IMAGE_PROMPT
+        else:
+            video_prompt = await boost_image_prompt(content)
+
+        try:
+            video_bytes = await text_to_video_512(video_prompt)
+
+            await message.channel.send(
+                file=discord.File(io.BytesIO(video_bytes), filename="video.mp4")
+            )
+
+            consume(message, "images")        # same as image
+            consume_total(message, "images")  # same as image
+            save_usage()
+            return
+
+        except Exception as e:
+            print("[VIDEO GEN ERROR]", e)
+            await send_human_reply(
+                message.channel,
+                "🤔 Couldn't generate video right now. Please try again later."
             )
             return
             
