@@ -1,100 +1,159 @@
 import os
 import aiohttp
-import random
-import io
-import base64
 import asyncio
+import random
+from typing import Optional
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING", "").strip()
-if not DEAPI_API_KEY:
-    raise RuntimeError("DEAPI_API_KEY_IMAGE_EDITING not set")
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_TEXT2VID", "").strip()
+BASE_URL = "https://api.deapi.ai/api/v1/client"
 
-IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
-MODEL_NAME = "QwenImageEdit_Plus_NF4"
+TXT2VID_ENDPOINT = f"{BASE_URL}/txt2video"
+RESULT_ENDPOINT = f"{BASE_URL}/results"
 
-DEFAULT_STEPS = 15
-MAX_STEPS = 20
 
-async def edit_image(
-    image_bytes: bytes,
+class Text2VidError(Exception):
+    pass
+
+
+async def _submit_job(
+    session: aiohttp.ClientSession,
+    *,
     prompt: str,
-    steps: int = 15,
-    seed: int | None = None,
-    strength: float = 0.85,
+    guidance: float,
+    steps: int,
+    frames: int,
+    fps: int,
+    model: str,
+    negative_prompt: Optional[str],
+) -> tuple[str, int]:
+
+    seed = random.randint(0, 2**32 - 1)
+
+    form = aiohttp.FormData()
+    form.add_field("prompt", prompt)
+    form.add_field("width", "512")
+    form.add_field("height", "512")
+    form.add_field("guidance", str(guidance))
+    form.add_field("steps", str(steps))
+    form.add_field("frames", str(frames))
+    form.add_field("fps", str(fps))
+    form.add_field("seed", str(seed))
+    form.add_field("model", model)
+
+    if negative_prompt:
+        form.add_field("negative_prompt", negative_prompt)
+
+    async with session.post(
+        TXT2VID_ENDPOINT,
+        data=form,
+        timeout=aiohttp.ClientTimeout(total=60),
+    ) as resp:
+        if resp.status != 200:
+            raise Text2VidError(
+                f"txt2video submit failed ({resp.status}): {await resp.text()}"
+            )
+
+        payload = await resp.json()
+        request_id = payload.get("data", {}).get("request_id")
+
+        if not request_id:
+            raise Text2VidError("No request_id returned from txt2video")
+
+        print(f"[VIDEO GEN] Submitted job | request_id={request_id} | seed={seed}")
+        return request_id, seed
+
+
+async def _poll_result(
+    session: aiohttp.ClientSession,
+    request_id: str,
+    wait_seconds: int,
+) -> Optional[dict]:
+
+    await asyncio.sleep(wait_seconds)
+
+    async with session.get(f"{RESULT_ENDPOINT}/{request_id}") as resp:
+        if resp.status == 200:
+            return await resp.json()
+        if resp.status == 404:
+            return None
+        raise Text2VidError(
+            f"Unexpected status while polling ({resp.status}): {await resp.text()}"
+        )
+
+
+async def text_to_video_512(
+    *,
+    prompt: str,
+    guidance: float = 7.5,
+    steps: int = 20,
+    frames: int = 120,
+    fps: int = 30,
+    model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
+    negative_prompt: Optional[str] = None,
 ) -> bytes:
 
-    seed = seed or random.randint(1, 2**32 - 1)
+    if not DEAPI_API_KEY:
+        raise Text2VidError("DEAPI_API_KEY_TEXT2VID is not set")
+
+    if not prompt or not prompt.strip():
+        raise Text2VidError("Prompt is required")
 
     headers = {
         "Authorization": f"Bearer {DEAPI_API_KEY}",
         "Accept": "application/json",
     }
 
-    form = aiohttp.FormData()
-    form.add_field(
-        "image",
-        io.BytesIO(image_bytes),
-        filename="input.png",
-        content_type="image/png",
-    )
-    form.add_field("prompt", prompt.strip())
-    form.add_field("model", MODEL_NAME)
-    form.add_field("steps", str(steps))
-    form.add_field("seed", str(seed))
-    form.add_field("strength", str(strength))
-    form.add_field("return_result_in_response", "true")
+    async with aiohttp.ClientSession(headers=headers) as session:
+        for attempt in (1, 2):
+            print(f"[VIDEO GEN] Attempt {attempt}/2")
 
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
-        # ---------------------------
-        # SUBMIT JOB
-        # ---------------------------
-        async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
-            body = await resp.read()
-            ctype = resp.headers.get("Content-Type", "")
+            request_id, seed = await _submit_job(
+                session,
+                prompt=prompt,
+                guidance=guidance,
+                steps=steps,
+                frames=frames,
+                fps=fps,
+                model=model,
+                negative_prompt=negative_prompt,
+            )
 
-            # If the image comes back immediately
-            if ctype.startswith("image/"):
-                return body
+            result = await _poll_result(
+                session,
+                request_id=request_id,
+                wait_seconds=180,
+            )
 
-            data = await resp.json()
-            payload = data.get("data", {})
+            if result is None:
+                print(
+                    f"[VIDEO GEN] Result not found (404) | request_id={request_id}"
+                )
+                continue
 
-            if payload.get("image"):
-                return base64.b64decode(payload["image"])
+            status = result.get("data", {}).get("status")
 
-            if payload.get("result_url"):
-                async with session.get(payload["result_url"]) as img_resp:
-                    if img_resp.status == 200:
-                        return await img_resp.read()
-                    raise RuntimeError("Failed to download result_url image")
+            if status == "completed":
+                video_url = (
+                    result.get("data", {})
+                    .get("output", {})
+                    .get("video_url")
+                )
 
-            request_id = payload.get("request_id")
-            if not request_id:
-                raise RuntimeError(f"No image or request_id returned: {data}")
+                if not video_url:
+                    raise Text2VidError("Completed but no video_url")
 
-        # ---------------------------
-        # WAIT 29 SECONDS
-        # ---------------------------
-        await asyncio.sleep(50)
+                async with session.get(video_url) as vresp:
+                    if vresp.status != 200:
+                        raise Text2VidError("Failed to download video")
 
-        # ---------------------------
-        # SINGLE STATUS CHECK
-        # ---------------------------
-        async with session.get(f"https://api.deapi.ai/api/v1/client/request-status/{request_id}", headers=headers) as status_resp:
-            status_data = await status_resp.json()
-            status_payload = status_data.get("data", {})
-            status = status_payload.get("status")
+                    print(f"[VIDEO GEN] Success | request_id={request_id}")
+                    return await vresp.read()
 
-            if status == "done":
-                result_url = status_payload.get("result_url")
-                if not result_url:
-                    raise RuntimeError("Edit done but no result_url returned")
-                async with session.get(result_url) as img_resp:
-                    if img_resp.status == 200:
-                        return await img_resp.read()
-                    raise RuntimeError("Failed to download edited image")
+            if status in ("failed", "error"):
+                raise Text2VidError(f"txt2video failed | payload={result}")
 
-            if status == "failed":
-                raise RuntimeError(f"Edit failed: {status_data}")
+            raise Text2VidError(f"Unexpected status '{status}'")
 
-            raise RuntimeError(f"Edit still processing (status={status}). Try again shortly.")
+        raise Text2VidError(
+            "Video generation failed after 2 attempts (backend timeout)."
+        )
