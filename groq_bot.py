@@ -1,7 +1,6 @@
 import os
 import io
 import asyncio
-import sys
 import atexit
 import random
 import re
@@ -72,20 +71,6 @@ channel_memory = {}
 rate_buckets = {}
 channel_last_image_bytes = {}
 channel_recent_images = set()
-
-# ---------------- SHUT DOWN THE BOT (OWNER COMMAND) ----------------
-
-@bot.command()
-async def shutdown(ctx):
-    chan_id = f"dm_{ctx.author.id}" if isinstance(ctx.channel, discord.DMChannel) else str(ctx.channel.id)
-
-    if ctx.author.id == OWNER_ID:
-        await ctx.send("Shutting down... 😴")
-        await bot.close()
-        return
-
-    mode = channel_modes.get(chan_id, "funny")
-    await generate_and_reply(chan_id, ctx, ctx.message.content, mode)
 	
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
