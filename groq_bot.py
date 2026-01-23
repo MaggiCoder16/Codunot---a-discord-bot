@@ -10,6 +10,7 @@ import urllib.parse
 
 import discord
 from discord import Message
+from discord.ext import commands
 from dotenv import load_dotenv
 
 from memory import MemoryManager
@@ -45,7 +46,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 OWNER_IDS = [
     1220934047794987048,
-    1443444307670335600
+    1405510052424716381
 ]
 MAX_MEMORY = 45
 RATE_LIMIT = 900
@@ -54,7 +55,9 @@ MAX_IMAGE_BYTES = 2_000_000  # 2 MB
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
 intents.message_content = True
-bot = discord.Client(intents=intents)
+
+bot = commands.Bot(command_prefix="!", intents=intents, owner_ids=set(OWNER_IDS))
+
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
 IMAGE_PROCESSING_CHANNELS = set()
@@ -69,7 +72,15 @@ channel_images = {}
 channel_memory = {}
 rate_buckets = {}
 channel_last_image_bytes = {}
-channel_recent_images = {}
+channel_recent_images = set()
+
+# ---------------- OWNER COMMANDS ----------------
+@bot.command()
+@commands.is_owner()
+async def shutdown(ctx):
+    await ctx.send("Shutting down...")
+    save_usage()  # save usage before closing
+    await bot.close()
 
 # ---------------- MODELS ----------------
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # seriousmode
@@ -1293,4 +1304,5 @@ def run():
     bot.run(DISCORD_TOKEN)
 
 if __name__ == "__main__":
+    atexit.register(save_usage)
     run()
