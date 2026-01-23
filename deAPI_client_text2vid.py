@@ -14,20 +14,16 @@ class Text2VidError(Exception):
 async def text_to_video_512(
     *,
     prompt: str,
-    guidance: int = 0,
-    steps: int = 1,
-    frames: int = 120,
-    seed: int = 42,
+    frames: int = 120,  # 4 seconds at 30 fps
     fps: int = 30,
     model: str = "Ltxv_13B_0_9_8_Distilled_FP8",
     negative_prompt: str | None = None,
-    wait_time: float = 30.0,  # wait before fetching result
-    timeout: int = 300,
+    poll_delay: float = 40.0,  # wait 40s before fetching
 ):
     """
-    Text-to-video generation at fixed 512x512 resolution.
-    Returns raw video bytes (mp4).
-    Fetches result only once, after `wait_time` seconds.
+    Generate a 512x512 text-to-video clip.
+    Uses DEAPI Ltxv model (1 step, 0 guidance).
+    Returns raw mp4 bytes.
     """
 
     if not prompt or not prompt.strip():
@@ -38,69 +34,49 @@ async def text_to_video_512(
         "Accept": "application/json",
     }
 
-    # ── MULTIPART FORM (PER API SPEC) ───────────
+    # ── MULTIPART FORM ───────────
     form = aiohttp.FormData()
     form.add_field("prompt", prompt)
     form.add_field("width", "512")
     form.add_field("height", "512")
-    form.add_field("guidance", str(guidance))
-    form.add_field("steps", str(steps))
+    form.add_field("steps", "1")       # model limit
+    form.add_field("guidance", "0")    # model limit
     form.add_field("frames", str(frames))
-    form.add_field("seed", str(seed))
-    form.add_field("model", model)
     form.add_field("fps", str(fps))
-
+    form.add_field("model", model)
     if negative_prompt:
         form.add_field("negative_prompt", negative_prompt)
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        # ── SUBMIT JOB ───────────────────────────
-        async with session.post(
-            TXT2VID_ENDPOINT,
-            data=form,
-            timeout=aiohttp.ClientTimeout(total=60),
-        ) as resp:
+        # ── SUBMIT JOB ──────────────
+        async with session.post(TXT2VID_ENDPOINT, data=form, timeout=aiohttp.ClientTimeout(total=60)) as resp:
             if resp.status != 200:
-                raise Text2VidError(
-                    f"txt2video submit failed ({resp.status}): {await resp.text()}"
-                )
+                raise Text2VidError(f"txt2video submit failed ({resp.status}): {await resp.text()}")
 
             payload = await resp.json()
+            request_id = payload.get("data", {}).get("request_id")
+            if not request_id:
+                raise Text2VidError("No request_id returned")
+            print(f"[VIDEO GEN] Request submitted. request_id = {request_id}")
 
-        request_id = payload.get("data", {}).get("request_id")
-        if not request_id:
-            raise Text2VidError("No request_id returned")
+        # ── WAIT THEN FETCH RESULT ONCE ──────────────
+        await asyncio.sleep(poll_delay)
 
-        # ── WAIT BEFORE FETCHING RESULT ──────────
-        await asyncio.sleep(wait_time)
-
-        # ── FETCH RESULT ONCE ───────────────────
         async with session.get(f"{RESULT_ENDPOINT}/{request_id}") as resp:
             if resp.status != 200:
-                raise Text2VidError(f"Failed to fetch result ({resp.status})")
+                raise Text2VidError(f"Failed to fetch result ({resp.status}) for request_id={request_id}")
 
             result = await resp.json()
 
         status = result.get("data", {}).get("status")
+        if status != "completed":
+            raise Text2VidError(f"Video generation not completed (status={status}) for request_id={request_id}")
 
-        if status == "completed":
-            video_url = (
-                result.get("data", {})
-                .get("output", {})
-                .get("video_url")
-            )
-            if not video_url:
-                raise Text2VidError("Completed but no video_url")
+        video_url = result.get("data", {}).get("output", {}).get("video_url")
+        if not video_url:
+            raise Text2VidError(f"No video_url found for request_id={request_id}")
 
-            async with session.get(video_url) as vresp:
-                if vresp.status != 200:
-                    raise Text2VidError("Failed to download video")
-                return await vresp.read()
-
-        if status in ("failed", "error"):
-            raise Text2VidError(f"txt2video failed: {result}")
-
-        # If not completed yet after 30 seconds
-        raise Text2VidError(
-            f"Video not ready after {wait_time} seconds. Current status: {status}"
-        )
+        async with session.get(video_url) as vresp:
+            if vresp.status != 200:
+                raise Text2VidError(f"Failed to download video for request_id={request_id}")
+            return await vresp.read()
