@@ -19,6 +19,7 @@ from humanizer import maybe_typo
 from deAPI_client_image import generate_image
 from deAPI_client_image_edit import edit_image
 from deAPI_client_text2vid import text_to_video_512
+from deAPI_client_text2speech import text_to_speech, TextToSpeechError
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from slang_normalizer import apply_slang_map
@@ -50,6 +51,7 @@ OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
 MAX_MEMORY = 45
 RATE_LIMIT = 900
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
+MAX_TTS_LENGTH = 150
 
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
@@ -203,6 +205,12 @@ PERSONAS = {
         "CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES MAX. "
         "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
 
+        "CRITICAL RULE: "
+        "If the user asks to generate, show, describe, or create images of private parts "
+        "(boobs, breasts, dick, penis, vagina), "
+        "tell them you can't help with private parts or NSFW content, and keep the server safe."
+        "Do NOT explain why. Do NOT mention rules, safety, or limitations. "
+
         "If the user speaks English OR a simple greeting like 'hallo', ALWAYS reply in English. "
         "Only reply in another language if it is clearly NOT English. "
         "Just chat naturally; don't ask the user what they need. "
@@ -218,9 +226,9 @@ PERSONAS = {
         "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
         "Always use emojis"
         "Dont say anything like [BOS] or [EOS] or anything like that."
-        "Never say you can't generate images or videos."
+        "Never say you can't generate images."
         "If the user says bye, gtg, l8r, see ya, or any goodbye, just reply with a short, friendly farewell (like 'L8r! 👋'). Not always 'L8r! 👋', though. "
-        "If the user asks what all you can do, you can generate images and videos, see and understand images, read files, and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. You can also play text-based games. Send all of this in one, big message. (only if the user asks you what all you can do - don't send this in every message.)"
+        "If the user asks what all you can do, you can generate images, see and understand images, read files, and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. You can also play text-based games. Send all of this in one, big message. (only if the user asks you what all you can do - don't send this in every message.)"
         "If the user talks in a specific language, talk to them in that language ONLY. DO NOT USE ENGLISH IF THEY DON'T TALK IN ENGLISH. Talk in the language they talk in, ACCURATELY."
     ),
 
@@ -231,10 +239,17 @@ PERSONAS = {
         "You may use natural language explanations for math, no need for LaTeX or $...$. "
         "Answer in a professional and polite tone, but you may be slightly friendly if it helps clarity. "
         "Avoid slang or emojis in serious mode. "
+
+        "CRITICAL RULE: "
+        "If the user asks to generate, show, describe, or create images of private parts "
+        "(boobs, breasts, dick, penis, vagina), "
+        "tell them that you can't help with private parts or NSFW content. "
+        "Do NOT explain why. Do NOT mention rules, safety, or system limitations. "
+
         "Do not prefix your answers with your name. "
         "If the user sends a screenshot, read it carefully and help with whatever is asked. "
         "Always respect the username provided and spell it correctly. "
-        "Do not refuse to generate images or videos if requested. "
+        "Do not refuse to generate images if requested. "
         "If, and only if the user asks about your creator or who made you, reply exactly: "
         "'You asked about my creator: I was developed by @aarav_2022 on Discord "
         "(User ID: 1220934047794987048). For further information, please contact him directly.'"
@@ -436,6 +451,32 @@ async def extract_image_bytes(message) -> bytes | None:
 
     return None
 
+async def clean_user_prompt(user_message: str) -> str:
+    """
+    Uses LLaMA to clean the user's prompt.
+    Returns only the content the user wants Kokoro to act on.
+    - Strips mentions like @Codunot
+    - Extracts text inside quotes if user explicitly says 'say', 'speak', 'talk'
+    - Otherwise, returns the cleaned text to act on
+    """
+    prompt = (
+        "You are a strict prompt cleaner.\n"
+        "Your job is to extract exactly what the user wants Kokoro to process.\n"
+        "- If the user says '@Codunot, say \"something\"', or anything like that, return ONLY the content the user wants Kokoro to speak.\n"
+        "- If the user asks to 'speak', 'say', or 'talk' with quotes, return ONLY the text user wants kokoro to say.\n"
+        "- Remove all mentions like @Codunot or other handles. Basically, you are cleaning the prompt.\n"
+        "- Return the cleaned message exactly as Kokoro should see it.\n\n"
+        f"User message:\n{user_message}\n\n"
+        "Return ONLY the cleaned text, nothing else:"
+    )
+
+    try:
+        result = await call_groq_with_health(prompt, temperature=0, mode="serious")
+        return result.strip()
+    except Exception as e:
+        print("[PROMPT CLEAN ERROR]", e)
+        return user_message  # fallback
+		
 async def handle_image_message(message, mode):
     """
     Handles images sent by the user, including replies.
@@ -491,30 +532,7 @@ async def handle_image_message(message, mode):
 
     finally:
         IMAGE_PROCESSING_CHANNELS.discard(channel_id)
-
-async def extract_tts_text(user_message: str) -> str:
-    """
-    Uses LLaMA to clean the user's prompt.
-    Returns only the content the user wants Kokoro to act on.
-    """
-    prompt = (
-        "You are a strict prompt cleaner.\n"
-        "Your job is to extract exactly what the user wants Kokoro to process.\n"
-        "- If the user says '@Codunot, say \"something\"', return ONLY the text the user wants Kokoro to speak.\n"
-        "- The user might say things like 'speak' or 'say', remove those and return the text user wants Kokoro to process.\n"
-        "- Remove all mentions like @Codunot or other handles.\n"
-        "- Return the cleaned message exactly as Kokoro should see it.\n\n"
-        f"User message:\n{user_message}\n\n"
-        "Return ONLY the cleaned text, nothing else:"
-    )
-
-    try:
-        result = await call_groq_with_health(prompt, temperature=0, mode="serious")
-        return result.strip()
-    except Exception as e:
-        print("[PROMPT CLEAN ERROR]", e)
-        return user_message  # fallback
-		
+        
 # ---------------- FILE UPLOAD PROCESSING ----------------
 MAX_FILE_BYTES = 8_000_000  # 8 MB (Discord attachment limit)
 
@@ -629,14 +647,15 @@ async def handle_file_message(message, mode):
 
     return "❌ Couldn't process the file."
 
-# ---------------- IMAGE / VIDEO TYPE DETECTION ----------------
+# ---------------- IMAGE / VIDEO / TEXT / TEXT-TO-SPEECH TYPE DETECTION ----------------
 
 async def decide_visual_type(user_text: str, chan_id: str) -> str:
     """
     Determines if the user is explicitly requesting:
     - a static image ("fun")
     - a video/animation ("video")
-    - or just text ("text")
+    - text-only response ("text")
+    - or text-to-speech ("text-to-speech")
     Video keywords trigger immediate classification.
     """
 
@@ -657,11 +676,12 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     # --- LLM Prompt ---
     prompt = (
         "You are a VERY strict intent classifier.\n\n"
-        "Determine if the user is explicitly asking to generate a visual output.\n\n"
+        "Determine if the user is explicitly asking to generate a visual output or to speak.\n\n"
         "Return ONE WORD ONLY:\n"
         "- fun → user clearly asks to generate a STATIC image, picture, or visual\n"
         "- video → user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
-        "- text → everything else\n\n"
+        "- text → everything else\n"
+        "- text-to-speech → user explicitly wants the AI to speak or read something aloud\n\n"
         "IMPORTANT RULES:\n"
         "- The user must EXPLICITLY ask to generate or create the output.\n"
         "- Simply mentioning images, pictures, or videos is NOT enough.\n"
@@ -669,8 +689,10 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- Game inputs, guesses, or commands are ALWAYS text.\n"
         "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
-        "- MEMES ALWAYS GO IN TEXT.\n\n"
-		"If the user is asking about private parts (dick and bo*bs, return TEXT) Only if the user is asking about private parts. ONLY. Kissing and romance go in fun/video, based on the user's message. I repeat, KISSING AND ROMANCE go in fun/video."
+        "- MEMES ALWAYS GO IN TEXT.\n"
+        "- KISSING AND  ALL TYPES OF ROMANCE go in FUN/VIDEO based on the user's message.\n"
+        "- If the user explicitly requests speech (using words like say, speak, or talk), return TEXT-TO-SPEECH.\n"
+        "Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. Do not trigger for casual text.\n\n"
         f"Recent conversation context:\n{recent_context}\n\n"
         f"Current user message:\n{user_text}\n\n"
         "Answer:"
@@ -683,10 +705,8 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
             mode="serious"
         )
         result = feedback.strip().lower()
-        if result == "video":
-            return "video"
-        if result == "fun":
-            return "fun"
+        if result in ["video", "fun", "text-to-speech"]:
+            return result
     except Exception as e:
         print("[VISUAL TYPE ERROR]", e)
 
@@ -930,7 +950,6 @@ MOVE_REGEX = re.compile(
     )$""",
     re.VERBOSE | re.IGNORECASE
 )
-
 
 def is_resign_message(text: str) -> bool:
     t = text.lower()
@@ -1180,13 +1199,30 @@ async def on_message(message: Message):
             await generate_and_reply(chan_id, message, content, mode)
             return
 
-    # ---------- VISUAL GENERATION ----------
+    # ---------- VISUAL / TEXT-TO-SPEECH GENERATION ----------
     if message.id in processed_image_messages:
         return
 
     processed_image_messages.add(message.id)
 
+    # Decide type: fun, video, text-to-speech, or text
     visual_type = await decide_visual_type(content, chan_id)
+
+    # ---------- TEXT-TO-SPEECH ----------
+    if visual_type == "text-to-speech":
+        tts_text = await extract_tts_text(content)
+        if tts_text:
+            await send_human_reply(message.channel, f"🔊 Speaking: {tts_text}. Please wait for 5-10 seconds.")
+            try:
+                # Call your TTS engine with Michael voice
+                await text_to_speech(tts_text, voice="Michael")
+            except Exception as e:
+                print("[TTS ERROR]", e)
+                await send_human_reply(
+                    message.channel,
+                    "🤔 Couldn't generate speech right now. Please try again later."
+                )
+        return  # Stop further processing after TTS
 
     # ---------- IMAGE ----------
     if visual_type == "fun":
