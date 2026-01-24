@@ -13,10 +13,10 @@ async def text_to_speech(
     *,
     text: str,
     model: str = "Kokoro",
-    voice: str = "male_hero",  # male voice
+    voice: str = "Michael",  # male voice
     lang: str = "en-us",
     speed: float = 2.0,        # 2x speed
-    format: str = "flac",
+    format: str = "mp3",
     sample_rate: int = 24000,
     poll_delay: float = 10.0,
 ):
