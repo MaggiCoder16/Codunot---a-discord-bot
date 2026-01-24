@@ -659,16 +659,6 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     Video keywords trigger immediate classification.
     """
 
-    # --- Pre-check for video keywords ---
-    video_keywords = [
-        "video", "vid", "clip", "animation", "animate",
-        "moving scene", "motion", "cinematic", "GIF", "looping clip", "film"
-    ]
-    
-    text_lower = user_text.lower()
-    if any(k in text_lower for k in video_keywords):
-        return "video"
-
     # --- Get recent context ---
     recent_messages = channel_memory.get(chan_id, [])
     recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
@@ -692,7 +682,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- MEMES ALWAYS GO IN TEXT.\n"
         "- KISSING AND  ALL TYPES OF ROMANCE go in FUN/VIDEO based on the user's message.\n"
         "- If the user explicitly requests speech (using words like say, speak, or talk), return TEXT-TO-SPEECH.\n"
-        "Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. Do not trigger for casual text.\n\n"
+        "- Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. Do not trigger for casual text.\n\n"
         f"Recent conversation context:\n{recent_context}\n\n"
         f"Current user message:\n{user_text}\n\n"
         "Answer:"
@@ -1210,7 +1200,7 @@ async def on_message(message: Message):
 
     # ---------- TEXT-TO-SPEECH ----------
     if visual_type == "text-to-speech":
-        tts_text = await extract_tts_text(content)
+        tts_text = await clean_user_prompt(content)
         if tts_text:
             await send_human_reply(message.channel, f"🔊 Speaking: {tts_text}. Please wait for 5-10 seconds.")
             try:
