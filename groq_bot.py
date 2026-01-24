@@ -951,7 +951,6 @@ MOVE_REGEX = re.compile(
     re.VERBOSE | re.IGNORECASE
 )
 
-
 def is_resign_message(text: str) -> bool:
     t = text.lower()
     return any(p in t for p in RESIGN_PHRASES)
@@ -1213,10 +1212,10 @@ async def on_message(message: Message):
     if visual_type == "text-to-speech":
         tts_text = await extract_tts_text(content)
         if tts_text:
-            await send_human_reply(message.channel, f"🔊 Speaking: {tts_text}")
+            await send_human_reply(message.channel, f"🔊 Speaking: {tts_text}. Please wait for 5-10 seconds.")
             try:
-                # Call your TTS engine with "Michael" voice
-                await generate_tts(tts_text, voice="Michael")
+                # Call your TTS engine with Michael voice
+                await text_to_speech(tts_text, voice="Michael")
             except Exception as e:
                 print("[TTS ERROR]", e)
                 await send_human_reply(
