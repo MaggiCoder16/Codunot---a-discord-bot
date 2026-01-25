@@ -18,8 +18,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          persist-credentials: true
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -55,28 +55,25 @@ jobs:
           HUGGINGFACE_API_KEY_IMAGE_GEN: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
           DEAPI_API_KEY: ${{ secrets.DEAPI_API_KEY }}
         run: |
-          # Run bot for 3 hours, then exit cleanly
+          # Run bot for 3 hours, then exit
           timeout 3h python -u groq_bot.py || true
 
-      - name: Debug usage files
-        if: always()
-        run: |
-          echo "daily_usage.json:"
-          cat daily_usage.json || echo "missing"
-          echo "total_usage.json:"
-          cat total_usage.json || echo "missing"
-
-      - name: Persist usage data (ONLY JSON)
+      - name: Persist usage data (usage-data branch ONLY)
         if: always()
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git restore .
+          mkdir -p /tmp/usage
+          cp daily_usage.json total_usage.json /tmp/usage/ || true
+
+          git fetch origin
+          git checkout -B usage-data origin/usage-data || git checkout -b usage-data
+
+          cp /tmp/usage/* . || true
 
           git add daily_usage.json total_usage.json
-
           git commit -m "Update usage data" || echo "No changes to commit"
-          git push
+          git push origin usage-data
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
