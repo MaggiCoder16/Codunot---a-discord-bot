@@ -17,7 +17,7 @@ async def text_to_speech(
     *,
     text: str,
     model: str = "Kokoro",
-    voice: str = "Michael",      # male voice
+    voice: str = "am_michael",      # male voice
     lang: str = "en-us",
     speed: float = 1.0,
     format: str = "mp3",
@@ -83,7 +83,7 @@ async def text_to_speech(
 
         status = result.get("data", {}).get("status")
 
-        if status == "completed":
+        if status == "done":
             audio_url = (
                 result.get("data", {})
                 .get("output", {})
