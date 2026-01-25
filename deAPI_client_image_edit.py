@@ -5,9 +5,9 @@ import io
 import base64
 import asyncio
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY_IMAGE_EDITING", "").strip()
+DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
 if not DEAPI_API_KEY:
-    raise RuntimeError("DEAPI_API_KEY_IMAGE_EDITING not set")
+    raise RuntimeError("DEAPI_API_KEY not set")
 
 IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
 MODEL_NAME = "QwenImageEdit_Plus_NF4"
