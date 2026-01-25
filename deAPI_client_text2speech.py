@@ -1,6 +1,7 @@
 import os
 import aiohttp
 import asyncio
+import time
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
 
@@ -13,16 +14,18 @@ RESULT_ENDPOINT = f"{BASE_URL}/request-status"
 class TextToSpeechError(Exception):
     pass
 
+
 async def text_to_speech(
     *,
     text: str,
     model: str = "Kokoro",
-    voice: str = "am_michael",      # male voice
+    voice: str = "am_michael",
     lang: str = "en-us",
     speed: float = 1.0,
     format: str = "mp3",
     sample_rate: int = 24000,
-    poll_delay: float = 10.0,
+    poll_delay: float = 15.0,
+    max_wait: float = 120.0,  # max seconds to wait
 ):
     """
     Generate speech from text using the Text-to-Speech API.
@@ -71,32 +74,34 @@ async def text_to_speech(
             print(f"[TTS] Request submitted. request_id = {request_id}")
 
         # ── POLL FOR RESULT ──
-        await asyncio.sleep(poll_delay)
+        start_time = time.monotonic()
 
-        async with session.get(f"{RESULT_ENDPOINT}/{request_id}") as resp:
-            if resp.status != 200:
+        while True:
+            await asyncio.sleep(poll_delay)
+
+            async with session.get(f"{RESULT_ENDPOINT}/{request_id}") as resp:
+                if resp.status != 200:
+                    raise TextToSpeechError(
+                        f"Failed to fetch result ({resp.status}) for request_id={request_id}"
+                    )
+
+                result = await resp.json()
+
+            data = result.get("data", {})
+            status = data.get("status")
+            audio_url = data.get("output", {}).get("audio_url")
+
+            if audio_url:
+                print(f"[TTS] Audio ready. status={status}")
+                return audio_url
+
+            if status in ("failed", "error"):
+                raise TextToSpeechError(f"txt2audio failed: {result}")
+
+            elapsed = time.monotonic() - start_time
+            print(f"[TTS] Waiting… status={status}, elapsed={elapsed:.1f}s")
+
+            if elapsed >= max_wait:
                 raise TextToSpeechError(
-                    f"Failed to fetch result ({resp.status}) for request_id={request_id}"
+                    f"Timed out waiting for audio_url (status={status})"
                 )
-
-            result = await resp.json()
-
-        status = result.get("data", {}).get("status")
-
-        if status == "done":
-            audio_url = (
-                result.get("data", {})
-                .get("output", {})
-                .get("audio_url")
-            )
-            if not audio_url:
-                raise TextToSpeechError("Completed but no audio_url")
-            return audio_url
-
-        elif status in ("failed", "error"):
-            raise TextToSpeechError(f"txt2audio failed: {result}")
-
-        else:
-            raise TextToSpeechError(
-                f"Audio not ready after polling, status={status}"
-            )
