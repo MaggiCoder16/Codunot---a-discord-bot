@@ -1205,7 +1205,7 @@ async def on_message(message: Message):
             await send_human_reply(message.channel, f"🔊 Speaking: {tts_text}. Please wait for 5-10 seconds.")
             try:
                 # Call your TTS engine with Michael voice
-                await text_to_speech(tts_text, voice="Michael")
+                await text_to_speech(text=tts_text, voice="Michael")
             except Exception as e:
                 print("[TTS ERROR]", e)
                 await send_human_reply(
