@@ -64,6 +64,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
+          # Save JSON files temporarily
           mkdir -p /tmp/usage
           cp daily_usage.json total_usage.json /tmp/usage/ 2>/dev/null || true
 
@@ -76,12 +77,18 @@ jobs:
             git checkout -b usage-data
           fi
 
-          cp /tmp/usage/daily_usage.json . 2>/dev/null || true
-          cp /tmp/usage/total_usage.json . 2>/dev/null || true
+          # Only overwrite JSON if content actually changed
+          CHANGED=false
+          for file in daily_usage.json total_usage.json; do
+            if ! cmp -s "/tmp/usage/$file" "$file"; then
+              cp "/tmp/usage/$file" "$file"
+              CHANGED=true
+            fi
+          done
 
-          git add daily_usage.json total_usage.json
-
-          if ! git diff --cached --quiet; then
+          # Commit only if something changed
+          if [ "$CHANGED" = true ]; then
+            git add daily_usage.json total_usage.json
             git commit -m "Update usage data"
             git push origin usage-data
           else
