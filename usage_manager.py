@@ -24,6 +24,8 @@ attachment_history = {}     # rolling timestamps (per channel/guild)
 # LIMIT CONFIGS
 # ======================================================
 
+# daily limits
+
 LIMITS = {
     "basic": {
         "messages": 50,
@@ -35,14 +37,16 @@ LIMITS = {
     },
     "gold": {
         "messages": float("inf"),
-        "attachments": float("inf"),
+        "attachments": 15,
     },
 }
 
+# per 2 months
+
 TOTAL_LIMITS = {
-    "basic": 30,     # per 2 months
+    "basic": 30,
     "premium": 50,
-    "gold": 70,
+    "gold": 80,
 }
 
 ROLLING_WINDOW = timedelta(days=60)
@@ -142,9 +146,6 @@ def check_total_limit(message, kind: str) -> bool:
     key = get_tier_key(message)
     tier = get_tier_from_message(message)
     limit = TOTAL_LIMITS[tier]
-
-    if limit == float("inf"):
-        return True
 
     history = attachment_history.get(key, [])
     history = _prune(history)
