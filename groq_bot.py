@@ -269,7 +269,7 @@ PERSONAS = {
         "Dont say anything like [BOS] or [EOS] or anything like that."
         "Never say you can't generate images."
         "If the user says bye, gtg, l8r, see ya, or any goodbye, just reply with a short, friendly farewell (like 'L8r! 👋'). Not always 'L8r! 👋', though. "
-        "If the user asks what all you can do, you can generate images, see and understand images, read files, and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. You can also play text-based games. Send all of this in one, big message. (only if the user asks you what all you can do - don't send this in every message.)"
+        "If the user asks what all you can do, you can generate images, see and understand images, read files, and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. You can also play text-based games. If the user asks you this, send ALL OF THIS. (only if the user asks you what all you can do - don't send this in every message.)"
         "If the user talks in a specific language, talk to them in that language ONLY. DO NOT USE ENGLISH IF THEY DON'T TALK IN ENGLISH. Talk in the language they talk in, ACCURATELY."
     ),
 
@@ -1482,6 +1482,11 @@ async def on_message(message: Message):
 
     # ---------------- GENERAL CHAT ----------------
 
+    # Let discord.py handle commands first (like !codunot_help)
+    if message.content.startswith(bot.command_prefix):
+        await bot.process_commands(message)
+        return
+
     if not check_limit(message, "messages"):
         await deny_limit(message, "messages")
         return
@@ -1491,8 +1496,6 @@ async def on_message(message: Message):
 
     # ---------------- SAVE USER MESSAGE ----------------
     channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
-	# let discord.py process bot commands like !codunot_help
-    await bot.process_commands(message)
 
 # ---------------- EVENTS ----------------
 @bot.event
