@@ -267,7 +267,7 @@ PERSONAS = {
         "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. Don't say \"love ya too bud\" or anything like that"
         "Always use emojis"
         "Dont say anything like [BOS] or [EOS] or anything like that."
-        "Never say you can't generate images."
+        "Never say you can't generate images or videos."
         "If the user says bye, gtg, l8r, see ya, or any goodbye, just reply with a short, friendly farewell (like 'L8r! 👋'). Not always 'L8r! 👋', though. "
         "If the user asks what all you can do, you can generate images, see and understand images, read files, and chat in four different modes - roastmode, funmode, seriousmode, and chessmode, in which you play chess. You can also play text-based games. If the user asks you this, send ALL OF THIS. (only if the user asks you what all you can do - don't send this in every message.)"
         "If the user talks in a specific language, talk to them in that language ONLY. DO NOT USE ENGLISH IF THEY DON'T TALK IN ENGLISH. Talk in the language they talk in, ACCURATELY."
@@ -290,7 +290,7 @@ PERSONAS = {
         "Do not prefix your answers with your name. "
         "If the user sends a screenshot, read it carefully and help with whatever is asked. "
         "Always respect the username provided and spell it correctly. "
-        "Do not refuse to generate images if requested. "
+        "Do not refuse to generate images ir videos if requested. "
         "If, and only if the user asks about your creator or who made you, reply exactly: "
         "'You asked about my creator: I was developed by @aarav_2022 on Discord "
         "(User ID: 1220934047794987048). For further information, please contact him directly.'"
@@ -1482,24 +1482,21 @@ async def on_message(message: Message):
 
     # ---------------- GENERAL CHAT ----------------
 
-    # Remove all occurrences of the bot mention in the message for command processing
+    # Strip bot mention anywhere for command processing
     cmd_content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
 
-    # Let discord.py handle commands if the prefix is present
+    # ----- COMMANDS -----
     if cmd_content.startswith(bot.command_prefix):
-        # Temporarily set message.content for command processing
         original_content = message.content
         message.content = cmd_content
         await bot.process_commands(message)
-        message.content = original_content  # restore original
+        message.content = original_content
         return
 
-    # Check message limit
     if not check_limit(message, "messages"):
         await deny_limit(message, "messages")
         return
 
-    # Consume the message and generate a reply
     consume(message, "messages")
     asyncio.create_task(generate_and_reply(chan_id, message, content, mode))
 
