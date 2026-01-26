@@ -1202,16 +1202,39 @@ async def on_message(message: Message):
     if visual_type == "text-to-speech":
         tts_text = await clean_user_prompt(content)
         if tts_text:
-            await send_human_reply(message.channel, f"🔊 Speaking: {tts_text}. Please wait for 5-10 seconds.")
+            await send_human_reply(
+                message.channel,
+                f"🔊 Speaking: {tts_text}. Please wait for 5–10 seconds."
+            )
             try:
-                # Call your TTS engine with Michael voice
-                await text_to_speech(text=tts_text, voice="am_michael")
+                # Call TTS and get audio URL
+                audio_url = await text_to_speech(
+                    text=tts_text,
+                    voice="am_michael"
+                )
+
+                # Download the audio
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(audio_url) as resp:
+                        if resp.status != 200:
+                            raise Exception("Failed to download TTS audio")
+                        audio_bytes = await resp.read()
+
+                # Send audio to Discord
+                await message.channel.send(
+                    file=discord.File(
+                        io.BytesIO(audio_bytes),
+                        filename="speech.mp3"
+                    )
+                )
+
             except Exception as e:
                 print("[TTS ERROR]", e)
                 await send_human_reply(
                     message.channel,
                     "🤔 Couldn't generate speech right now. Please try again later."
                 )
+
         return  # Stop further processing after TTS
 
     # ---------- IMAGE ----------
