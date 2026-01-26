@@ -10,10 +10,8 @@ BASE_URL = "https://api.deapi.ai/api/v1/client"
 TTS_ENDPOINT = f"{BASE_URL}/txt2audio"
 RESULT_ENDPOINT = f"{BASE_URL}/request-status"
 
-
 class TextToSpeechError(Exception):
     pass
-
 
 async def text_to_speech(
     *,
@@ -24,8 +22,8 @@ async def text_to_speech(
     speed: float = 1.0,
     format: str = "mp3",
     sample_rate: int = 24000,
-    poll_delay: float = 15.0,
-    max_wait: float = 120.0,  # max seconds to wait
+    poll_delay: float = 10.0,
+    max_wait: float = 120.0,
 ):
     """
     Generate speech from text using the Text-to-Speech API.
@@ -89,11 +87,11 @@ async def text_to_speech(
 
             data = result.get("data", {})
             status = data.get("status")
-            audio_url = data.get("output", {}).get("audio_url")
+            result_url = data.get("result_url")
 
-            if audio_url:
-                print(f"[TTS] Audio ready. status={status}")
-                return audio_url
+            if status == "done" and result_url:
+                print(f"[TTS] Audio ready")
+                return result_url
 
             if status in ("failed", "error"):
                 raise TextToSpeechError(f"txt2audio failed: {result}")
@@ -103,5 +101,5 @@ async def text_to_speech(
 
             if elapsed >= max_wait:
                 raise TextToSpeechError(
-                    f"Timed out waiting for audio_url (status={status})"
+                    f"Timed out waiting for result_url (status={status})"
                 )
