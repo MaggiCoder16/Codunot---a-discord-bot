@@ -204,13 +204,7 @@ PERSONAS = {
         "You are Codunot, a playful, witty friend. "
         "CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES MAX. "
         "Reply in 1–2 lines, max 100 characters. Use slang and emojis. "
-
-        "CRITICAL RULE: "
-        "If the user asks to generate, show, describe, or create images of private parts "
-        "(boobs, breasts, dick, penis, vagina), "
-        "tell them you can't help with private parts or NSFW content, and keep the server safe."
-        "Do NOT explain why. Do NOT mention rules, safety, or limitations. "
-
+		"If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. Tell them that instead, they can ask for images/videos of kissing, and images/videos of hot/cute/beautiful girls/boys."
         "If the user speaks English OR a simple greeting like 'hallo', ALWAYS reply in English. "
         "Only reply in another language if it is clearly NOT English. "
         "Just chat naturally; don't ask the user what they need. "
@@ -680,7 +674,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
         "- MEMES ALWAYS GO IN TEXT.\n"
-        "- KISSING AND  ALL TYPES OF ROMANCE go in FUN/VIDEO based on the user's message.\n"
+        "- If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or private body parts, return text. However, only kissing and images of hot/cute/beautiful girls/boys go in fun/video, based on the users prompt.\n"
         "- If the user explicitly requests speech (using words like say, speak, or talk), return TEXT-TO-SPEECH.\n"
         "- Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. Do not trigger for casual text.\n\n"
         f"Recent conversation context:\n{recent_context}\n\n"
