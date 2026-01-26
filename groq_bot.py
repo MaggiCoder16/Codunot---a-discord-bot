@@ -675,7 +675,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
         "- MEMES ALWAYS GO IN TEXT.\n"
         "- If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or private body parts, return text. However, only kissing and images of hot/cute/beautiful girls/boys go in fun/video, based on the users prompt.\n"
-		"- Examples -
+		"- Examples -"
 		"1) @Codunot generate an image/video of a hot girl flexing her boobs (or muscles) - return TEXT"
 		"2) @Codunot generate an image/video of a hot girl kissing a hot boy - return fun/video"
 		"3) @Codunot generate an image/video of a hot girl showing her boobs - return TEXT"
