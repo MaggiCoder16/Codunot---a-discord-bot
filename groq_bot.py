@@ -1087,6 +1087,14 @@ async def on_message(message: Message):
     content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
     content_lower = content.lower()
 
+    # ---------- COMMAND HANDLING (ABSOLUTE PRIORITY) ----------
+    if content.startswith(bot.command_prefix):
+        original_content = message.content
+        message.content = content
+        await bot.process_commands(message)
+        message.content = original_content
+        return
+
     # ---------- EXTRACT IMAGE BYTES FOR EDITING ----------
     if message.attachments:
         for attachment in message.attachments:
@@ -1481,17 +1489,6 @@ async def on_message(message: Message):
         return
 
     # ---------------- GENERAL CHAT ----------------
-
-    # Strip bot mention anywhere for command processing
-    cmd_content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
-
-    # ----- COMMANDS -----
-    if cmd_content.startswith(bot.command_prefix):
-        original_content = message.content
-        message.content = cmd_content
-        await bot.process_commands(message)
-        message.content = original_content
-        return
 
     if not check_limit(message, "messages"):
         await deny_limit(message, "messages")
