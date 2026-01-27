@@ -240,12 +240,17 @@ def pick_model(mode: str = ""):
 
 # ---------------- CODUNOT SELF IMAGE PROMPT ----------------
 CODUNOT_SELF_IMAGE_PROMPT = (
-    "Cute chibi robot avatar of Codunot, a friendly AI assistant, "
-    "glossy orange and yellow robot body, rounded head with a dark face screen "
-    "and glowing yellow eyes, small antenna on top, waving hand, "
-    "cartoon mascot style, clean digital illustration, "
-    "dark tech background with warm glow, "
-    "robot only, no humans, no realistic human features."
+    "Highly detailed, adorable chibi robot avatar of Codunot, a friendly AI assistant, "
+    "with a glossy, smooth metallic orange body featuring subtle yellow highlights and soft reflections, "
+    "rounded helmet-style head with a perfectly smooth, black glass face screen, "
+    "displaying warm glowing pixel-style oval eyes and a small friendly smile made of yellow light dots, "
+    "tiny circular antenna on top of the head, waving right hand with five articulated fingers, "
+    "robot body composed of compact rounded armor plates with visible smooth joint seams, "
+    "highly polished surface with slight orange rim lighting, "
+    "standing against a swirling, abstract dark background with warm fiery orange and red gradients, "
+    "soft glowing ambient lighting around the robot emphasizing contours and depth, "
+    "clean digital cartoon style with subtle 3D shading, no humans or humanoid features, "
+    "the image should be vibrant, heartwarming, and perfectly capture the cheerful and futuristic mascot vibe."
 )
 
 # ---------------- HELPERS ----------------
