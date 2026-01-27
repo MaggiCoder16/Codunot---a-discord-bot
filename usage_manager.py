@@ -25,7 +25,6 @@ attachment_history = {}     # rolling timestamps (per channel/guild)
 # ======================================================
 
 # daily limits
-
 LIMITS = {
     "basic": {
         "messages": 50,
@@ -42,7 +41,6 @@ LIMITS = {
 }
 
 # per 2 months
-
 TOTAL_LIMITS = {
     "basic": 30,
     "premium": 50,
@@ -56,36 +54,38 @@ ROLLING_WINDOW = timedelta(days=60)
 # ======================================================
 
 def load_tier_file(path: str) -> set[str]:
+    """Load server IDs from a tier file, ignoring comments and whitespace."""
     ids = set()
     if not os.path.exists(path):
         return ids
 
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "#" in line:
-                line = line.split("#", 1)[0].strip()
+            # Remove comments and whitespace
+            line = line.split("#", 1)[0].strip()
             if line:
                 ids.add(line)
     return ids
 
-
 PREMIUM_IDS = load_tier_file(PREMIUM_FILE)
 GOLD_IDS = load_tier_file(GOLD_FILE)
+
+# Debug prints to check what was loaded
+print(f"Loaded premium IDs: {sorted(PREMIUM_IDS)}")
+print(f"Loaded gold IDs: {sorted(GOLD_IDS)}")
 
 # ======================================================
 # TIER RESOLUTION
 # ======================================================
 
 def get_tier_key(message) -> str:
+    """Returns the key to track usage: guild ID or channel ID."""
     if message.guild is not None:
         return str(message.guild.id)
     return str(message.channel.id)
 
-
 def get_tier_from_message(message) -> str:
+    """Return the tier of the channel/server."""
     key = get_tier_key(message)
     if key in GOLD_IDS:
         return "gold"
@@ -99,7 +99,6 @@ def get_tier_from_message(message) -> str:
 
 def get_usage(key: str) -> dict:
     today = date.today().isoformat()
-
     usage = channel_usage.setdefault(key, {
         "day": today,
         "messages": 0,
@@ -115,14 +114,12 @@ def get_usage(key: str) -> dict:
 
     return usage
 
-
 def check_limit(message, kind: str) -> bool:
     key = get_tier_key(message)
     tier = get_tier_from_message(message)
     usage = get_usage(key)
     limit = LIMITS[tier][kind]
     return usage[kind] < limit
-
 
 def consume(message, kind: str):
     key = get_tier_key(message)
@@ -138,7 +135,6 @@ def _prune(history: list[float]) -> list[float]:
     cutoff = now - ROLLING_WINDOW.total_seconds()
     return [t for t in history if t >= cutoff]
 
-
 def check_total_limit(message, kind: str) -> bool:
     if kind != "attachments":
         return True
@@ -152,7 +148,6 @@ def check_total_limit(message, kind: str) -> bool:
     attachment_history[key] = history
 
     return len(history) < limit
-
 
 def consume_total(message, kind: str):
     if kind != "attachments":
@@ -179,29 +174,28 @@ async def deny_limit(message, kind: str):
 
 def save_usage():
     try:
-        with open(USAGE_FILE, "w") as f:
+        with open(USAGE_FILE, "w", encoding="utf-8") as f:
             json.dump(channel_usage, f)
     except Exception as e:
         print("[SAVE DAILY ERROR]", e)
 
     try:
-        with open(TOTAL_FILE, "w") as f:
+        with open(TOTAL_FILE, "w", encoding="utf-8") as f:
             json.dump({
                 "attachments": attachment_history
             }, f)
     except Exception as e:
         print("[SAVE TOTAL ERROR]", e)
 
-
 def load_usage():
     global channel_usage, attachment_history
 
     if os.path.exists(USAGE_FILE):
-        with open(USAGE_FILE) as f:
+        with open(USAGE_FILE, encoding="utf-8") as f:
             channel_usage = json.load(f)
 
     if os.path.exists(TOTAL_FILE):
-        with open(TOTAL_FILE) as f:
+        with open(TOTAL_FILE, encoding="utf-8") as f:
             data = json.load(f)
             attachment_history = data.get("attachments", {})
 
