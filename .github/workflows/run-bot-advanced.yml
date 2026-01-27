@@ -1,4 +1,4 @@
-name: Run Codunot Bot (on Groq)
+name: Run Codunot Bot (advanced)
 
 on:
   schedule:
