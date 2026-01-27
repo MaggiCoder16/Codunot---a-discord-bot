@@ -1,9 +1,7 @@
 name: Update Codunot Bio
 
 on:
-  workflow_dispatch:    # Manual trigger
-  schedule:
-    - cron: '0 12 * * *'  # Optional daily at 12:00 UTC
+  workflow_dispatch:   # Manual trigger only
 
 jobs:
   update-bio:
