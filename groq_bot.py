@@ -264,9 +264,10 @@ async def require_vote(message) -> bool:
 
     await message.channel.send(
         "🚫 **This feature requires a Top.gg vote**\n\n"
-        "Vote to unlock **Image, Video, TTS & File tools** 💙\n"
+        "Vote to unlock **Image generations and editing, Video generations, Text-To-Speech & File tools** 💙\n"
         "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
-        "🗳️ You can vote **once every 12 hours**."
+        "🗳️ Enable the 'every 12 hours' option and click on the 'remind me' button to unlock these features!**."
+		"**Once you have voted, please wait for 1-2 minutes before using these features!**"
     )
     return False
 
