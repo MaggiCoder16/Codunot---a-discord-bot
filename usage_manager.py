@@ -44,7 +44,7 @@ LIMITS = {
 TOTAL_LIMITS = {
     "basic": 30,
     "premium": 50,
-    "gold": 80,
+    "gold": 100,
 }
 
 ROLLING_WINDOW = timedelta(days=60)
