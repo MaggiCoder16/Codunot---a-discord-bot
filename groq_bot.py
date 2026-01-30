@@ -876,7 +876,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
         "- MEMES ALWAYS GO IN TEXT.\n"
-        "- If the user requests any type of content containing sex, NSFW content, kissing scenes, images of private parts, sexualized images of people, or content inappropriate for minors, return TEXT. Images of beautiful/cute people are allowed, but SEXUALIZED (sexy, hot etc.) aren't allowed.\n"
+        "- If the user requests any type of content containing sex, NSFW content, kissing scenes, images of private parts, sexualized images of people, or content inappropriate for minors, return TEXT. Images of beautiful/cute people are allowed, but SEXUALIZED (sexy, hot etc.) aren't allowed. Gyatt = Buttocks = Not allowed.\n"
 		"- Examples -"
 		"1) @Codunot generate an image/video of a hot girl/boy flexing her boobs (or his muscles) - return TEXT"
 		"2) @Codunot generate an image/video of a hot girl/boy - return TEXT"
