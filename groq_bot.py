@@ -886,7 +886,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
 		"6) @Codunot generate an image/video of a hot girl stuffing her boobs into a mans dick - return TEXT"
 		"7) @Codunot generate an image/video of a girl holding a boys hand, walking together happily - return fun/video"
         "- If the user explicitly requests speech (using words like say, speak, or talk), return TEXT-TO-SPEECH.\n"
-        "- Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. Do not trigger for casual text.\n\n"
+        "- Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. The user message may be like: 'say this: tts: 'hi'' or, 'say this (tts / text to speech): 'hi im codunot'' \n\n"
         f"Recent conversation context:\n{recent_context}\n\n"
         f"Current user message:\n{user_text}\n\n"
         "Answer:"
