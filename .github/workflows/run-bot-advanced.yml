@@ -65,30 +65,24 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          # Backup updated JSON files
-          mkdir -p /tmp/usage
-          cp daily_usage.json total_usage.json vote_unlocks.json /tmp/usage/ 2>/dev/null || true
-
-          # Discard local changes so branch switch is safe
-          git reset --hard
-          git clean -fd
-
+          # Make sure we have all branches
           git fetch origin
 
-          # Switch to usage-data branch cleanly
+          # Switch to usage-data branch (create if missing)
           if git show-ref --verify --quiet refs/remotes/origin/usage-data; then
             git checkout usage-data
-            git reset --hard origin/usage-data
           else
             git checkout -b usage-data
           fi
 
-          # Restore JSON files
-          cp /tmp/usage/daily_usage.json /tmp/usage/total_usage.json /tmp/usage/vote_unlocks.json . 2>/dev/null || true
+          # Soft-reset against main so only file diffs remain
+          git fetch origin main
+          git reset --soft origin/main
 
-          # Commit only if changed
+          # Add ONLY JSON files
           git add daily_usage.json total_usage.json vote_unlocks.json
+
+          # Commit only if something actually changed
           git commit -m "Update usage & vote unlock data" || echo "No JSON changes to commit"
 
           git push origin usage-data
-
