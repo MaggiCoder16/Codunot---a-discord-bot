@@ -2,7 +2,7 @@
 
 **Codunot — your chat bot sidekick that can switch personalities and do more than just chat.** ***Made by a 13 year old with a little help from ChatGPT***
 
-***Super fast responses ~0.1 - 0.2 seconds, and excellent at coding, sends code in parts***
+***Super fast responses ~0.1 - 0.2 seconds, and excellent at coding, sends code in parts, taking Discord’s message character limit into account”***
 
 ***🟢 Modes:***
 😎 Fun — jokes, memes & lighthearted energy → type this in chat: !funmode
