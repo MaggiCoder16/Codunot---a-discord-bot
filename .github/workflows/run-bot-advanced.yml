@@ -65,8 +65,10 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          # Make sure we have all branches
           git fetch origin
+
+          # Stash local JSON changes so checkout won't fail
+          git stash push -m "bot-json-update" || true
 
           # Switch to usage-data branch (create if missing)
           if git show-ref --verify --quiet refs/remotes/origin/usage-data; then
@@ -75,14 +77,14 @@ jobs:
             git checkout -b usage-data
           fi
 
-          # Soft-reset against main so only file diffs remain
-          git fetch origin main
-          git reset --soft origin/main
+          # Re-apply bot changes
+          git stash pop || true
 
           # Add ONLY JSON files
           git add daily_usage.json total_usage.json vote_unlocks.json
 
-          # Commit only if something actually changed
+          # Commit only if something changed
           git commit -m "Update usage & vote unlock data" || echo "No JSON changes to commit"
 
           git push origin usage-data
+
