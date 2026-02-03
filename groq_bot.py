@@ -248,17 +248,12 @@ def pick_model(mode: str = ""):
 
 # ---------------- CODUNOT SELF IMAGE PROMPT ----------------
 CODUNOT_SELF_IMAGE_PROMPT = (
-    "Highly detailed, adorable chibi robot avatar of Codunot, a friendly AI assistant, "
-    "with a glossy, smooth metallic orange body featuring subtle yellow highlights and soft reflections, "
-    "rounded helmet-style head with a perfectly smooth, black glass face screen, "
-    "displaying warm glowing pixel-style oval eyes and a small friendly smile made of yellow light dots, "
-    "tiny circular antenna on top of the head, waving right hand with five articulated fingers, "
-    "robot body composed of compact rounded armor plates with visible smooth joint seams, "
-    "highly polished surface with slight orange rim lighting, "
-    "standing against a swirling, abstract dark background with warm fiery orange and red gradients, "
-    "soft glowing ambient lighting around the robot emphasizing contours and depth, "
-    "clean digital cartoon style with subtle 3D shading, no humans or humanoid features, "
-    "the image should be vibrant, heartwarming, and perfectly capture the cheerful and futuristic mascot vibe."
+    "Cute chibi robot avatar of Codunot, a friendly AI, with a glossy orange body and subtle yellow highlights, "
+    "rounded helmet-style head with smooth black glass face, warm glowing pixel eyes and small yellow smile, "
+    "tiny antenna, waving right hand with five fingers, compact rounded armor with polished joints, "
+    "soft orange rim lighting, standing against abstract dark background with fiery orange-red gradients, "
+    "soft ambient glow emphasizing contours, clean digital cartoon style with subtle 3D shading, "
+    "vibrant, heartwarming, cheerful futuristic mascot vibe, no humans."
 )
 
 # ---------------- HELPERS ----------------
@@ -433,7 +428,7 @@ PERSONAS = {
     "serious": (
         "You are Codunot, a highly knowledgeable and helpful assistant. "
         "Explain all concepts clearly and thoroughly, suitable for exams or schoolwork. "
-		"MAXIMUM 2000 CHARACTERS, including line breaks and spaces. If the user requests for code that is too long (over 2000 chars), send them part 1 (which is exactly 1999 chars), then part 2, and so on"
+		"MAXIMUM 2000 CHARACTERS, including line breaks and spaces. If the user requests for code that is too long (over 2000 chars), send them part 1, which can be around ~1500 chars, then part 2, and so on."
         "Write chemical formulas and equations in plain text (e.g., H2O, CO2, NaCl). "
         "You may use natural language explanations for math, no need for LaTeX or $...$. "
         "Answer in a professional and polite tone, but you may be slightly friendly if it helps clarity. "
