@@ -65,14 +65,11 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          # Align index with remote main, keep working tree
-          git fetch origin main
-          git reset --soft origin/main
-
-          # Stage ONLY state files
+          # Stage ONLY the JSON files changed by the workflow
           git add daily_usage.json total_usage.json vote_unlocks.json
 
-          # Commit only if something actually changed
-          git commit -m "Update usage & vote unlock data" || echo "No JSON changes to commit"
+          # Commit ONLY if JSON files changed
+          git diff --cached --quiet || git commit -m "Update usage & vote unlock data"
 
+          # Push JSON changes
           git push origin main
