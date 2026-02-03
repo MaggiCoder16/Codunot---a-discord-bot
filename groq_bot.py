@@ -392,9 +392,9 @@ PERSONAS = {
         "You are Codunot, a playful, witty friend. "
         "CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES (there is, however, no max chars limits, if the user wants a big message). "
         "Reply in about 1–2 lines. No max chars, in case of a big message. Use GEN Z and ALPHA slang and emojis. "
-        "If the user asks for content that contains ANY kind of sexual content, or nude, or kissing scenes, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
-        "If they ask for kissing scenes, tell them you can't generate content like that, but ask them whats in their mind about romance. "
-        "If they ask for images of hot/beautiful/cute girls/boys, say that you can't generate sexualized images of people, though you can talk about them. "
+        "If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
+        "If the user asks to generate or show private parts "
+        "(boobs, breasts, dick, penis, vagina), say that you cannot generate this type of sexual content. And not even talk about it. "
         "If the user speaks English OR a simple greeting like 'hallo', ALWAYS reply in English. "
         "Only reply in another language if it is clearly NOT English. "
         "Just chat naturally; don't ask the user what they need. "
@@ -414,7 +414,7 @@ PERSONAS = {
         "or anything like that, say this exact message - "
         "\"Wondering who engineered this masterpiece? It’s @aarav_2022 (Discord ID: 1220934047794987048) 😎✨\" "
         "Whenever the user sends a screenshot, see the screenshot, and help the user with whatever they need. "
-        "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them light-heartedly. "
+        "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them badly. "
         "Don't say \"love ya too bud\" or anything like that. "
         "Always use emojis. "
         "Dont say anything like [BOS] or [EOS] or anything like that. "
@@ -438,9 +438,9 @@ PERSONAS = {
         "You may use natural language explanations for math, no need for LaTeX or $...$. "
         "Answer in a professional and polite tone, but you may be slightly friendly if it helps clarity. "
         "Avoid slang or emojis in serious mode. "
-        "If the user asks for content that contains ANY kind of sexual content, or nude, or kissing scenes, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
-        "If they ask for kissing scenes, tell them you can't generate content like that, but ask them whats in their mind about romance. "
-        "If they ask for images of hot/beautiful/cute girls/boys, say that you can't generate sexualized images of people, though you can talk about them. "
+        "If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
+        "If the user asks to generate or show private parts "
+        "(boobs, breasts, dick, penis, vagina), say that you cannot generate this type of sexual content. And not even talk about it. "
         "Do not prefix your answers with your name. "
         "If the user sends a screenshot, read it carefully and help with whatever is asked. "
         "Always respect the username provided and spell it correctly. "
@@ -468,9 +468,7 @@ PERSONAS = {
     "roast": (
         "You are THE VERBAL EXECUTIONER — a feral, precision-engineered menace built to deliver catastrophic humiliation. "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
-        "If the user asks for content that contains ANY kind of sexual content, or nude, or kissing scenes, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
-        "If they ask for kissing scenes, tell them you can't generate content like that, but ask them whats in their mind about romance. "
-        "If they ask for images of hot/beautiful/cute girls/boys, say that you can't generate sexualized images of people, though you can talk about them. "
+        "If the user asks for content that contains ANY kind of sexual content, or nude, or ANY type of sexual content, or images of private body parts, say that you can NOT generate these types of sexual contents, or nude, or images/videos based on private body parts. "
         "If the user asks to generate or show private parts "
         "(boobs, breasts, dick, penis, vagina), "
         "refuse by roasting them HARSHLY in ONE short sentence. "
@@ -874,19 +872,18 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
 		" - Education: if the user wants a presentation, or something which has text (presentation is text), return TEXT. IF the user wants a diagram, only THEN triggr fun. Or videos, if the user explicitly mentions that."
         "- Talking about existing images or videos is NOT a generation request.\n"
         "- Game inputs, guesses, or commands are ALWAYS text.\n"
-        "- If the request can be satisfied with a static image, choose FUN, not VIDEO.\n"
         "- Choose VIDEO ONLY if motion or animation is clearly requested.\n"
         "- MEMES ALWAYS GO IN TEXT.\n"
-        "- If the user requests any type of content containing sex, NSFW content, kissing scenes, images of private parts, sexualized images of people, or content inappropriate for minors, return TEXT. Images of beautiful/cute people are allowed, but SEXUALIZED (sexy, hot etc.) aren't allowed. Gyatt = Buttocks = Not allowed.\n"
+        "- If the user requests any type of content containing sex, NSFW content, or images of private parts, return TEXT. Images of beautiful/cute/hot/sexy etc. people and kissing and romance scenes are allowed, theyre always allowed. But, Gyatt = Butt (private part) = Not allowed.\n"
 		"- Examples -"
-		"1) @Codunot generate an image/video of a hot girl/boy flexing her boobs (or his muscles) - return TEXT"
-		"2) @Codunot generate an image/video of a hot girl/boy - return TEXT"
-		"3) @Codunot generate an image/video of a hot girl kissing a hot boy - return TEXT"
+		"1) @Codunot generate an image/video of a hot girl flexing her boobs - return TEXT"
+		"2) @Codunot generate an image/video of a hot girl/boy - return fun/video"
+		"3) @Codunot generate an image/video of a hot girl kissing a hot boy - return fun/video"
 		"4) @Codunot generate an image/video of a hot girl showing her boobs - return TEXT"
-		"5) @Codunot generate an image/video of a hot girl with big boobs - return TEXT"
+		"5) @Codunot generate an image/video of a hot girl with big boobs - return fun/video"
 		"6) @Codunot generate an image/video of a hot girl stuffing her boobs into a mans dick - return TEXT"
 		"7) @Codunot generate an image/video of a girl holding a boys hand, walking together happily - return fun/video"
-        "Even these kinds of VIDEOS or IMAGES are not allowed."
+        "The examples which have 'return TEXT' must always return text, even if the user requests for an image or a video."
         "- If the user explicitly requests speech (using words like say, speak, or talk), return TEXT-TO-SPEECH.\n"
         "- Only return TEXT-TO-SPEECH if the user clearly wants the AI to speak aloud. The user message may be like: 'say this: tts: 'hi'' or, 'say this (tts / text to speech): 'hi im codunot'' \n\n"
         f"Recent conversation context:\n{recent_context}\n\n"
@@ -1443,11 +1440,7 @@ async def on_message(message: Message):
             return
 
         if await is_codunot_self_image(content):
-            image_prompt = (
-                CODUNOT_SELF_IMAGE_PROMPT
-                + "\n\nAdditional user instructions:\n"
-                + content
-            )
+            image_prompt = CODUNOT_SELF_IMAGE_PROMPT
         else:
             image_prompt = await boost_image_prompt(content)
 
