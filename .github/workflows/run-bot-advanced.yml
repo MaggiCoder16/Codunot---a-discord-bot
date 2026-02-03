@@ -65,11 +65,20 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          # Stage ONLY the JSON files changed by the workflow
+          # Fetch latest main
+          git fetch origin main
+
+          # Reset index to remote main (but keep local changes in working tree)
+          git reset origin/main
+
+          # Stage ONLY JSON files
           git add daily_usage.json total_usage.json vote_unlocks.json
 
-          # Commit ONLY if JSON files changed
+          # Commit only if JSON files actually changed
           git diff --cached --quiet || git commit -m "Update usage & vote unlock data"
+
+          # Pull remote changes for safety, allowing unrelated JSON changes to merge automatically
+          git pull origin main --rebase --autostash || true
 
           # Push JSON changes
           git push origin main
