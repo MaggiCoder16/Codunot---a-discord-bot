@@ -155,7 +155,16 @@ def consume_total(message, kind: str):
 
     key = get_tier_key(message)
     history = attachment_history.setdefault(key, [])
-    history.append(datetime.utcnow().timestamp())
+
+    ts = datetime.utcnow().timestamp()
+    history.append(ts)
+
+    print(
+        "[ATTACHMENT LOGGED]",
+        "key=", key,
+        "total_in_window=", len(_prune(history)),
+        "time=", datetime.utcfromtimestamp(ts).isoformat()
+    )
 
 # ======================================================
 # DENY MESSAGE
