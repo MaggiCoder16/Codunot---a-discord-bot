@@ -58,3 +58,6 @@
 
 **Please, do not fork, as it took a lot of time to build... hope you understand :)**
 ***Thanks, and have a great day ahead!***
+
+# CREDITS
+**Groq API, deAPI, and Meta Llama
