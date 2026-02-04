@@ -6,7 +6,7 @@ import os
 TOKEN = os.environ["DISCORD_TOKEN"]
 
 # Hardcoded DM channel ID
-DM_CHANNEL_ID = 1443519037282979943
+DM_CHANNEL_ID = 1439456449813151764
 
 intents = discord.Intents.default()
 intents.message_content = True
