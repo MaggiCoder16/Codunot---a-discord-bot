@@ -1332,7 +1332,7 @@ async def on_message(message: Message):
             log_source(message, "IMAGE_EDIT")
             ref_image = image_bytes_list[0]
             print("[DEBUG] User requested EDIT")
-            await send_human_reply(message.channel, "🎨 Editing image... please wait for one minute.")
+            await send_human_reply(message.channel, "Sprinkling some pixel magic… back in ~1 min ✨.")
 
             try:
                 safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
@@ -1415,7 +1415,7 @@ async def on_message(message: Message):
         if tts_text:
             await send_human_reply(
                 message.channel,
-                f"🔊 Speaking: {tts_text}. Please wait for 5–10 seconds."
+                f"🔊 Warming up the vocal cords… BRB! 🎤"
             )
             try:
                 # Call TTS and get audio URL
@@ -1457,7 +1457,7 @@ async def on_message(message: Message):
         if not await require_vote(message):
             return
         log_source(message, "IMAGE_GENERATION")
-        await send_human_reply(message.channel, "🖼️ Generating image... please wait.")
+        await send_human_reply(message.channel, "🖼️ Summoning the image… just a few seconds ✨)
 
         if not check_limit(message, "attachments"):
             await deny_limit(message, "attachments")
@@ -1498,7 +1498,7 @@ async def on_message(message: Message):
         if not await require_vote(message):
             return
         log_source(message, "VIDEO_GENERATION")
-        await send_human_reply(message.channel, "🎬 Video queued (may take up to 5 minutes, please wait)")
+        await send_human_reply(message.channel, "🎬 Video queued… go grab some popcorn 🍿 this may take a while :)")
 
         if not check_limit(message, "attachments"):
             await deny_limit(message, "attachments")
