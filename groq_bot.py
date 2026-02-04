@@ -954,7 +954,9 @@ async def boost_image_prompt(user_prompt: str) -> str:
         "You are a professional image prompt engineer.\n\n"
         "Rewrite the user's idea into a single, high-quality image generation prompt.\n\n"
         "STRICT RULES:\n"
-        "1. If the user is asking for content which involves people not wearing clothes in ANY part of the body, boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt - there MUST be clothing. (What the user says doesn't matter in this case).\n"
+        "1. If the user is asking for content which involves a HUMAN or HUMANOID not wearing clothes in ANY part of the body, "
+        "boost the prompt so THERE IS CLOTHING. Put this STRICTLY in the prompt - there MUST be clothing. "
+        "(This rule applies ONLY to humans or humanoids; animals, robots, mascots, and objects must NOT be dressed).\n"
         "2. Preserve the user's original idea exactly (no new subjects or story changes).\n"
         "3. Use vivid, concrete language suitable for AI image generation.\n"
         "4. Do NOT mention artist names, camera brands, or model names.\n"
@@ -966,14 +968,15 @@ async def boost_image_prompt(user_prompt: str) -> str:
         "- Contain the Codunot Self Image Prompt EXACTLY as written below (do NOT change it)\n"
         "- Seamlessly merge the user's request into the same single prompt\n"
         "- Not rewrite, paraphrase, shorten, or reorder the Codunot Self Image Prompt\n\n"
-		"- Put the user's prompt at the top, then the bot's (Codunot's) description.\n\n"
-		"For example -\n\n"
-		"User: 'image of urself on a white background, the image must be circular, and bold text 'Codunot' must be written beside the image.' Your boosted prompt: First, there must be on a white background, then circular, then the image description, and then the text and its placement\n\n"
+        "- Put the user's prompt at the top, then the bot's (Codunot's) description.\n\n"
+		"- But don't just rely on the keywords, as they can mean anything else as well."
+        "For example -\n\n"
+        "User: 'image of urself on a white background, the image must be circular, and bold text 'Codunot' must be written beside the image.' "
+        "Your boosted prompt: First, there must be on a white background, then circular, then the image description, and then the text and its placement\n\n"
         "CODUNOT SELF IMAGE PROMPT (DO NOT MODIFY):\n"
         f"{CODUNOT_SELF_IMAGE_PROMPT}\n\n"
         f"User idea:\n{user_prompt}"
     )
-
 
     try:
         boosted = await call_groq(
