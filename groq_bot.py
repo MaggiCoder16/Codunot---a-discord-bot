@@ -1012,6 +1012,8 @@ async def boost_image_prompt(user_prompt: str) -> str:
         f"{CODUNOT_SELF_IMAGE_PROMPT}\n"
         "--- END FORBIDDEN BLOCK ---\n\n"
 
+        "ONLY RETURN THE BOOSTED PROMPT, NOTHING LIKE 'I can create a prompt for an image that aligns with the given rules. Here's a revised prompt that ensures the subject is wearing clothing:' ETC. ONLY THE BOOSTED PROMPT MUST BE RETURNED"
+
         "User idea:\n"
         f"{user_prompt}"
     )
