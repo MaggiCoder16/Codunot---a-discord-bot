@@ -42,6 +42,8 @@ from usage_manager import (
     load_usage,
     save_usage,
     autosave_usage,
+    get_usage,
+    get_tier_key,
 )
 
 load_dotenv()
