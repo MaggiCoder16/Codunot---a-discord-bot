@@ -1240,12 +1240,14 @@ def clean_chess_input(content: str, bot_id: int) -> str:
     return content.strip()
 
 # ---------------- ON MESSAGE ----------------
-	
+
 @bot.event
 async def on_message(message: Message):
 	try:
 		if message.author.bot:
 			return
+		
+		get_usage(get_tier_key(message))
 		
 		# ---------- BASIC SETUP ----------
 		content = message.content.strip()
@@ -1334,6 +1336,18 @@ async def on_message(message: Message):
 			if action == "EDIT":
 				await require_vote(message)
 				log_source(message, "IMAGE_EDIT")
+				
+				if not check_limit(message, "attachments"):
+					await deny_limit(message, "attachments")
+					return
+				
+				if not check_total_limit(message, "attachments"):
+					await message.reply(
+						"🚫 You've hit your **total image generation limit**.\n"
+						"Contact aarav_2022 for an upgrade."
+					)
+					return
+				
 				ref_image = image_bytes_list[0]
 				print("[DEBUG] User requested EDIT")
 				await send_human_reply(message.channel, "Sprinkling some pixel magic… back in ~1 min ✨.")
@@ -1414,6 +1428,18 @@ async def on_message(message: Message):
 		if visual_type == "text-to-speech":
 			await require_vote(message)
 			log_source(message, "TEXT_TO_SPEECH")
+			
+			if not check_limit(message, "attachments"):
+				await deny_limit(message, "attachments")
+				return
+			
+			if not check_total_limit(message, "attachments"):
+				await message.reply(
+					"🚫 You've hit your **total image generation limit**.\n"
+					"Contact aarav_2022 for an upgrade."
+				)
+				return
+			
 			tts_text = await clean_user_prompt(content)
 			if tts_text:
 				await send_human_reply(
@@ -1459,8 +1485,7 @@ async def on_message(message: Message):
 		if visual_type == "fun":
 			await require_vote(message)
 			log_source(message, "IMAGE_GENERATION")
-			await send_human_reply(message.channel, "🖼️ Summoning the image… just gimme a few seconds ✨")
-		
+			
 			if not check_limit(message, "attachments"):
 				await deny_limit(message, "attachments")
 				return
@@ -1471,6 +1496,8 @@ async def on_message(message: Message):
 					"Contact aarav_2022 for an upgrade."
 				)
 				return
+			
+			await send_human_reply(message.channel, "🖼️ Summoning the image… just gimme a few seconds ✨")
 			image_prompt = await boost_image_prompt(content)
 		
 			try:
@@ -1482,6 +1509,7 @@ async def on_message(message: Message):
 					file=discord.File(io.BytesIO(image_bytes), filename="image.png")
 				)
 		
+				# 👇 CONSUME AFTER SUCCESS
 				consume(message, "attachments")
 				consume_total(message, "attachments")
 				save_usage()
@@ -1499,8 +1527,7 @@ async def on_message(message: Message):
 		if visual_type == "video":
 			await require_vote(message)
 			log_source(message, "VIDEO_GENERATION")
-			await send_human_reply(message.channel, "🎬 Video queued… go grab some popcorn 🍿 this may take a while :)")
-		
+			
 			if not check_limit(message, "attachments"):
 				await deny_limit(message, "attachments")
 				return
@@ -1511,7 +1538,8 @@ async def on_message(message: Message):
 					"Contact aarav_2022 for an upgrade."
 				)
 				return
-		
+			
+			await send_human_reply(message.channel, "🎬 Video queued… go grab some popcorn 🍿 this may take a while :)")
 			video_prompt = await boost_image_prompt(content)
 		
 			try:
@@ -1546,7 +1574,7 @@ async def on_message(message: Message):
 				elif result == "0-1":
 					msg = "GG 😄 I win!"
 				else:
-					msg = "GG 🤝 it’s a draw!"
+					msg = "GG 🤝 it's a draw!"
 		
 				channel_chess[chan_id] = False
 				await send_human_reply(message.channel, f"{msg} Wanna analyze or rematch?")
@@ -1589,7 +1617,7 @@ async def on_message(message: Message):
 			if not move_san:
 				await send_human_reply(
 					message.channel,
-					"🤔 That doesn’t look like a legal move. Try something like `e4` or `Bc4`."
+					"🤔 That doesn't look like a legal move. Try something like `e4` or `Bc4`."
 				)
 				return
 		
@@ -1598,7 +1626,7 @@ async def on_message(message: Message):
 			except:
 				await send_human_reply(
 					message.channel,
-					"⚠️ That move isn’t legal in this position."
+					"⚠️ That move isn't legal in this position."
 				)
 				return
 		
