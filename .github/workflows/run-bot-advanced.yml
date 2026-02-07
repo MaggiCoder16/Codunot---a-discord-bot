@@ -54,6 +54,7 @@ jobs:
           HUGGINGFACE_API_KEY_IMAGE_GEN: ${{ secrets.HUGGINGFACE_API_KEY_IMAGE_GEN }}
           DEAPI_API_KEY: ${{ secrets.DEAPI_API_KEY }}
           DEAPI_WEBHOOK_URL: ${{ secrets.DEAPI_WEBHOOK_URL }}
+          DEAPI_RESULT_BASE: ${{ secrets.DEAPI_RESULT_BASE }}
           TOPGG_TOKEN: ${{ secrets.TOPGG_TOKEN }}
           
         run: |
