@@ -9,3 +9,5 @@ pdf2image
 Pillow
 python-docx
 requests
+fastapi
+uvicorn
