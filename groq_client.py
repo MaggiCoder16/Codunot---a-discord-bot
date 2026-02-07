@@ -33,7 +33,7 @@ async def call_groq(
     model: str = "llama-3.3-70b-versatile",
     temperature: float = 1.0,
     image_bytes: bytes | None = None,
-    retries: int = 4
+    retries: int = 2
 ) -> str | None:
     if not GROQ_API_KEY:
         print("Missing GROQ API Key")
@@ -102,7 +102,7 @@ async def call_vision_model(
     image_bytes: bytes,
     prompt: str,
     temperature: float = 0.7,
-    retries: int = 3
+    retries: int = 2
 ) -> str | None:
     """
     Call Groq vision model (Scout) with an image and prompt.
