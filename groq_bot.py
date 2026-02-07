@@ -193,7 +193,7 @@ async def chessmode(ctx: commands.Context):
 
 # ---------------- MODELS ----------------
 PRIMARY_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Default for all modes
-FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Used when PRIMARY is overloaded
+FALLBACK_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"  # Used when PRIMARY is overloaded
 
 PRIMARY_COOLDOWN_UNTIL = None
 PRIMARY_COOLDOWN_DURATION = timedelta(minutes=10)
@@ -713,6 +713,7 @@ async def handle_image_message(message, mode):
         # Call the unified Groq client
         response = await call_groq(
             prompt=prompt,
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             image_bytes=image_bytes,
             temperature=0.7
         )
