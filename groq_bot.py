@@ -20,7 +20,7 @@ from memory import MemoryManager
 from humanizer import maybe_typo
 from deAPI_client_image import generate_image
 from deAPI_client_image_edit import edit_image
-from deAPI_client_text2vid import text_to_video_512
+from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech, TextToSpeechError
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
