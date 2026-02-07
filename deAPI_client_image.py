@@ -25,7 +25,7 @@ DEFAULT_WIDTH = 512
 DEFAULT_HEIGHT = 512
 
 TXT2IMG_URL = "https://api.deapi.ai/api/v1/client/txt2img"
-RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE")  # optional: your /result endpoint base
+RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")  # Default to localhost
 
 # ============================================================
 # PROMPT HELPERS
@@ -93,33 +93,47 @@ async def generate_image(
         # ---------------------------
         # POLLING LOOP
         # ---------------------------
-        poll_url = f"{RESULT_URL_BASE}/result/{request_id}" if RESULT_URL_BASE else None
-        if not poll_url:
-            # If no base provided, just wait for the webhook to update your local server
-            # The Discord bot must fetch from your webhook memory or skip polling
-            print("[deAPI] No RESULT_URL_BASE set; ensure your FastAPI webhook is running")
-            # Optional: return request_id and let the bot handle /result requests
-            return request_id
+        poll_url = f"{RESULT_URL_BASE}/result/{request_id}"
+        print(f"[deAPI] Polling at: {poll_url}")
 
-        max_attempts = 10
+        max_attempts = 30
         delay = 5  # seconds between polls
 
         for attempt in range(max_attempts):
-            async with session.get(poll_url) as r:
-                status_data = await r.json()
-                status = status_data.get("status")
-                if status == "done":
-                    result_url = status_data.get("result_url")
-                    if not result_url:
-                        raise RuntimeError("Job done but no result_url returned")
-                    # Download image
-                    async with session.get(result_url) as img_resp:
-                        if img_resp.status != 200:
-                            raise RuntimeError("Failed to download image")
-                        return await img_resp.read()
-                elif status == "pending":
-                    await asyncio.sleep(delay)
-                else:
-                    raise RuntimeError(f"Unexpected status: {status_data}")
+            try:
+                async with session.get(poll_url) as r:
+                    if r.status != 200:
+                        print(f"[deAPI] Poll attempt {attempt + 1} failed with status {r.status}")
+                        await asyncio.sleep(delay)
+                        continue
+                        
+                    status_data = await r.json()
+                    status = status_data.get("status")
+                    
+                    if status == "done":
+                        result_url = status_data.get("result_url")
+                        if not result_url:
+                            raise RuntimeError("Job done but no result_url returned")
+                        
+                        print(f"[deAPI] Image ready! Downloading from: {result_url}")
+                        
+                        # Download image
+                        async with session.get(result_url) as img_resp:
+                            if img_resp.status != 200:
+                                raise RuntimeError(f"Failed to download image (status {img_resp.status})")
+                            return await img_resp.read()
+                    
+                    elif status == "pending":
+                        print(f"[deAPI] Polling attempt {attempt + 1}/{max_attempts} - status: pending")
+                        await asyncio.sleep(delay)
+                    else:
+                        raise RuntimeError(f"Unexpected status: {status_data}")
+                        
+            except aiohttp.ClientError as e:
+                print(f"[deAPI] Network error on attempt {attempt + 1}: {e}")
+                await asyncio.sleep(delay)
+            except Exception as e:
+                print(f"[deAPI] Error on attempt {attempt + 1}: {e}")
+                await asyncio.sleep(delay)
 
-        raise RuntimeError("Image not ready after polling. Check your webhook server.")
+        raise RuntimeError(f"Image not ready after {max_attempts * delay} seconds. Check your webhook server.")
