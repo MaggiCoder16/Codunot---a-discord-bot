@@ -137,7 +137,8 @@ def consume(message, kind: str):
         return
 
     usage[kind] += 1
-    save_usage()  # IMMEDIATE SAVE after consuming
+    # Save immediately after consuming
+    save_usage()
 
 # ======================================================
 # ROLLING 2-MONTH TOTAL LIMITS
@@ -185,7 +186,8 @@ def consume_total(message, kind: str):
         "time=", datetime.utcfromtimestamp(ts).isoformat()
     )
     
-    save_usage()  # IMMEDIATE SAVE after consuming total
+    # Save immediately after consuming total
+    save_usage()
 
 
 # ======================================================
@@ -204,10 +206,10 @@ async def deny_limit(message, kind: str):
 # ======================================================
 
 def save_usage():
+    """Save usage data to JSON files"""
     try:
         with open(USAGE_FILE, "w", encoding="utf-8") as f:
             json.dump(channel_usage, f, indent=2)
-        print(f"[SAVE] Saved daily usage to {USAGE_FILE}")
     except Exception as e:
         print("[SAVE DAILY ERROR]", e)
 
@@ -216,11 +218,11 @@ def save_usage():
             json.dump({
                 "attachments": attachment_history
             }, f, indent=2)
-        print(f"[SAVE] Saved total usage to {TOTAL_FILE}")
     except Exception as e:
         print("[SAVE TOTAL ERROR]", e)
 
 def load_usage():
+    """Load usage data from JSON files"""
     global channel_usage, attachment_history
 
     if os.path.exists(USAGE_FILE):
@@ -241,10 +243,11 @@ def load_usage():
             print(f"[LOAD TOTAL ERROR] {e}")
 
 # ======================================================
-# AUTOSAVE
+# AUTOSAVE (periodic backup every 5 minutes)
 # ======================================================
 
 async def autosave_usage():
+    """Periodically save usage data as a backup"""
     while True:
-        await asyncio.sleep(60)
+        await asyncio.sleep(300)  # 5 minutes instead of 1 minute
         save_usage()
