@@ -24,6 +24,13 @@ async def get_session():
         SESSION = aiohttp.ClientSession()
     return SESSION
 
+async def close_session():
+    """Close the aiohttp session properly"""
+    global SESSION
+    if SESSION and not SESSION.closed:
+        await SESSION.close()
+        SESSION = None
+
 # ---------------- UNIFIED CLIENT ----------------
 async def call_groq(
     prompt: str,
@@ -62,7 +69,7 @@ async def call_groq(
             }
         ],
         "temperature": temperature,
-        "max_tokens": 8000
+        "max_tokens": 8000  # ← High limit, prevents truncation
     }
 
     headers = {
@@ -88,17 +95,14 @@ async def call_groq(
                 print(clean_log(text))
                 print("================================\n")
 
-                # Don't retry on auth errors
                 if resp.status in (401, 403):
                     return None
                 
-                # Rate limit - backoff and retry
                 if resp.status == 429:
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8)
                     continue
                 
-                # For 503 (overload), raise exception so caller can handle fallback
                 if resp.status == 503:
                     raise Exception(f"503 service overloaded - model {model} over capacity")
 
@@ -106,7 +110,6 @@ async def call_groq(
             error_msg = clean_log(str(e))
             print(f"[GROQ ERROR] Attempt {attempt}/{retries}: {error_msg}")
             
-            # If this is the last attempt, re-raise so caller can handle
             if attempt == retries:
                 raise e
             
