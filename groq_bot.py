@@ -239,7 +239,6 @@ async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
                     prompt=prompt,
                     model=FALLBACK_MODEL,
                     temperature=temperature,
-                    max_retries=1  # Only retry once
                 )
             except Exception as fallback_error:
                 print(f"[GROQ] Fallback model also failed: {fallback_error}")
