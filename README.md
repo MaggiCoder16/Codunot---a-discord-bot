@@ -1,6 +1,6 @@
 # Codunot - a discord chatbot
 
-**Codunot — your chat bot sidekick that can switch personalities and do more than just chat.** ***Made by a 13 year old with a little help from ChatGPT***
+**Codunot — your chat bot sidekick that can switch personalities and do more than just chat.** ***Made by a 13 year old with a little help from ChatGPT (code was written by a 13-year-old, comments, polishing, etc. were done by ChatGPT***
 
 ***Lightning fast responses ~0.1 - 0.2 seconds, and excellent at coding, sends code in parts, taking Discord’s message character limit into account”***
 
