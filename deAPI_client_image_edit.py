@@ -48,6 +48,12 @@ async def edit_image(
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
         # submit the job
         async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
+            # 🔎 print rate limit info from headers
+            print(
+                f"[deAPI EDIT] x‑ratelimit‑limit: {resp.headers.get('x-ratelimit-limit')}, "
+                f"x‑ratelimit‑remaining: {resp.headers.get('x-ratelimit-remaining')}"
+            )
+
             if resp.status != 200:
                 text = await resp.text()
                 raise RuntimeError(f"Image edit submission failed ({resp.status}): {text}")
