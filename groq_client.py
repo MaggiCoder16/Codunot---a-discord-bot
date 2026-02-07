@@ -11,9 +11,6 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 SESSION: aiohttp.ClientSession | None = None
 
-# Default vision model (from your groq_bot.py)
-SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-
 def clean_log(text: str) -> str:
     if not text:
         return text
@@ -27,24 +24,26 @@ async def get_session():
         SESSION = aiohttp.ClientSession()
     return SESSION
 
-# ---------------- TEXT ONLY CLIENT ----------------
+# ---------------- UNIFIED CLIENT ----------------
 async def call_groq(
     prompt: str,
     model: str = "llama-3.3-70b-versatile",
     temperature: float = 1.0,
     image_bytes: bytes | None = None,
+    max_tokens: int = 500,
     retries: int = 2
 ) -> str | None:
+
     if not GROQ_API_KEY:
         print("Missing GROQ API Key")
         return None
 
     session = await get_session()
 
+    # Build content
     content = [{"type": "text", "text": prompt}]
 
     if image_bytes is not None:
-        model = SCOUT_MODEL  # override model automatically
         b64 = base64.b64encode(image_bytes).decode("utf-8")
         content.append({
             "type": "image_url",
@@ -62,7 +61,7 @@ async def call_groq(
             }
         ],
         "temperature": temperature,
-        "max_tokens": 500
+        "max_tokens": max_tokens
     }
 
     headers = {
@@ -75,88 +74,41 @@ async def call_groq(
         try:
             async with session.post(GROQ_URL, headers=headers, json=payload, timeout=60) as resp:
                 text = await resp.text()
+                
                 if resp.status == 200:
                     data = await resp.json()
-                    return data["choices"][0]["message"]["content"]
+                    response_text = data["choices"][0]["message"]["content"]
+                    print(f"[GROQ] Model: {model}, Response length: {len(response_text)} chars")
+                    return response_text
 
                 print("\n===== GROQ ERROR =====")
-                print(f"Attempt {attempt}, Status: {resp.status}")
+                print(f"Attempt {attempt}/{retries}, Status: {resp.status}")
+                print(f"Model: {model}")
                 print(clean_log(text))
                 print("================================\n")
 
+                # Don't retry on auth errors
                 if resp.status in (401, 403):
                     return None
-                if resp.status == 429:
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, 8)
-
-        except Exception as e:
-            print(f"[GROQ ERROR] Attempt {attempt}: {clean_log(str(e))}")
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 8)
-
-    return None
-
-# ---------------- VISION CLIENT ----------------
-async def call_vision_model(
-    image_bytes: bytes,
-    prompt: str,
-    temperature: float = 0.7,
-    retries: int = 2
-) -> str | None:
-    """
-    Call Groq vision model (Scout) with an image and prompt.
-    Uses SCOUT_MODEL automatically.
-    """
-    if not GROQ_API_KEY:
-        print("Missing GROQ API Key")
-        return None
-
-    session = await get_session()
-    # Encode image as base64 data URL
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
-    img_data_url = f"data:image/png;base64,{b64}"
-
-    payload = {
-        "model": SCOUT_MODEL,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": img_data_url}}
-                ]
-            }
-        ],
-        "temperature": temperature,
-        "max_tokens": 500
-    }
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    backoff = 1
-    for attempt in range(1, retries + 1):
-        try:
-            async with session.post(GROQ_URL, headers=headers, json=payload, timeout=60) as resp:
-                text = await resp.text()
-                if resp.status == 200:
-                    data = await resp.json()
-                    return data["choices"][0]["message"]["content"]
-                print("\n===== VISION GROQ ERROR =====")
-                print(f"Attempt {attempt}, Status: {resp.status}")
-                print(clean_log(text))
-                print("================================\n")
-                if resp.status in (401, 403):
-                    return None
+                
+                # Rate limit - backoff and retry
                 if resp.status == 429:
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8)
                     continue
+                
+                # For 503 (overload), raise exception so caller can handle fallback
+                if resp.status == 503:
+                    raise Exception(f"503 service overloaded - model {model} over capacity")
+
         except Exception as e:
-            print(f"[VISION ERROR] Attempt {attempt}: {clean_log(str(e))}")
+            error_msg = clean_log(str(e))
+            print(f"[GROQ ERROR] Attempt {attempt}/{retries}: {error_msg}")
+            
+            # If this is the last attempt, re-raise so caller can handle
+            if attempt == retries:
+                raise e
+            
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 8)
 
