@@ -83,6 +83,8 @@ async def generate_image(
         # SUBMIT JOB
         # ---------------------------
         async with session.post(TXT2IMG_URL, json=payload, headers=headers) as resp:
+            print(f"[deAPI] x-ratelimit-limit: {resp.headers.get('x-ratelimit-limit')}, x-ratelimit-remaining: {resp.headers.get('x-ratelimit-remaining')}")
+
             if resp.status != 200:
                 raise RuntimeError(await resp.text())
             data = await resp.json()
@@ -106,29 +108,29 @@ async def generate_image(
                         print(f"[deAPI] Poll attempt {attempt + 1} failed with status {r.status}")
                         await asyncio.sleep(delay)
                         continue
-                        
+
                     status_data = await r.json()
                     status = status_data.get("status")
-                    
+
                     if status == "done":
                         result_url = status_data.get("result_url")
                         if not result_url:
                             raise RuntimeError("Job done but no result_url returned")
-                        
+
                         print(f"[deAPI] Image ready! Downloading from: {result_url}")
-                        
+
                         # Download image
                         async with session.get(result_url) as img_resp:
                             if img_resp.status != 200:
                                 raise RuntimeError(f"Failed to download image (status {img_resp.status})")
                             return await img_resp.read()
-                    
+
                     elif status == "pending":
                         print(f"[deAPI] Polling attempt {attempt + 1}/{max_attempts} - status: pending")
                         await asyncio.sleep(delay)
                     else:
                         raise RuntimeError(f"Unexpected status: {status_data}")
-                        
+
             except aiohttp.ClientError as e:
                 print(f"[deAPI] Network error on attempt {attempt + 1}: {e}")
                 await asyncio.sleep(delay)
