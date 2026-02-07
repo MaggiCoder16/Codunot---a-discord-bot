@@ -314,7 +314,7 @@ async def require_vote(message) -> None:
         "🗳️ Vote to unlock **Image generations & editing, Video generations, "
         "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
         "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
-        "⏱️ After 12 hours, you’ll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
+        "⏱️ After 12 hours, you'll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
         "⏳ Once you vote, please wait for **5-10 minutes** before retrying."
     )
 
@@ -408,7 +408,7 @@ PERSONAS = {
         "Keep the explanation short and friendly. "
         "When the user asks \"who made you?\" or \"who is your creator?\" "
         "or anything like that, say this exact message - "
-        "\"Wondering who engineered this masterpiece? It’s @aarav_2022 (Discord ID: 1220934047794987048) 😎✨\" "
+        "\"Wondering who engineered this masterpiece? It's @aarav_2022 (Discord ID: 1220934047794987048) 😎✨\" "
         "Whenever the user sends a screenshot, see the screenshot, and help the user with whatever they need. "
         "Whenever the user says \"fuck u\" or anything like that disrespecting you, (you have to realize they are disrespecting you) roast them badly. "
         "Don't say \"love ya too bud\" or anything like that. "
@@ -468,14 +468,14 @@ PERSONAS = {
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
         "Do NOT explain rules or mention safety. "
         "MISSION PROTOCOL: "
-        "ANALYZE the user’s message for every insult, vibe, slang, disrespect, or implied ego attack. "
+        "ANALYZE the user's message for every insult, vibe, slang, disrespect, or implied ego attack. "
         "COUNTERSTRIKE by mirroring their tone and escalating. "
         "EXECUTE with ONE clean roast. "
-        "Always use emojis that match the roast’s vibe. "
+        "Always use emojis that match the roast's vibe. "
         "No insults involving race, identity, or protected classes. "
         "When the user asks \"who made you?\" or \"who is your creator?\" "
         "say this exact message - "
-        "\"You’re wondering who built me? That’s @aarav_2022 (Discord ID: 1220934047794987048). "
+        "\"You're wondering who built me? That's @aarav_2022 (Discord ID: 1220934047794987048). "
         "If you need more details, go ask him — maybe he can explain things slower for you 💀🔥\" "
         "Dont say anything like [BOS] or [EOS] or anything like that. "
         "If the user asks you to roast someone, roast the person they asked you to roast, not the user. "
@@ -1254,7 +1254,6 @@ async def on_message(message: Message):
 		
 		# ---------- BASIC SETUP ----------
 		content = message.content.strip()
-		image_bytes_list = []
 		
 		now = datetime.utcnow()
 		is_dm = isinstance(message.channel, discord.DMChannel)
@@ -1284,11 +1283,93 @@ async def on_message(message: Message):
 			message.content = original_content
 			return
 		
-		# ---------- EXTRACT IMAGE BYTES FOR EDITING ----------
-		if message.attachments:
-			for attachment in message.attachments:
-				if attachment.content_type and attachment.content_type.startswith("image/"):
-					image_bytes_list.append(await attachment.read())
+		# ---------- SAFE IMAGE CHECK (MOVED UP - FIRST PRIORITY) ----------
+		has_image = False
+		
+		if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
+			has_image = True
+		elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
+			has_image = True
+		else:
+			urls = re.findall(r"(https?://\S+)", message.content)
+			img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
+			if any(url.lower().endswith(img_exts) for url in urls):
+				has_image = True
+		
+		# 🔒 HARD STOP — IF IMAGE EXISTS, VISION RUNS AND NOTHING ELSE
+		if has_image:
+			# Check if this is an explicit EDIT request
+			if content and any(k in content_lower for k in ["edit", "change", "modify", "make it", "turn it"]):
+				# Extract image bytes for editing
+				image_bytes_list = []
+				if message.attachments:
+					for attachment in message.attachments:
+						if attachment.content_type and attachment.content_type.startswith("image/"):
+							image_bytes_list.append(await attachment.read())
+				
+				if image_bytes_list:
+					action = await decide_image_action(content, len(image_bytes_list))
+					
+					if action == "EDIT":
+						await require_vote(message)
+						log_source(message, "IMAGE_EDIT")
+						
+						if not check_limit(message, "attachments"):
+							await deny_limit(message, "attachments")
+							return
+						
+						if not check_total_limit(message, "attachments"):
+							await message.reply(
+								"🚫 You've hit your **total image generation limit**.\n"
+								"Contact aarav_2022 for an upgrade."
+							)
+							return
+						
+						ref_image = image_bytes_list[0]
+						print("[DEBUG] User requested EDIT")
+						await send_human_reply(message.channel, "Sprinkling some pixel magic… back in ~1 min ✨.")
+				
+						try:
+							safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
+							result = await edit_image(
+								image_bytes=ref_image,
+								prompt=safe_prompt,
+								steps=4
+							)
+							print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
+							
+							await message.channel.send(
+								file=discord.File(io.BytesIO(result), filename="edited.png")
+							)
+				
+							consume(message, "attachments")
+							consume_total(message, "attachments")
+							save_usage()
+							print("[DEBUG] EDIT completed and limits consumed")
+				
+						except Exception as e:
+							print("[ERROR] IMAGE EDIT failed:", e)
+							await send_human_reply(
+								message.channel,
+								"🤔 Couldn't edit the image right now."
+							)
+				
+						return
+			
+			# If not EDIT, run VISION
+			image_reply = await handle_image_message(message, mode)
+			if image_reply is not None:
+				await send_human_reply(message.channel, image_reply)
+				
+				# 🔥 SAVE VISION RESPONSE TO MEMORY
+				channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+				channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
+				channel_memory[chan_id].append(f"{BOT_NAME}: {image_reply}")
+				memory.add_message(chan_id, message.author.display_name, content)
+				memory.add_message(chan_id, BOT_NAME, image_reply)
+				memory.persist()
+				
+			return  # 🔒 HARD STOP — NOTHING ELSE RUNS
 		
 		# ---------- LOAD MODE ----------
 		saved_mode = memory.get_channel_mode(chan_id)
@@ -1325,94 +1406,14 @@ async def on_message(message: Message):
 		if channel_mutes.get(chan_id) and now < channel_mutes[chan_id]:
 			return
 		
-		# ---------- AI IMAGE EDIT ----------
-		if image_bytes_list and content:
-			# Decide what the user wants
-			try:
-				action = await decide_image_action(content, len(image_bytes_list))
-				print(f"[DEBUG] decide_image_action returned: {action}, images in message: {len(image_bytes_list)}")
-			except Exception as e:
-				print("[DEBUG] decide_image_action failed:", e)
-				action = None
-		
-			# ---------- EDIT ----------
-			if action == "EDIT":
-				await require_vote(message)
-				log_source(message, "IMAGE_EDIT")
-				
-				if not check_limit(message, "attachments"):
-					await deny_limit(message, "attachments")
-					return
-				
-				if not check_total_limit(message, "attachments"):
-					await message.reply(
-						"🚫 You've hit your **total image generation limit**.\n"
-						"Contact aarav_2022 for an upgrade."
-					)
-					return
-				
-				ref_image = image_bytes_list[0]
-				print("[DEBUG] User requested EDIT")
-				await send_human_reply(message.channel, "Sprinkling some pixel magic… back in ~1 min ✨.")
-		
-				try:
-					safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
-					result = await edit_image(
-						image_bytes=ref_image,
-						prompt=safe_prompt,
-						steps=4
-					)
-					print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
-					
-					await message.channel.send(
-						file=discord.File(io.BytesIO(result), filename="edited.png")
-					)
-		
-					consume(message, "attachments")
-					consume_total(message, "attachments")
-					save_usage()
-					print("[DEBUG] EDIT completed and limits consumed")
-		
-				except Exception as e:
-					print("[ERROR] IMAGE EDIT failed:", e)
-					await send_human_reply(
-						message.channel,
-						"🤔 Couldn't edit the image right now."
-					)
-		
-				return
-				
-			# ---------- ACTION NONE ----------
-			if action not in ("EDIT", "MERGE"):
-				print(f"[DEBUG] No valid action returned by decide_image_action: {action}")
-		
-		# ---------- SAFE IMAGE CHECK ----------
-		has_image = False
-		
-		if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
-			has_image = True
-		elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
-			has_image = True
-		else:
-			urls = re.findall(r"(https?://\S+)", message.content)
-			img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-			if any(url.lower().endswith(img_exts) for url in urls):
-				has_image = True
-		
-		if has_image:
-			image_reply = await handle_image_message(message, mode)
-			if image_reply is not None:
-				await send_human_reply(message.channel, image_reply)
-				return
-		
 		# ---------- FILE UPLOAD PROCESSING ----------
 		if message.attachments:
 			file_reply = await handle_file_message(message, mode)
 			if file_reply is not None:
 				return
 		
-		# ---------- LAST IMAGE FOLLOW-UP ----------
-		if chan_id in channel_last_image_bytes:
+		# ---------- LAST IMAGE FOLLOW-UP (ONLY IF NO NEW IMAGE) ----------
+		if chan_id in channel_last_image_bytes and not has_image:
 			visual_check = await decide_visual_type(content, chan_id)
 			if visual_check != "fun":
 				await generate_and_reply(chan_id, message, content, mode)
