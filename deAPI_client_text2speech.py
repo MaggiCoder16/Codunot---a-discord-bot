@@ -58,6 +58,11 @@ async def text_to_speech(
             json=payload,
             timeout=aiohttp.ClientTimeout(total=60),
         ) as resp:
+            print(
+                f"[TTS] x‑ratelimit‑limit: {resp.headers.get('x-ratelimit-limit')}, "
+                f"x‑ratelimit‑remaining: {resp.headers.get('x-ratelimit-remaining')}"
+            )
+
             if resp.status != 200:
                 raise TextToSpeechError(
                     f"txt2audio submit failed ({resp.status}): {await resp.text()}"
