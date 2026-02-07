@@ -1283,6 +1283,18 @@ async def on_message(message: Message):
 			message.content = original_content
 			return
 		
+		# ---------- LOAD MODE (BEFORE IMAGE CHECK) ----------
+		saved_mode = memory.get_channel_mode(chan_id)
+		channel_modes[chan_id] = saved_mode if saved_mode else "funny"
+		if not saved_mode:
+			memory.save_channel_mode(chan_id, "funny")
+		
+		channel_mutes.setdefault(chan_id, None)
+		channel_chess.setdefault(chan_id, False)
+		channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+		channel_modes.setdefault(chan_id, "funny")
+		mode = channel_modes[chan_id]
+		
 		# ---------- SAFE IMAGE CHECK (MOVED UP - FIRST PRIORITY) ----------
 		has_image = False
 		
@@ -1370,18 +1382,6 @@ async def on_message(message: Message):
 				memory.persist()
 				
 			return  # 🔒 HARD STOP — NOTHING ELSE RUNS
-		
-		# ---------- LOAD MODE ----------
-		saved_mode = memory.get_channel_mode(chan_id)
-		channel_modes[chan_id] = saved_mode if saved_mode else "funny"
-		if not saved_mode:
-			memory.save_channel_mode(chan_id, "funny")
-		
-		channel_mutes.setdefault(chan_id, None)
-		channel_chess.setdefault(chan_id, False)
-		channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-		channel_modes.setdefault(chan_id, "funny")
-		mode = channel_modes[chan_id]
 		
 		# ---------- OWNER COMMANDS ----------
 		if message.author.id in OWNER_IDS:
