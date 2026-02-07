@@ -1511,7 +1511,6 @@ async def on_message(message: Message):
 					file=discord.File(io.BytesIO(image_bytes), filename="image.png")
 				)
 		
-				# 👇 CONSUME AFTER SUCCESS
 				consume(message, "attachments")
 				consume_total(message, "attachments")
 				save_usage()
