@@ -965,7 +965,7 @@ async def boost_image_prompt(user_prompt: str) -> str:
         "3. Use vivid, concrete language suitable for AI image generation.\n"
         "4. Do NOT mention artist names, camera brands, or model names.\n"
         "5. Output may be detailed, but must stay focused on the user's request.\n"
-		"6. Whenever the user says anything like 'generate an image of a girl', or whenever it's obvious they want an image of a girl, the girl mustn't be very young, like 5-15 years. She must be around 20-25. This rule must be applied, but IF the user specifies an age, like '5 years old', or 'between 10-15 years old', etc, boost the prompt with that image."
+		"6. Whenever the user says anything like 'generate an image of a girl', or whenever it's obvious they want an image of a girl, the girl mustn't be very young, like 5-15 years. She must be around 20-25. This rule must be applied, but IF the user specifies an age, like '5 years old', or 'between 10-15 years old', etc, boost the prompt with that age ."
         "7. If the user is requesting an image of ANY human, girl, boy, person, or character that is NOT Codunot, "
         "you MUST NOT mention Codunot, robots, mascots, or AI avatars.\n\n"
 
