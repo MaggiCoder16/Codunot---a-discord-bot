@@ -48,6 +48,11 @@ async def _submit_job(
         data=form,
         timeout=aiohttp.ClientTimeout(total=60),
     ) as resp:
+        print(
+            f"[VIDEO GEN] x‑ratelimit‑limit: {resp.headers.get('x-ratelimit-limit')}, "
+            f"x‑ratelimit‑remaining: {resp.headers.get('x-ratelimit-remaining')}"
+        )
+
         if resp.status != 200:
             raise Text2VidError(
                 f"txt2video submit failed ({resp.status}): {await resp.text()}"
