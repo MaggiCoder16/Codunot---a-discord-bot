@@ -1358,27 +1358,24 @@ async def on_message(message: Message):
 		
 				try:
 					safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
-					result = await edit_image(
+					request_id = await edit_image(
 						image_bytes=ref_image,
 						prompt=safe_prompt,
-						steps=15
+						steps=4
 					)
-					print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
-					
-					await message.channel.send(
-						file=discord.File(io.BytesIO(result), filename="edited.png")
-					)
+					print(f"[DEBUG] edit_image submitted, request_id: {request_id}")
 		
+					# Consume limits immediately
 					consume(message, "attachments")
 					consume_total(message, "attachments")
 					save_usage()
-					print("[DEBUG] EDIT completed and limits consumed")
+					print("[DEBUG] EDIT request submitted and limits consumed")
 		
 				except Exception as e:
 					print("[ERROR] IMAGE EDIT failed:", e)
 					await send_human_reply(
 						message.channel,
-						"🤔 Couldn't edit the image right now."
+						"🤔 Couldn't submit the image edit job right now."
 					)
 		
 				return
