@@ -1,38 +1,67 @@
-import os
 import aiohttp
+import asyncio
 import io
 import random
-import asyncio
-from typing import List
 
-DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
-RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")
+# =====================
+# CONFIG
+# =====================
 
-if not DEAPI_API_KEY:
-    raise RuntimeError("DEAPI_API_KEY not set")
+DEAPI_API_KEY = "<YOUR_API_KEY>"
+MODEL_NAME = "flux-dev"
+IMG2IMG_URL = "https://api.deapi.ai/v1/images/edits"
+RESULT_URL_BASE = "https://api.deapi.ai/v1"
 
-IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
-
-MODEL_NAME = "Flux_2_Klein_4B_BF16"
-DEFAULT_STEPS = 4
+DEFAULT_STEPS = 30
 MAX_STEPS = 50
 
 
-async def edit_images(
-    images: List[bytes],
+# =====================
+# PUBLIC API
+# =====================
+
+async def edit_image(
+    image_bytes: bytes,
     prompt: str,
     steps: int = DEFAULT_STEPS,
-    strength: float = 1.0,
 ) -> bytes:
     """
-    Submit a multi-image img2img job to deAPI (Flux 2 Klein).
-    Multiple images are merged/conditioned automatically by Flux.
-
-    Returns raw PNG bytes.
+    Edit a SINGLE image using Flux img2img.
     """
+    seed = random.randint(1, 2**32 - 1)
+    steps = min(steps, MAX_STEPS)
+    prompt = (prompt or "").strip()
 
-    if not images or len(images) < 1:
-        raise ValueError("At least one image is required")
+    headers = {
+        "Authorization": f"Bearer {DEAPI_API_KEY}",
+        "Accept": "application/json",
+    }
+
+    form = aiohttp.FormData()
+    form.add_field(
+        "image",
+        io.BytesIO(image_bytes),
+        filename="input.png",
+        content_type="image/png",
+    )
+    form.add_field("prompt", prompt)
+    form.add_field("model", MODEL_NAME)
+    form.add_field("steps", str(steps))
+    form.add_field("seed", str(seed))
+
+    return await _submit_and_poll(form, headers)
+
+
+async def merge_images(
+    images: list[bytes],
+    prompt: str,
+    steps: int = DEFAULT_STEPS,
+) -> bytes:
+    """
+    Merge 2+ images using Flux multi-image conditioning.
+    """
+    if len(images) < 2:
+        raise ValueError("merge_images requires at least 2 images")
 
     seed = random.randint(1, 2**32 - 1)
     steps = min(steps, MAX_STEPS)
@@ -45,11 +74,11 @@ async def edit_images(
 
     form = aiohttp.FormData()
 
-    for idx, img in enumerate(images):
+    for i, img in enumerate(images):
         form.add_field(
             "image",
             io.BytesIO(img),
-            filename=f"input_{idx}.png",
+            filename=f"input_{i}.png",
             content_type="image/png",
         )
 
@@ -57,8 +86,18 @@ async def edit_images(
     form.add_field("model", MODEL_NAME)
     form.add_field("steps", str(steps))
     form.add_field("seed", str(seed))
-    form.add_field("strength", str(strength))
 
+    return await _submit_and_poll(form, headers)
+
+
+# =====================
+# INTERNALS
+# =====================
+
+async def _submit_and_poll(
+    form: aiohttp.FormData,
+    headers: dict,
+) -> bytes:
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=120)
     ) as session:
@@ -76,14 +115,12 @@ async def edit_images(
             )
 
             if resp.status != 200:
-                text = await resp.text()
                 raise RuntimeError(
-                    f"Image edit submission failed ({resp.status}): {text}"
+                    f"Submission failed ({resp.status}): {await resp.text()}"
                 )
 
             data = await resp.json()
             request_id = data.get("data", {}).get("request_id")
-
             if not request_id:
                 raise RuntimeError(f"No request_id returned: {data}")
 
@@ -93,8 +130,8 @@ async def edit_images(
         poll_url = f"{RESULT_URL_BASE}/result/{request_id}"
         print(f"[deAPI EDIT] Polling at: {poll_url}")
 
+        delay = 5
         max_attempts = 30
-        delay = 5  # seconds
 
         for attempt in range(max_attempts):
             try:
@@ -109,31 +146,22 @@ async def edit_images(
                     if status == "done":
                         result_url = status_data.get("result_url")
                         if not result_url:
-                            raise RuntimeError(
-                                "Edit done but no result_url returned"
-                            )
+                            raise RuntimeError("Done but no result_url returned")
 
                         async with session.get(result_url) as img_resp:
                             if img_resp.status != 200:
                                 raise RuntimeError(
-                                    f"Failed to download image "
-                                    f"(status {img_resp.status})"
+                                    f"Failed to download image ({img_resp.status})"
                                 )
                             return await img_resp.read()
 
                     elif status == "pending":
                         await asyncio.sleep(delay)
                     else:
-                        raise RuntimeError(
-                            f"Unexpected status: {status_data}"
-                        )
+                        raise RuntimeError(f"Unexpected status: {status_data}")
 
             except Exception as e:
-                print(
-                    f"[deAPI EDIT] Polling attempt {attempt + 1} error: {e}"
-                )
+                print(f"[deAPI EDIT] Poll attempt {attempt + 1} error: {e}")
                 await asyncio.sleep(delay)
 
-        raise RuntimeError(
-            f"Image not ready after {max_attempts * delay} seconds"
-        )
+        raise RuntimeError("Image not ready after timeout")
