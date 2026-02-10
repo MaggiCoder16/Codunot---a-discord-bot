@@ -1586,7 +1586,7 @@ async def on_message(message: Message):
 			merge_prompt = await boost_image_prompt(content)
 			
 			try:
-				image_bytes = await edit_images(
+				image_bytes = await merge_images(
 					images=images,
 					prompt=(
 						merge_prompt
