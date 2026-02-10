@@ -42,11 +42,11 @@ LIMITS = {
     },
     "premium": {
         "messages": 100,
-        "attachments": 10,
+        "attachments": 15,
     },
     "gold": {
         "messages": float("inf"),
-        "attachments": 15,
+        "attachments": 25,
     },
 }
 
