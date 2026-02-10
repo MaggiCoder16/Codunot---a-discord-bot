@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import io
 import random
+import os
 
 # =====================
 # CONFIG
