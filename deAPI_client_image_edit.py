@@ -22,7 +22,7 @@ RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")  # web
 FLUX_MODEL = "Flux_2_Klein_4B_BF16"
 
 DEFAULT_STEPS = 4
-MAX_STEPS = 8
+MAX_STEPS = 4
 
 # ============================================================
 # IMAGE GENERATION (WEBHOOK + POLL RESULT)
@@ -45,10 +45,8 @@ async def edit_image(image_bytes: bytes, prompt: str = "", steps: int = DEFAULT_
         "steps": steps,
         "seed": seed,
         "webhook_url": WEBHOOK_URL,
-        # Note: For img2img we send image as multipart, see below
     }
 
-    # Use aiohttp to send multipart/form-data (image + JSON fields)
     form = aiohttp.FormData()
     form.add_field("image", io.BytesIO(image_bytes), filename="input.png", content_type="image/png")
     for k, v in payload.items():
