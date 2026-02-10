@@ -61,6 +61,16 @@ MAX_IMAGE_BYTES = 2_000_000  # 2 MB
 MAX_TTS_LENGTH = 150
 VOTE_FILE = "vote_unlocks.json"
 
+# Merge keywords for image merging intent detection
+MERGE_KEYWORDS = [
+    "merge",
+    "combine",
+    "in one image",
+    "put them together",
+    "blend",
+    "mix",
+]
+
 # ---------------- CLIENT ----------------
 intents = discord.Intents.all()
 intents.message_content = True
@@ -388,6 +398,14 @@ async def can_send_in_guild(guild_id):
         return True
     return False
 
+def wants_merge(content: str) -> bool:
+    """
+    Deterministic merge intent detection.
+    Returns True if user message contains merge keywords.
+    """
+    content = (content or "").lower()
+    return any(k in content for k in MERGE_KEYWORDS)
+
 # ---------------- PERSONAS ----------------
 PERSONAS = {
     "funny": (
@@ -395,6 +413,7 @@ PERSONAS = {
         "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
         "look at the conversation history and identify messages from the USER (not messages from Codunot). "
         "CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES (there is, however, no max chars limits, if the user wants a big message). "
+		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
         "Reply in about 1–2 lines. No max chars, in case of a big message. Use GEN Z and ALPHA slang and emojis. "
         "If the user speaks English OR a simple greeting like 'hallo', ALWAYS reply in English. "
         "Only reply in another language if it is clearly NOT English. "
@@ -436,6 +455,7 @@ PERSONAS = {
         "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
         "look at the conversation history and identify messages from the USER (not messages from Codunot). "
         "Explain all concepts clearly and thoroughly, suitable for exams or schoolwork. "
+		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
 		"MAXIMUM 2000 CHARACTERS, including line breaks and spaces. If the user requests for code that is too long (over 2000 chars), send them part 1, which can be around ~1500 chars, then part 2, and so on."
         "Write chemical formulas and equations in plain text (e.g., H2O, CO2, NaCl). "
         "You may use natural language explanations for math, no need for LaTeX or $...$. "
@@ -471,6 +491,7 @@ PERSONAS = {
         "MEMORY RULE: When user asks about 'previous questions' or 'what did I ask', or anything that refers to previous messages from the user, "
         "look at the conversation history and identify messages from the USER (not messages from Codunot). "
         "Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
+		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
         "Do NOT explain rules or mention safety. "
         "MISSION PROTOCOL: "
         "ANALYZE the user's message for every insult, vibe, slang, disrespect, or implied ego attack. "
@@ -864,14 +885,9 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     - a video/animation ("video")
     - text-only response ("text")
     - text-to-speech ("text-to-speech")
-    - image merge ("merge")
-    Video keywords trigger immediate classification.
+    
+    NOTE: Image merge detection is handled separately via wants_merge() function.
     """
-
-    # --- Check for merge keywords first ---
-    content_lower = user_text.lower()
-    if any(k in content_lower for k in ["merge", "combine", "blend", "mix"]):
-        return "merge"
 
     # --- Get recent context ---
     recent_messages = channel_memory.get(chan_id, [])
@@ -1325,96 +1341,100 @@ async def on_message(message: Message):
 		channel_modes.setdefault(chan_id, "funny")
 		mode = channel_modes[chan_id]
 		
-		# ---------- SAFE IMAGE CHECK ----------
-		has_image = False
+		# ---------- COUNT IMAGE ATTACHMENTS ----------
+		image_count = sum(
+			1 for a in message.attachments
+			if a.content_type and a.content_type.startswith("image/")
+		)
 		
-		if any(a.content_type and a.content_type.startswith("image/") for a in message.attachments):
-			has_image = True
-		elif any((e.image and e.image.url) or (e.thumbnail and e.thumbnail.url) for e in message.embeds):
-			has_image = True
-		else:
-			urls = re.findall(r"(https?://\S+)", message.content)
-			img_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
-			if any(url.lower().endswith(img_exts) for url in urls):
-				has_image = True
+		# ---------- DETERMINISTIC IMAGE ACTION DECISION ----------
+		image_action = "NONE"
 		
-		# ---------- IMAGE HANDLING WITH AI-BASED EDIT DETECTION ----------
-		if has_image:
-			# Extract image bytes for AI decision
-			image_bytes_list = []
-			if message.attachments:
-				for attachment in message.attachments:
-					if attachment.content_type and attachment.content_type.startswith("image/"):
-						try:
-							img_bytes = await attachment.read()
-							image_bytes_list.append(img_bytes)
-						except Exception as e:
-							print(f"[IMAGE ERROR] Failed to read attachment: {e}")
+		if image_count >= 2 and wants_merge(content):
+			image_action = "MERGE"
+		elif image_count == 1:
+			# Single image: check if user wants EDIT
+			action = await decide_image_action(content, image_count)
+			if action == "EDIT":
+				image_action = "EDIT"
+			else:
+				image_action = "VISION"
+		elif image_count >= 1:
+			image_action = "VISION"
+		
+		print(f"[IMAGE ACTION] Count: {image_count}, Intent: {content[:50]}, Decision: {image_action}")
+		
+		# ---------- IMAGE HANDLING ----------
+		if image_action == "EDIT":
+			# User wants to EDIT the image
+			await require_vote(message)
+			log_source(message, "IMAGE_EDIT")
 			
-			# Use AI to decide if this is an EDIT request (only if user provided text AND images)
-			if image_bytes_list and content:
-				action = await decide_image_action(content, len(image_bytes_list))
-				
-				if action == "EDIT":
-					# User wants to EDIT the image
-					await require_vote(message)
-					log_source(message, "IMAGE_EDIT")
-					
-					if not check_limit(message, "attachments"):
-						await deny_limit(message, "attachments")
-						return
-					
-					if not check_total_limit(message, "attachments"):
-						await message.reply(
-							"🚫 You've hit your **total image generation limit**.\n"
-							"Contact aarav_2022 for an upgrade."
-						)
-						return
-					
-					ref_image = image_bytes_list[0]
-					print("[DEBUG] AI decided: EDIT")
-					await send_human_reply(message.channel, "Sprinkling some pixel magic… back in ~1 min ✨.")
+			if not check_limit(message, "attachments"):
+				await deny_limit(message, "attachments")
+				return
 			
+			if not check_total_limit(message, "attachments"):
+				await message.reply(
+					"🚫 You've hit your **total image generation limit**.\n"
+					"Contact aarav_2022 for an upgrade."
+				)
+				return
+			
+			# Extract first image
+			ref_image = None
+			for attachment in message.attachments:
+				if attachment.content_type and attachment.content_type.startswith("image/"):
 					try:
-						safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
-						result = await edit_image(
-							image_bytes=ref_image,
-							prompt=safe_prompt,
-							steps=4
-						)
-						print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
-						
-						# Save edited image to multi-image buffer
-						channel_last_images.setdefault(chan_id, [])
-						channel_last_images[chan_id].append(result)
-						# Cap to last 4 images (Flux sweet spot)
-						channel_last_images[chan_id] = channel_last_images[chan_id][-4:]
-						
-						await message.channel.send(
-							file=discord.File(io.BytesIO(result), filename="edited.png")
-						)
-			
-						consume(message, "attachments")
-						consume_total(message, "attachments")
-						save_usage()
-						print("[DEBUG] EDIT completed and limits consumed")
-			
+						ref_image = await attachment.read()
+						break
 					except Exception as e:
-						print("[ERROR] IMAGE EDIT failed:", e)
-						await send_human_reply(
-							message.channel,
-							"🤔 Couldn't edit the image right now."
-						)
+						print(f"[IMAGE ERROR] Failed to read attachment: {e}")
 			
-					return
+			if not ref_image:
+				await message.channel.send("⚠️ No image found to edit.")
+				return
 			
-			# If not EDIT, run VISION
-			print("[DEBUG] AI decided: NO (running vision)")
+			await send_human_reply(message.channel, "Sprinkling some pixel magic… back in ~1 min ✨.")
+	
+			try:
+				safe_prompt = content.replace("\n", " ").replace("\r", " ").strip()
+				result = await edit_image(
+					image_bytes=ref_image,
+					prompt=safe_prompt,
+					steps=4
+				)
+				print(f"[DEBUG] edit_image returned bytes length: {len(result)}")
+				
+				channel_last_images.setdefault(chan_id, [])
+				channel_last_images[chan_id].append(result)
+				channel_last_images[chan_id] = channel_last_images[chan_id][-4:]
+				
+				await message.channel.send(
+					file=discord.File(io.BytesIO(result), filename="edited.png")
+				)
+	
+				consume(message, "attachments")
+				consume_total(message, "attachments")
+				save_usage()
+				print("[DEBUG] EDIT completed and limits consumed")
+	
+			except Exception as e:
+				print("[ERROR] IMAGE EDIT failed:", e)
+				await send_human_reply(
+					message.channel,
+					"🤔 Couldn't edit the image right now."
+				)
+	
+			return
+		
+		elif image_action == "VISION":
+			# Run VISION
+			print("[DEBUG] Running vision on image")
 			image_reply = await handle_image_message(message, mode)
 			if image_reply is not None:
 				await send_human_reply(message.channel, image_reply)
 				
-				# 🔥 SAVE VISION RESPONSE TO MEMORY
 				channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 				channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 				channel_memory[chan_id].append(f"{BOT_NAME}: {image_reply}")
@@ -1422,7 +1442,7 @@ async def on_message(message: Message):
 				memory.add_message(chan_id, BOT_NAME, image_reply)
 				memory.persist()
 				
-			return  # 🔒 HARD STOP — NOTHING ELSE RUNS
+			return
 		
 		# ---------- OWNER COMMANDS ----------
 		if message.author.id in OWNER_IDS:
@@ -1454,7 +1474,7 @@ async def on_message(message: Message):
 				return
 		
 		# ---------- LAST IMAGE FOLLOW-UP (ONLY IF NO NEW IMAGE) ----------
-		if chan_id in channel_last_images and not has_image:
+		if chan_id in channel_last_images and image_action == "NONE":
 			visual_check = await decide_visual_type(content, chan_id)
 			if visual_check != "fun":
 				await generate_and_reply(chan_id, message, content, mode)
@@ -1466,14 +1486,8 @@ async def on_message(message: Message):
 		
 		processed_image_messages.add(message.id)
 		
-		# Decide type: fun, video, text-to-speech, merge, or text
+		# Decide type: fun, video, text-to-speech, or text
 		visual_type = await decide_visual_type(content, chan_id)
-		
-		# Auto-merge when 2+ image attachments are sent
-		if len(message.attachments) >= 2:
-			image_attachments = [a for a in message.attachments if a.content_type and a.content_type.startswith("image/")]
-			if len(image_attachments) >= 2:
-				visual_type = "merge"
 		
 		# ---------- TEXT-TO-SPEECH ----------
 		if visual_type == "text-to-speech":
@@ -1533,7 +1547,7 @@ async def on_message(message: Message):
 			return  # Stop further processing after TTS
 		
 		# ---------- IMAGE MERGE ----------
-		if visual_type == "merge":
+		if image_action == "MERGE":
 			await require_vote(message)
 			log_source(message, "IMAGE_MERGE")
 			
@@ -1565,7 +1579,7 @@ async def on_message(message: Message):
 			merge_prompt = await boost_image_prompt(content)
 			
 			try:
-				image_bytes = await edit_images(
+				image_bytes = await merge_images(
 					images=images,
 					prompt=(
 						merge_prompt
