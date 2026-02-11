@@ -372,21 +372,21 @@ async def process_queue():
 		await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text):
-    if hasattr(channel, "trigger_typing"):
-        try:
-            await channel.trigger_typing()
-        except:
-            pass
+	if hasattr(channel, "trigger_typing"):
+		try:
+			await channel.trigger_typing()
+		except:
+			pass
 
-    if hasattr(channel, "guild") and channel.guild:
-        for member in channel.guild.members:
-            if f"@{member.name}" in reply_text:
-                reply_text = reply_text.replace(
-                    f"@{member.name}",
-                    member.mention
-                )
+	if hasattr(channel, "guild") and channel.guild:
+		for member in channel.guild.members:
+			if f"@{member.name}" in reply_text:
+				reply_text = reply_text.replace(
+					f"@{member.name}",
+					member.mention
+				)
 
-    await send_long_message(channel, reply_text)
+	await send_long_message(channel, reply_text)
 def humanize_and_safeify(text, short=False):
 	if not isinstance(text, str):
 		text = str(text)
@@ -1353,25 +1353,10 @@ async def on_message(message: Message):
 	try:
 		if message.author.bot:
 			return
-
-		if isinstance(message.channel, discord.DMChannel):
-			async for msg in message.channel.history(limit=2):
-				first_message = msg
-				break
-
-			if first_message.id == message.id:
-				await message.channel.send(
-					"**Hey! Thanks for starting a new chat with me! Before you chat, please read this:**\n\n"
-					"➕ **Add me to Server:**\n"
-					"https://discord.com/oauth2/authorize?client_id=1435987186502733878&permissions=121856&integration_type=0&scope=bot\n\n"
-					"🌍 **Codunot official support server:**\n"
-					"https://discord.gg/GVuFk5gxtW"
-				)
-
+		
 		get_usage(get_tier_key(message))
-
+		
 		# ---------- BASIC SETUP ----------
-		content = message.content.strip()
 		content = message.content.strip()
 		
 		now = datetime.utcnow()
