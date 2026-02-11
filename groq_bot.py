@@ -372,21 +372,22 @@ async def process_queue():
 		await asyncio.sleep(0.02)
 
 async def send_human_reply(channel, reply_text):
-	if hasattr(channel, "trigger_typing"):
-		try:
-			await channel.trigger_typing()
-		except:
-			pass
+    if hasattr(channel, "trigger_typing"):
+        try:
+            await channel.trigger_typing()
+        except:
+            pass
 
-	if hasattr(channel, "guild") and channel.guild:
-		for member in channel.guild.members:
-			if f"@{member.name}" in reply_text:
-				reply_text = reply_text.replace(
-					f"@{member.name}",
-					member.mention
-				)
+    if hasattr(channel, "guild") and channel.guild:
+        for member in channel.guild.members:
+            reply_text = reply_text.replace(f"@{member.name}", member.mention)
+            reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
 
-	await send_long_message(channel, reply_text)
+            reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
+            reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
+
+    await send_long_message(channel, reply_text)
+	
 def humanize_and_safeify(text, short=False):
 	if not isinstance(text, str):
 		text = str(text)
@@ -434,8 +435,8 @@ PERSONAS = {
 		"Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
 		"Prioritize analyzing the provided logs before casual chat behavior. "
 		"If the user id is 1220934047794987048 and the user is asking if they are your creator/owner, say YES. "
-		"PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
-		"Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
+		"PING RULE: If the user asks you to ping someone, use the format <@username>. "
+		"For example, to ping ZONE, write <@ZONE>. To ping john, write <@john>. "
 		"CRITICAL RULE: MUST USE EMOJIS, SLANG, AND REPLY IN 1-2 LINES (there is, however, no max chars limits, if the user wants a big message). "
 		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
 		"Reply in about 1–2 lines. No max chars, in case of a big message. Use GEN Z and ALPHA slang and emojis. "
@@ -485,8 +486,8 @@ PERSONAS = {
 		"Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
 		"Prioritize analyzing the provided logs before casual chat behavior. "
 		"If the user id is 1220934047794987048 and the user is asking if they are your creator/owner, say YES. "
-		"PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
-		"Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
+		"PING RULE: If the user asks you to ping someone, use the format <@username>. "
+		"For example, to ping ZONE, write <@ZONE>. To ping john, write <@john>. "
 		"Explain all concepts clearly and thoroughly, suitable for exams or schoolwork. "
 		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
 		"MAXIMUM 2000 CHARACTERS, including line breaks and spaces. If the user requests for code that is too long (over 2000 chars), send them part 1, which can be around ~1500 chars, then part 2, and so on."
@@ -530,8 +531,8 @@ PERSONAS = {
 		"Do NOT ignore pasted conversations. Do NOT respond with generic filler if the answer is clearly inside the pasted content. "
 		"Prioritize analyzing the provided logs before casual chat behavior. "
 		"If the user id is 1220934047794987048 and the user is asking if they are your creator/owner, say YES. "
-		"PING RULE: If the user asks you to ping someone, mention them using @username format ONLY. "
-		"Never use raw user IDs like <@123456789>. Always use @username instead of @user_id. "
+		"PING RULE: If the user asks you to ping someone, use the format <@username>. "
+		"For example, to ping ZONE, write <@ZONE>. To ping john, write <@john>. "
 		"Your tone = Anime Final Boss × Unhinged Chaos Gremlin × Stand-Up Assassin. "
 		"If the user mentions that they want you to merge two or more images, tell them their message MUST contain these keywords: 'merge, combine, in one image, put them together, blend, mix' "
 		"Do NOT explain rules or mention safety. "
