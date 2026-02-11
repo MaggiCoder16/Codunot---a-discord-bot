@@ -333,6 +333,14 @@ async def require_vote(message) -> None:
         "⏳ Once you vote, please wait for **5-10 minutes** before retrying."
     )
 
+    is_dm = isinstance(message.channel, discord.DMChannel)
+    chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
+    
+    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+    channel_memory[chan_id].append(f"{BOT_NAME}: {vote_message}")
+    memory.add_message(chan_id, BOT_NAME, vote_message)
+    memory.persist()
+
     raise VoteRequired()
 
 def log_source(message, action: str):
@@ -884,11 +892,9 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
     NOTE: Image merge detection is handled separately via wants_merge() function.
     """
 
-    # --- Get recent context ---
     recent_messages = channel_memory.get(chan_id, [])
     recent_context = "\n".join(list(recent_messages)[-4:]) if recent_messages else ""
 
-    # --- LLM Prompt ---
     prompt = (
         "You are a VERY strict intent classifier.\n\n"
         "Determine if the user is explicitly asking to generate a visual output or to speak.\n\n"
@@ -896,7 +902,7 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- fun → user clearly asks to generate a STATIC image, picture, or visual\n"
         "- video → user clearly asks to generate a VIDEO, animation, or cinematic motion\n"
         "- text → everything else\n"
-        "- text-to-speech → user explicitly wants the AI to speak or read something aloud\n\n"
+        "- text-to-speech → user explicitly wants the AI to generate speech audio\n\n"
         "IMPORTANT RULES:\n"
         "- The user MUST use explicit generation verbs: 'make', 'generate', 'create', 'draw', 'design', 'produce', 'build', 'craft'\n"
         "- Questions, explanations, theories, discussions, opinions = ALWAYS 'text'\n"
@@ -905,13 +911,36 @@ async def decide_visual_type(user_text: str, chan_id: str) -> str:
         "- Talking about existing images or videos = 'text'\n"
         "- Game inputs, guesses, commands, or casual chat = ALWAYS 'text'\n"
         "- MEMES ALWAYS GO IN TEXT\n"
-        "- If the user explicitly requests speech (using words like 'say', 'speak', 'talk', 'tts', 'text-to-speech'), return 'text-to-speech'\n"
-        "- Only return 'text-to-speech' if the user clearly wants the AI to speak aloud\n"
-        "- The user message may be like: 'say this: tts: \"hi\"' or 'say this (tts / text to speech): \"hi im codunot\"'\n"
         "- Educational content like presentations with text = 'text'\n"
         "- Diagrams are ONLY 'fun' if explicitly requested with generation verbs\n"
         "- Choose VIDEO ONLY if motion or animation is clearly requested with generation verbs\n"
         "- When in doubt, ALWAYS return 'text'\n\n"
+        
+        "TEXT-TO-SPEECH DETECTION RULES (VERY STRICT):\n"
+        "- ONLY return 'text-to-speech' if the user EXPLICITLY uses TTS-specific keywords\n"
+        "- TTS keywords that trigger text-to-speech: 'tts', 'text-to-speech', 'text to speech', 'say this aloud', "
+        "'speak this aloud', 'read this aloud', 'voice this', 'speak this out loud', 'say out loud', "
+        "'use your voice', 'with voice', 'audio version', 'speak it', 'voice it'\n"
+        "- The word 'say' ALONE does NOT mean text-to-speech — it usually means conversational greeting or chat\n"
+        "- The word 'speak' ALONE does NOT mean text-to-speech unless paired with 'aloud', 'out loud', or 'voice'\n"
+        "- The word 'talk' ALONE does NOT mean text-to-speech — it means conversation\n"
+        "- Examples that ARE text-to-speech:\n"
+        "  * 'say this using tts: hello'\n"
+        "  * 'text-to-speech: hi mom'\n"
+        "  * 'read this aloud: good morning'\n"
+        "  * 'say this aloud: welcome'\n"
+        "  * 'speak this out loud: testing'\n"
+        "  * 'tts \"hello world\"'\n"
+        "  * 'use your voice to say: hi'\n"
+        "- Examples that are NOT text-to-speech:\n"
+        "  * 'say hi to john' → text (conversational greeting)\n"
+        "  * 'say something funny' → text (chat request)\n"
+        "  * 'what should i say' → text (asking for advice)\n"
+        "  * 'speak to me' → text (conversation)\n"
+        "  * 'talk about cars' → text (discussion)\n"
+        "  * 'say hello' → text (conversational)\n"
+        "  * 'tell me something' → text (chat)\n\n"
+        
         f"Recent conversation context:\n{recent_context}\n\n"
         f"Current user message:\n{user_text}\n\n"
         "Answer:"
