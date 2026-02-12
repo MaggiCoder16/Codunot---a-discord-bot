@@ -387,9 +387,26 @@ def format_duration(num: int, unit: str) -> str:
 	return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
-	while len(text) > 0:
-		chunk = text[:2000]
-		text = text[2000:]
+	max_len = 2000
+	remaining = str(text or "")
+
+	while remaining:
+		if len(remaining) <= max_len:
+			await channel.send(remaining)
+			break
+
+		newline_idx = remaining.rfind("\n", 0, max_len)
+		space_idx = remaining.rfind(" ", 0, max_len)
+		split_at = max(newline_idx, space_idx)
+
+		if split_at <= 0:
+			split_at = max_len
+		else:
+			split_at += 1
+
+		chunk = remaining[:split_at]
+		remaining = remaining[split_at:]
+
 		await channel.send(chunk)
 		await asyncio.sleep(0.05)
 
@@ -1335,7 +1352,12 @@ async def on_message(message: Message):
 		content_lower = content.lower()
 		
 		# ---------- COMMAND HANDLING ----------
-		if content.startswith(bot.command_prefix):
+		is_owner_local_cmd = (
+			message.author.id in OWNER_IDS
+			and (content_lower.startswith("!quiet") or content_lower.startswith("!speak"))
+		)
+
+		if content.startswith(bot.command_prefix) and not is_owner_local_cmd:
 			original_content = message.content
 			message.content = content
 			await bot.process_commands(message)
