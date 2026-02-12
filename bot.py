@@ -59,9 +59,27 @@ def format_duration(num: int, unit: str) -> str:
     return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
-    while len(text) > 0:
-        chunk = text[:2000]
-        text = text[2000:]
+    max_len = 2000
+    remaining = str(text or "")
+
+    while remaining:
+        if len(remaining) <= max_len:
+            await channel.send(remaining)
+            break
+
+        split_at = remaining.rfind("\n", 0, max_len + 1)
+        if split_at <= 0:
+            split_at = remaining.rfind(" ", 0, max_len + 1)
+        if split_at <= 0:
+            split_at = max_len
+
+        chunk = remaining[:split_at].rstrip()
+        if not chunk:
+            chunk = remaining[:max_len]
+            remaining = remaining[max_len:].lstrip()
+        else:
+            remaining = remaining[split_at:].lstrip()
+
         await channel.send(chunk)
         await asyncio.sleep(0.05)
 

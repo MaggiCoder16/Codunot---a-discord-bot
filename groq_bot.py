@@ -54,6 +54,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
 OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
+OWNER_IDS.discard(0)
 VOTE_DURATION = 12 * 60 * 60
 MAX_MEMORY = 45
 RATE_LIMIT = 30
@@ -298,6 +299,14 @@ CODUNOT_SELF_IMAGE_PROMPT = (
 class VoteRequired(Exception):
 	pass
 
+async def is_owner_user(user) -> bool:
+	if user.id in OWNER_IDS:
+		return True
+	try:
+		return await bot.is_owner(user)
+	except Exception:
+		return False
+
 def load_vote_unlocks():
 	global user_vote_unlocks
 	if not os.path.exists(VOTE_FILE):
@@ -337,7 +346,7 @@ cleanup_expired_votes()
 
 async def require_vote(message) -> None:
 	# Owner bypass
-	if message.author.id in OWNER_IDS:
+	if await is_owner_user(message.author):
 		return
 	
 	user_id = message.author.id
@@ -387,9 +396,26 @@ def format_duration(num: int, unit: str) -> str:
 	return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
-	while len(text) > 0:
-		chunk = text[:2000]
-		text = text[2000:]
+	max_len = 2000
+	remaining = str(text or "")
+
+	while remaining:
+		if len(remaining) <= max_len:
+			await channel.send(remaining)
+			break
+
+		newline_idx = remaining.rfind("\n", 0, max_len)
+		space_idx = remaining.rfind(" ", 0, max_len)
+		split_at = max(newline_idx, space_idx)
+
+		if split_at <= 0:
+			split_at = max_len
+		else:
+			split_at += 1
+
+		chunk = remaining[:split_at]
+		remaining = remaining[split_at:]
+
 		await channel.send(chunk)
 		await asyncio.sleep(0.05)
 
@@ -1335,7 +1361,12 @@ async def on_message(message: Message):
 		content_lower = content.lower()
 		
 		# ---------- COMMAND HANDLING ----------
-		if content.startswith(bot.command_prefix):
+		is_owner_local_cmd = (
+			await is_owner_user(message.author)
+			and (content_lower.startswith("!quiet") or content_lower.startswith("!speak"))
+		)
+
+		if content.startswith(bot.command_prefix) and not is_owner_local_cmd:
 			original_content = message.content
 			message.content = content
 			await bot.process_commands(message)
@@ -1529,7 +1560,7 @@ async def on_message(message: Message):
 				return
 		
 		# ---------- OWNER COMMANDS ----------
-		if message.author.id in OWNER_IDS:
+		if await is_owner_user(message.author):
 			if content_lower.startswith("!quiet"):
 				match = re.search(r"!quiet (\d+)([smhd])", content_lower)
 				if match:
