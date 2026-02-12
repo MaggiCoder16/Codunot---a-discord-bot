@@ -57,7 +57,7 @@ async def require_vote_slash(interaction: discord.Interaction) -> bool:
 		"👉 https://top.gg/bot/1435987186502733878/vote\n\n"
 		"⏱️ After 12 hours, you'll need to vote again to regain access.\n"
 		"⏳ Once you vote, please wait for **5-10 minutes** before retrying.",
-		ephemeral=True
+		ephemeral=False
 	)
 	return False
 
@@ -76,7 +76,7 @@ class Codunot(commands.Cog):
 		memory.save_channel_mode(chan_id, "funny")
 		channel_chess[chan_id] = False
 
-		await interaction.response.send_message("😎 Fun mode activated!", ephemeral=True)
+		await interaction.response.send_message("😎 Fun mode activated!", ephemeral=False)
 
 	@app_commands.command(name="seriousmode", description="🤓 Activate Serious Mode - clean, fact-based help")
 	async def seriousmode_slash(self, interaction: discord.Interaction):
@@ -87,7 +87,7 @@ class Codunot(commands.Cog):
 		memory.save_channel_mode(chan_id, "serious")
 		channel_chess[chan_id] = False
 
-		await interaction.response.send_message("🤓 Serious mode ON", ephemeral=True)
+		await interaction.response.send_message("🤓 Serious mode ON", ephemeral=False)
 
 	@app_commands.command(name="roastmode", description="🔥 Activate Roast Mode - playful burns")
 	async def roastmode_slash(self, interaction: discord.Interaction):
@@ -98,7 +98,7 @@ class Codunot(commands.Cog):
 		memory.save_channel_mode(chan_id, "roast")
 		channel_chess[chan_id] = False
 
-		await interaction.response.send_message("🔥 ROAST MODE ACTIVATED", ephemeral=True)
+		await interaction.response.send_message("🔥 ROAST MODE ACTIVATED", ephemeral=False)
 
 	@app_commands.command(name="chessmode", description="♟️ Activate Chess Mode - play chess with Codunot")
 	async def chessmode_slash(self, interaction: discord.Interaction):
@@ -109,7 +109,7 @@ class Codunot(commands.Cog):
 		channel_modes[chan_id] = "funny"
 		chess_engine.new_board(chan_id)
 
-		await interaction.response.send_message("♟️ Chess mode ACTIVATED. You are white, start!", ephemeral=True)
+		await interaction.response.send_message("♟️ Chess mode ACTIVATED. You are white, start!", ephemeral=False)
 
 	# ============ GENERATION COMMANDS ============
 
@@ -125,7 +125,7 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message(
 				"🚫 You've hit your **daily image generation limit**.\n"
 				"Try again tomorrow or contact aarav_2022 for an upgrade.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 		
@@ -133,11 +133,11 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message(
 				"🚫 You've hit your **total image generation limit**.\n"
 				"Contact aarav_2022 for an upgrade.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 
-		await interaction.response.send_message("🖼️ Summoning the image… just gimme a few seconds ✨", ephemeral=True)
+		await interaction.response.send_message("🖼️ Summoning the image… just gimme a few seconds ✨", ephemeral=False)
 
 		try:
 			# Boost the prompt
@@ -175,7 +175,7 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message(
 				"🚫 You've hit your **daily video generation limit**.\n"
 				"Try again tomorrow or contact aarav_2022 for an upgrade.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 		
@@ -183,11 +183,11 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message(
 				"🚫 You've hit your **total video generation limit**.\n"
 				"Contact aarav_2022 for an upgrade.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 
-		await interaction.response.send_message("🎬 Video queued… go grab some popcorn 🍿 this may take a while :)", ephemeral=True)
+		await interaction.response.send_message("🎬 Video queued… go grab some popcorn 🍿 this may take a while :)", ephemeral=False)
 
 		try:
 			# Boost the prompt
@@ -225,7 +225,7 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message(
 				"🚫 You've hit your **daily TTS generation limit**.\n"
 				"Try again tomorrow or contact aarav_2022 for an upgrade.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 		
@@ -233,11 +233,11 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message(
 				"🚫 You've hit your **total TTS generation limit**.\n"
 				"Contact aarav_2022 for an upgrade.",
-				ephemeral=True
+				ephemeral=False
 			)
 			return
 
-		await interaction.response.send_message("🔊 Warming up the vocal cords… BRB! 🎤", ephemeral=True)
+		await interaction.response.send_message("🔊 Warming up the vocal cords… BRB! 🎤", ephemeral=False)
 
 		try:
 			# Generate TTS
