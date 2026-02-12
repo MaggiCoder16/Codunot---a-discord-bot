@@ -54,6 +54,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
 OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
+OWNER_IDS.discard(0)
 VOTE_DURATION = 12 * 60 * 60
 MAX_MEMORY = 45
 RATE_LIMIT = 30
@@ -298,6 +299,14 @@ CODUNOT_SELF_IMAGE_PROMPT = (
 class VoteRequired(Exception):
 	pass
 
+async def is_owner_user(user) -> bool:
+	if user.id in OWNER_IDS:
+		return True
+	try:
+		return await bot.is_owner(user)
+	except Exception:
+		return False
+
 def load_vote_unlocks():
 	global user_vote_unlocks
 	if not os.path.exists(VOTE_FILE):
@@ -337,7 +346,7 @@ cleanup_expired_votes()
 
 async def require_vote(message) -> None:
 	# Owner bypass
-	if message.author.id in OWNER_IDS:
+	if await is_owner_user(message.author):
 		return
 	
 	user_id = message.author.id
@@ -406,10 +415,7 @@ async def send_long_message(channel, text):
 
 		chunk = remaining[:split_at]
 		remaining = remaining[split_at:]
-
-		await channel.send(chunk)
-		await asyncio.sleep(0.05)
-
+	
 async def process_queue():
 	while True:
 		channel, content = await message_queue.get()
@@ -1292,7 +1298,7 @@ async def on_message(message: Message):
 		
 		# ---------- COMMAND HANDLING ----------
 		is_owner_local_cmd = (
-			message.author.id in OWNER_IDS
+			await is_owner_user(message.author)
 			and (content_lower.startswith("!quiet") or content_lower.startswith("!speak"))
 		)
 
@@ -1490,7 +1496,7 @@ async def on_message(message: Message):
 				return
 		
 		# ---------- OWNER COMMANDS ----------
-		if message.author.id in OWNER_IDS:
+		if await is_owner_user(message.author):
 			if content_lower.startswith("!quiet"):
 				match = re.search(r"!quiet (\d+)([smhd])", content_lower)
 				if match:
