@@ -114,22 +114,13 @@ async def setup_hook():
 	slash_commands.OWNER_IDS = OWNER_IDS
 	slash_commands.VOTE_DURATION = VOTE_DURATION
 	slash_commands.BOT_NAME = BOT_NAME
-	slash_commands.boost_image_prompt = boost_image_prompt  # defined below
-	slash_commands.save_vote_unlocks = save_vote_unlocks  # defined below
+	slash_commands.boost_image_prompt = boost_image_prompt
+	slash_commands.save_vote_unlocks = save_vote_unlocks
 	
-	# Load the cog
 	await slash_commands.setup(bot)
-	
-	# Sync commands (this makes them visible in Discord)
 	try:
-		# For testing in a specific guild (instant updates)
-		# guild = discord.Object(id=YOUR_GUILD_ID)
-		# bot.tree.copy_global_to(guild=guild)
-		# await bot.tree.sync(guild=guild)
-		
-		# For global commands (takes up to 1 hour to propagate)
 		synced = await bot.tree.sync()
-		print(f"[SLASH COMMANDS] Synced {len(synced)} command(s)")
+		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
 	except Exception as e:
 		print(f"[SLASH COMMANDS] Failed to sync: {e}")
 
