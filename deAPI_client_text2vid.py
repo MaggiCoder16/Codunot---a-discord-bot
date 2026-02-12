@@ -26,7 +26,7 @@ async def _submit_job(
     form.add_field("prompt", prompt)
     form.add_field("width", "512")
     form.add_field("height", "512")
-    form.add_field("frames", "96")
+    form.add_field("frames", "97")
     form.add_field("fps", "24")
     form.add_field("steps", "8")
     form.add_field("guidance", "1")
