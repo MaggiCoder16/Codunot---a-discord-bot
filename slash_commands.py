@@ -29,27 +29,9 @@ chess_engine = None
 OWNER_IDS = set()
 VOTE_DURATION = 12 * 60 * 60
 BOT_NAME = "Codunot"
+MAX_TTS_LENGTH = 150
 boost_image_prompt = None
 save_vote_unlocks = None
-
-# =========================
-#  GUILD CHECK
-# =========================
-
-async def require_bot_in_guild(interaction: discord.Interaction) -> bool:
-    """
-    Allows command in DMs or in servers where the bot is present.
-    Blocks execution in servers where the bot isn't present.
-    """
-    if isinstance(interaction.channel, discord.DMChannel):
-        return True
-    if interaction.guild and interaction.guild.get_member(interaction.client.user.id):
-        return True
-    await interaction.response.send_message(
-        "🚫 I am not in this server, so this command cannot be used here.",
-        ephemeral=True
-    )
-    return False
 
 # =========================
 #  VOTE CHECK
@@ -73,7 +55,7 @@ async def require_vote_slash(interaction: discord.Interaction) -> bool:
 
     await interaction.response.send_message(
         "🚫 **This feature requires a Top.gg vote**\n\n"
-        "🗳️ Vote to unlock **Image generations & editing, Video generations, "
+        "🗳️ Vote to unlock **Image generations, merging & editing, Video generations, "
         "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
         "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
         "⏱️ After 12 hours, you'll need to vote again to regain access.\n"
@@ -93,7 +75,6 @@ class Codunot(commands.Cog):
     # ============ MODE COMMANDS ============
 
     @app_commands.command(name="funmode", description="😎 Activate Fun Mode - jokes, memes & chill vibes")
-    @app_commands.check(require_bot_in_guild)
     async def funmode_slash(self, interaction: discord.Interaction):
         is_dm = isinstance(interaction.channel, discord.DMChannel)
         chan_id = f"dm_{interaction.user.id}" if is_dm else str(interaction.channel.id)
@@ -105,7 +86,6 @@ class Codunot(commands.Cog):
         await interaction.response.send_message("😎 Fun mode activated!", ephemeral=False)
 
     @app_commands.command(name="seriousmode", description="🤓 Activate Serious Mode - clean, fact-based help")
-    @app_commands.check(require_bot_in_guild)
     async def seriousmode_slash(self, interaction: discord.Interaction):
         is_dm = isinstance(interaction.channel, discord.DMChannel)
         chan_id = f"dm_{interaction.user.id}" if is_dm else str(interaction.channel.id)
@@ -117,7 +97,6 @@ class Codunot(commands.Cog):
         await interaction.response.send_message("🤓 Serious mode ON", ephemeral=False)
 
     @app_commands.command(name="roastmode", description="🔥 Activate Roast Mode - playful burns")
-    @app_commands.check(require_bot_in_guild)
     async def roastmode_slash(self, interaction: discord.Interaction):
         is_dm = isinstance(interaction.channel, discord.DMChannel)
         chan_id = f"dm_{interaction.user.id}" if is_dm else str(interaction.channel.id)
@@ -129,7 +108,6 @@ class Codunot(commands.Cog):
         await interaction.response.send_message("🔥 ROAST MODE ACTIVATED", ephemeral=False)
 
     @app_commands.command(name="chessmode", description="♟️ Activate Chess Mode - play chess with Codunot")
-    @app_commands.check(require_bot_in_guild)
     async def chessmode_slash(self, interaction: discord.Interaction):
         is_dm = isinstance(interaction.channel, discord.DMChannel)
         chan_id = f"dm_{interaction.user.id}" if is_dm else str(interaction.channel.id)
@@ -144,7 +122,6 @@ class Codunot(commands.Cog):
 
     @app_commands.command(name="generate_image", description="🖼️ Generate an AI image from a text prompt")
     @app_commands.describe(prompt="Describe the image you want to generate")
-    @app_commands.check(require_bot_in_guild)
     async def generate_image_slash(self, interaction: discord.Interaction, prompt: str):
         if not await require_vote_slash(interaction):
             return
@@ -188,7 +165,6 @@ class Codunot(commands.Cog):
 
     @app_commands.command(name="generate_video", description="🎬 Generate an AI video from a text prompt")
     @app_commands.describe(prompt="Describe the video you want to generate")
-    @app_commands.check(require_bot_in_guild)
     async def generate_video_slash(self, interaction: discord.Interaction, prompt: str):
         if not await require_vote_slash(interaction):
             return
@@ -212,7 +188,6 @@ class Codunot(commands.Cog):
         await interaction.response.defer()
     
         try:
-            # Directly use the original prompt (no boosting)
             video_bytes = await text_to_video_512(prompt=prompt)
     
             await interaction.followup.send(
@@ -236,9 +211,16 @@ class Codunot(commands.Cog):
 
     @app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio")
     @app_commands.describe(text="The text you want to convert to speech")
-    @app_commands.check(require_bot_in_guild)
     async def generate_tts_slash(self, interaction: discord.Interaction, text: str):
         if not await require_vote_slash(interaction):
+            return
+
+        if len(text) > MAX_TTS_LENGTH:
+            await interaction.response.send_message(
+                f"🚫 Text is too long! Maximum {MAX_TTS_LENGTH} characters allowed.\n"
+                f"Your text: {len(text)} characters.",
+                ephemeral=False
+            )
             return
 
         if not check_limit(interaction, "attachments"):
