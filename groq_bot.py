@@ -434,22 +434,19 @@ async def process_queue():
 			print(f"[QUEUE ERROR] {e}")
 		await asyncio.sleep(0.02)
 
-async def send_human_reply(channel, reply_text):
-	if hasattr(channel, "trigger_typing"):
-		try:
-			await channel.trigger_typing()
-		except:
-			pass
-
-	if hasattr(channel, "guild") and channel.guild:
-		for member in channel.guild.members:
-			reply_text = reply_text.replace(f"@{member.name}", member.mention)
-			reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
-
-			reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
-			reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
-
-	await send_long_message(channel, reply_text)
+def humanize_and_safeify(text, short=False):
+	if not isinstance(text, str):
+		text = str(text)
+	text = text.replace(" idk", "").replace(" *nvm", "")
+	if random.random() < 0.1:
+		text = maybe_typo(text)
+	if short:
+		text = text.strip()
+		if len(text) > 100:
+			text = text[:100].rsplit(" ", 1)[0].strip()
+		if not text.endswith(('.', '!', '?')):
+			text += '.'
+	return text
 	
 async def send_human_reply(channel, reply_text):
     if hasattr(channel, "trigger_typing"):
@@ -503,7 +500,12 @@ async def build_reply_context(message, chan_id, mode):
     persona = PERSONAS.get(mode, PERSONAS["funny"])
     
     user_reply = message.content.strip()
-    bot_id = message.guild.me.id if message.guild else message.channel.me.id
+    
+    if message.guild:
+        bot_id = message.guild.me.id
+    else:
+        bot_id = bot.user.id
+    
     user_reply = re.sub(rf"<@!?\s*{bot_id}\s*>", "", user_reply).strip()
     
     reply_prompt = (
