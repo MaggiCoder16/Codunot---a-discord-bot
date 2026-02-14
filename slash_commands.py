@@ -39,7 +39,7 @@ save_vote_unlocks = None
 ACTION_TEXT = {
     "hug": "hugged",
     "kiss": "kissed",
-    "kick": "kick",
+    "kick": "kicked",
 }
 
 ACTION_GIF_SOURCES = {
@@ -65,7 +65,7 @@ ACTION_GIF_SOURCES = {
 
 
 def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: int = 42) -> tuple[ImageFont.ImageFont, str]:
-    """Pick a font size that fits inside max_width."""
+    """Pick a font size and fallback-truncated text that fit inside max_width."""
     size = base_size
     while size >= 18:
         try:
@@ -78,13 +78,23 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: i
             return font, content
         size -= 2
 
-    if len(text) > 70:
-        text = text[:67] + "..."
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
     except Exception:
         font = ImageFont.load_default()
-    return font, text
+
+    truncated = text
+    ellipsis = "..."
+    while len(truncated) > 1:
+        bbox = draw.textbbox((0, 0), truncated + ellipsis, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            truncated = truncated + ellipsis
+            break
+        truncated = truncated[:-1]
+    else:
+        truncated = ellipsis
+
+    return font, truncated
 
 
 def _draw_outlined_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], txt: str, font: ImageFont.ImageFont):
