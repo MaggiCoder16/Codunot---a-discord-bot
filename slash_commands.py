@@ -5,6 +5,8 @@ import os
 import time
 import io
 import aiohttp
+import random
+from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 from memory import MemoryManager
 from deAPI_client_image import generate_image
@@ -33,6 +35,110 @@ MAX_TTS_LENGTH = 150
 boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
+
+ACTION_TEXT = {
+    "hug": "hug",
+    "kiss": "kiss",
+    "kick": "kicked",
+}
+
+ACTION_GIF_SOURCES = {
+    "hug": [
+        "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExYjFxbWd0djU0Y240MHE3d2t3dnIyZWtsaGI0aTFleGVncWswcDdkYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uakdGGShmMS0KYfTgp/giphy.gif",
+        "https://media.tenor.com/bVN5MdTrelYAAAAj/yaseen1.gif",
+    ],
+    "kiss": [
+        "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExOGVoeXMxd3FteTF0cGRmMDQzNjRxMm0ybWV1Zno2ZGJycGs3enlhcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/G3va31oEEnIkM/giphy.gif",
+        "https://media.giphy.com/media/bGm9FuBCGg4SY/giphy.gif",
+    ],
+    "kick": [
+        "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHpjMHQ4NnNxZjMzOWdpOXozamNpbmRrOG9jZ2xpcnNmb3V3M3pxdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/DfI1LsaCkWD20xRc4r/giphy.gif",
+        "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExaG1raWhsZWZoYTRmNTB5ZXJqano3dDdtcnN2cGtpazJoMm1zZDBpcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKwVQMoQh2At9qU/giphy.gif",
+    ],
+}
+
+
+def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, base_size: int = 42) -> tuple[ImageFont.ImageFont, str]:
+    """Pick a font size that fits inside max_width."""
+    size = base_size
+    while size >= 18:
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", size)
+        except Exception:
+            font = ImageFont.load_default()
+        content = text
+        bbox = draw.textbbox((0, 0), content, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            return font, content
+        size -= 2
+
+    if len(text) > 70:
+        text = text[:67] + "..."
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
+    except Exception:
+        font = ImageFont.load_default()
+    return font, text
+
+
+def _draw_outlined_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], txt: str, font: ImageFont.ImageFont):
+    x, y = xy
+    for ox, oy in [(-2, -2), (-2, 0), (-2, 2), (0, -2), (0, 2), (2, -2), (2, 0), (2, 2)]:
+        draw.text((x + ox, y + oy), txt, font=font, fill=(0, 0, 0))
+    draw.text((x, y), txt, font=font, fill=(255, 255, 255))
+
+
+async def fetch_bytes(url: str) -> bytes:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                raise Exception(f"Failed to fetch gif: HTTP {resp.status}")
+            return await resp.read()
+
+
+def overlay_action_text_on_gif(gif_bytes: bytes, action_word: str, actor_name: str, target_name: str) -> bytes:
+    """Overlay title + participant labels on each GIF frame."""
+    gif = Image.open(io.BytesIO(gif_bytes))
+
+    frames = []
+    durations = []
+    loop = gif.info.get("loop", 0)
+
+    for frame in ImageSequence.Iterator(gif):
+        rgba = frame.convert("RGBA")
+        w, h = rgba.size
+
+        band_height = max(80, int(h * 0.24))
+        canvas = Image.new("RGBA", (w, h + band_height), (0, 0, 0, 220))
+        canvas.alpha_composite(rgba, dest=(0, band_height))
+
+        draw = ImageDraw.Draw(canvas)
+
+        title = f"{actor_name} {ACTION_TEXT[action_word]} {target_name}"
+        title_font, title_text = _fit_text(draw, title, max_width=w - 24, base_size=40)
+        title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
+        title_w = title_bbox[2] - title_bbox[0]
+        title_x = ((w - title_w) // 2) - title_bbox[0]
+        _draw_outlined_text(draw, (title_x, 8), title_text, title_font)
+
+
+        frames.append(canvas.convert("P", palette=Image.ADAPTIVE))
+        durations.append(frame.info.get("duration", gif.info.get("duration", 80)))
+
+    output = io.BytesIO()
+    frames[0].save(
+        output,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=loop,
+        optimize=False,
+        disposal=2,
+    )
+    output.seek(0)
+    return output.read()
+
 
 # =========================
 #  VOTE CHECK
@@ -266,6 +372,52 @@ class Codunot(commands.Cog):
             await interaction.followup.send(
                 f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
             )
+
+
+    async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
+        if target_user.id == interaction.user.id:
+            await interaction.response.send_message(
+                f"😅 You can't /{action} yourself. Pick someone else!",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+
+        try:
+            source_url = random.choice(ACTION_GIF_SOURCES[action])
+            source_bytes = await fetch_bytes(source_url)
+            gif_bytes = overlay_action_text_on_gif(
+                source_bytes,
+                action,
+                interaction.user.display_name,
+                target_user.display_name,
+            )
+
+            await interaction.followup.send(
+                content=f"{interaction.user.mention} {ACTION_TEXT[action]} {target_user.mention}",
+                file=discord.File(io.BytesIO(gif_bytes), filename=f"{action}.gif")
+            )
+        except Exception as e:
+            print(f"[SLASH {action.upper()} ERROR] {e}")
+            await interaction.followup.send(
+                f"🤔 Couldn't generate a {action} GIF right now. Try again in a bit."
+            )
+
+    @app_commands.command(name="hug", description="🤗 Hug any user with a random GIF")
+    @app_commands.describe(target_user="The user you want to hug")
+    async def hug_slash(self, interaction: discord.Interaction, target_user: discord.User):
+        await self._send_action_gif(interaction, "hug", target_user)
+
+    @app_commands.command(name="kiss", description="💋 Kiss any user with a random GIF")
+    @app_commands.describe(target_user="The user you want to kiss")
+    async def kiss_slash(self, interaction: discord.Interaction, target_user: discord.User):
+        await self._send_action_gif(interaction, "kiss", target_user)
+
+    @app_commands.command(name="kick", description="🥋 Kick any user with a random anime GIF")
+    @app_commands.describe(target_user="The user you want to kick")
+    async def kick_slash(self, interaction: discord.Interaction, target_user: discord.User):
+        await self._send_action_gif(interaction, "kick", target_user)
 
 
 async def setup(bot: commands.Bot):

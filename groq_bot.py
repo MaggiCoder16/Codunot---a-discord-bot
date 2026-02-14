@@ -473,60 +473,34 @@ async def send_human_reply(channel, reply_text):
     except Exception as e:
         print(f"[SEND ERROR] {e}")
 
-async def build_reply_context(message, chan_id, mode):
-    """
-    Build focused context when user replies to a specific message.
-    Returns a specialized prompt that focuses on the replied-to message.
-    Returns None if this is not a reply.
-    """
-    if not message.reference:
-        return None
-    
-    # Get the message being replied to
-    ref_message = message.reference.resolved
-    
-    # If not cached, fetch it
-    if not ref_message and message.reference.message_id:
-        try:
-            ref_message = await message.channel.fetch_message(
-                message.reference.message_id
-            )
-        except Exception as e:
-            print(f"[REPLY ERROR] Failed to fetch referenced message: {e}")
-            return None
-    
-    if not ref_message:
-        return None
-    
-    persona = PERSONAS.get(mode, PERSONAS["funny"])
-    
-    user_reply = message.content.strip()
-    
-    if message.guild:
-        bot_id = message.guild.me.id
-    else:
-        bot_id = bot.user.id
-    
-    user_reply = re.sub(rf"<@!?\s*{bot_id}\s*>", "", user_reply).strip()
-    
-    reply_prompt = (
-        f"{persona}\n\n"
-        f"CRITICAL INSTRUCTION: The user is REPLYING to a specific message.\n"
-        f"You MUST respond ONLY in context of that message.\n"
-        f"DO NOT bring up unrelated conversation history.\n"
-        f"DO NOT mention other people or topics unless directly relevant to this reply.\n\n"
-        f"=== MESSAGE BEING REPLIED TO ===\n"
-        f"Author: {ref_message.author.display_name}\n"
-        f"Content: {ref_message.content}\n"
-        f"=== END REFERENCED MESSAGE ===\n\n"
-        f"User's reply to the above message:\n{user_reply}\n\n"
-        f"Respond directly and concisely to their reply. "
-        f"Focus ONLY on this specific exchange.\n"
-        f"Maximum 1-2 sentences unless they ask for more detail.\n\n"
-        f"Reply as {BOT_NAME}:"
-    )
-    
-    return reply_prompt
+async def build_reply_context(message):
+	"""
+	If the message is a Discord reply, return extra metadata that is appended
+	to the normal mode prompt.
+	"""
+	if not message.reference:
+		return ""
+
+	ref_message = message.reference.resolved
+	if not ref_message and message.reference.message_id:
+		try:
+			ref_message = await message.channel.fetch_message(message.reference.message_id)
+		except Exception as e:
+			print(f"[REPLY ERROR] Failed to fetch referenced message: {e}")
+			return ""
+
+	if not ref_message:
+		return ""
+
+	replied_to_author = ref_message.author.display_name
+	replied_to_message = ref_message.content.strip() if ref_message.content else "[No text content]"
+
+	return (
+		"\n=== REPLY CONTEXT ===\n"
+		f"The user has also replied to this message of yours: {replied_to_author}: {replied_to_message}\n"
+		f"The replied_to_message is: {replied_to_message}\n"
+		"=== END REPLY CONTEXT ===\n"
+	)
 
 async def can_send_in_guild(guild_id):
 	if not guild_id:
@@ -702,16 +676,15 @@ async def generate_and_reply(chan_id, message, content, mode):
         return
     
     # ---------------- CHECK FOR REPLY CONTEXT ----------------
-    reply_prompt = await build_reply_context(message, chan_id, mode)
-    
-    if reply_prompt:
-        prompt = reply_prompt
-        print(f"[REPLY MODE] Detected reply to message, using focused context")
-    else:
-        prompt = (
-            build_general_prompt(chan_id, mode, message, include_last_image=False)
-            + f"\nUser says:\n{content}\n\nReply:"
-        )
+    reply_context = await build_reply_context(message)
+    if reply_context:
+        print("[REPLY CONTEXT] Added replied-to message context to normal prompt")
+
+    prompt = (
+        build_general_prompt(chan_id, mode, message, include_last_image=False)
+        + reply_context
+        + f"\nUser says:\n{content}\n\nReply:"
+    )
     
     # ---------------- GENERATE RESPONSE ----------------
     try:
