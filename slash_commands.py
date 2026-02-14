@@ -394,7 +394,7 @@ class Codunot(commands.Cog):
         if target_user.id == interaction.user.id:
             await interaction.response.send_message(
                 f"😅 You can't /{action} yourself. Pick someone else!",
-                ephemeral=True
+                ephemeral=False
             )
             return
 
