@@ -86,7 +86,6 @@ async def call_groq(
                 if resp.status == 200:
                     data = await resp.json()
                     response_text = data["choices"][0]["message"]["content"]
-                    print(f"[GROQ] Model: {model}, Response length: {len(response_text)} chars")
                     return response_text
 
                 print("\n===== GROQ ERROR =====")
