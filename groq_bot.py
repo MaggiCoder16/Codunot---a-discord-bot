@@ -685,7 +685,6 @@ async def generate_and_reply(chan_id, message, content, mode):
     
     # ---------------- CHECK FOR REPLY CONTEXT ----------------
     reply_context = await build_reply_context(message)
-    if reply_context:
 
     prompt = (
         build_general_prompt(chan_id, mode, message, include_last_image=False)
