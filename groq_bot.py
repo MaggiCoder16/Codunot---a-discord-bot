@@ -113,11 +113,19 @@ async def setup_hook():
 	slash_commands.save_vote_unlocks = save_vote_unlocks
 	
 	await slash_commands.setup(bot)
+
+	for guild in bot.guilds:
+		try:
+			bot.tree.clear_commands(guild=guild)
+			await bot.tree.sync(guild=guild)
+		except Exception as e:
+			print(f"[SLASH COMMANDS] Failed to clear guild commands for {guild.id}: {e}")
+
 	try:
 		synced = await bot.tree.sync()
 		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
 	except Exception as e:
-		print(f"[SLASH COMMANDS] Failed to sync: {e}")
+		print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
 
 # ---------------- COMMANDS ----------------
 @bot.command(name="codunot_help")
