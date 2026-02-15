@@ -57,8 +57,8 @@ ACTION_GIF_SOURCES = {
     "slap": [
         "https://media.tenor.com/TVPYqh_E1JYAAAAj/peach-goma-peach-and-goma.gif",
         "https://media.tenor.com/tMVS_yML7t0AAAAj/slap-slaps.gif",
-        "https://media1.tenor.com/m/OTr4wv64hwwAAAAd/come-here-come-closer.gif",
-        "https://media1.tenor.com/m/4Ut_QPbeCZIAAAAd/i-see-you-i-see.gif",
+        "https://c.tenor.com/OTr4wv64hwwAAAAd/tenor.gif",
+        "https://c.tenor.com/4Ut_QPbeCZIAAAAd/tenor.gif",
         "https://c.tenor.com/LHlITawhrEcAAAAd/tenor.gif",
     ],
     "wish_goodmorning": [
