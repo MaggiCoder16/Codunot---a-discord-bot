@@ -114,14 +114,10 @@ async def setup_hook():
 	
 	await slash_commands.setup(bot)
 
-	for guild in bot.guilds:
-		try:
-			bot.tree.clear_commands(guild=guild)
-			await bot.tree.sync(guild=guild)
-		except Exception as e:
-			print(f"[SLASH COMMANDS] Failed to clear guild commands for {guild.id}: {e}")
-
+	# Keep slash commands global only (no per-guild command sync).
 	try:
+		# Explicitly clear any commands in the local guild tree cache to avoid accidental guild-scoped sync.
+		bot.tree.clear_commands(guild=None)
 		synced = await bot.tree.sync()
 		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
 	except Exception as e:

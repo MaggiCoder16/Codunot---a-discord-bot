@@ -35,12 +35,6 @@ boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
 
-ACTION_TEXT = {
-    "hug": "hugged",
-    "kiss": "kissed",
-    "kick": "kicked",
-}
-
 ACTION_GIF_SOURCES = {
     "hug": [
         "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExYjFxbWd0djU0Y240MHE3d2t3dnIyZWtsaGI0aTFleGVncWswcDdkYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uakdGGShmMS0KYfTgp/giphy.gif",
@@ -60,7 +54,110 @@ ACTION_GIF_SOURCES = {
         "https://media.tenor.com/TDQXdEBNNjUAAAAi/milk-and-mocha.gif",
         "https://media.tenor.com/ztHpFwsax84AAAAi/hau-zozo-smile.gif",
     ],
+    "slap": [
+        "https://media.tenor.com/TVPYqh_E1JYAAAAj/peach-goma-peach-and-goma.gif",
+        "https://media.tenor.com/tMVS_yML7t0AAAAj/slap-slaps.gif",
+        "https://media1.tenor.com/m/OTr4wv64hwwAAAAd/come-here-come-closer.gif",
+        "https://media1.tenor.com/m/4Ut_QPbeCZIAAAAd/i-see-you-i-see.gif",
+        "https://c.tenor.com/LHlITawhrEcAAAAd/tenor.gif",
+    ],
+    "wish_goodmorning": [
+        "https://media.tenor.com/xwlZJGC0EqwAAAAj/pengu-pudgy.gif",
+        "https://tenor.com/view/have-a-great-day-good-day-have-a-good-day-nice-day-enjoy-your-day-gif-16328321276428216691",
+        "https://media.tenor.com/xlwtvJtC6FAAAAAM/jjk-jujutsu-kaisen.gif",
+        "https://c.tenor.com/6VbeqshMfkEAAAAd/tenor.gif",
+    ],
 }
+
+ACTION_MESSAGES = {
+    "hug": [
+        "🤗 {user} wrapped {target} in a giant cozy hug!",
+        "💞 {user} gave {target} the warmest cuddle ever.",
+        "🐻 {user} bear-hugged {target} with max affection.",
+        "✨ {user} hugged {target} and instantly improved the vibe.",
+        "🌈 {user} sent a comfort hug straight to {target}.",
+        "🫶 {user} gave {target} a wholesome squeeze.",
+        "☁️ {user} hugged {target} like a fluffy cloud.",
+        "🎉 {user} rushed over and hugged {target} in celebration!",
+        "💖 {user} shared a heart-melting hug with {target}.",
+        "🌟 {user} delivered a legendary friendship hug to {target}.",
+    ],
+    "kiss": [
+        "💋 {user} gave {target} a sweet kiss!",
+        "🌹 {user} kissed {target} and left everyone blushing.",
+        "✨ {user} sent {target} a dramatic movie-scene kiss.",
+        "💕 {user} gave {target} a soft little kiss.",
+        "🥰 {user} kissed {target} with pure wholesome energy.",
+        "🎀 {user} surprised {target} with an adorable kiss.",
+        "💞 {user} planted a lovely kiss on {target}.",
+        "🌟 {user} kissed {target} and sparkles appeared everywhere.",
+        "🫣 {user} stole a quick kiss from {target}!",
+        "🍓 {user} gave {target} a super cute kiss.",
+    ],
+    "kick": [
+        "🥋 {user} launched a playful kick at {target}!",
+        "💥 {user} drop-kicked {target} into cartoon physics.",
+        "⚡ {user} gave {target} a turbo ninja kick.",
+        "🎯 {user} landed a clean anime kick on {target}.",
+        "🌀 {user} spin-kicked {target} with style.",
+        "🔥 {user} kicked {target} straight into next week.",
+        "😤 {user} delivered a dramatic boss-fight kick to {target}.",
+        "👟 {user} punted {target} with comedic precision.",
+        "📢 {user} yelled 'HIYAA!' and kicked {target}.",
+        "🏆 {user} scored a perfect kick combo on {target}.",
+    ],
+    "slap": [
+        "🖐️ {user} slapped {target} with cartoon force!",
+        "💢 {user} delivered a dramatic anime slap to {target}.",
+        "⚡ {user} gave {target} a lightning-fast slap.",
+        "🎬 {user} slapped {target} like a soap-opera finale.",
+        "👋 {user} landed a playful slap on {target}.",
+        "🌪️ {user} windmill-slapped {target} into silence.",
+        "😳 {user} gave {target} a surprise slap for the plot.",
+        "🎯 {user} slapped {target} with perfect timing.",
+        "🔥 {user} unleashed a spicy slap on {target}.",
+        "📢 {user} slapped {target} and the crowd went wild.",
+    ],
+    "wish_goodmorning": [
+        "🌅 {user} wished {target} a bright and beautiful morning!",
+        "☀️ {user} sent {target} a cheerful good morning wish.",
+        "🌼 {user} told {target}: good morning, sunshine!",
+        "☕ {user} handed {target} a coffee and said good morning.",
+        "🐣 {user} wished {target} the happiest morning ever.",
+        "🌞 {user} greeted {target} with a warm good morning.",
+        "✨ {user} wished {target} a fresh start and good vibes.",
+        "🍳 {user} served breakfast vibes and wished {target} good morning!",
+        "🎶 {user} sang a tiny good morning song for {target}.",
+        "💛 {user} wished {target} a cozy, wonderful morning.",
+    ],
+}
+
+MEME_SOURCES = [
+    "https://i.imgur.com/giaxzSP.jpeg",
+    "https://i.imgur.com/ELuCb1H.jpeg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-10-677cf9f8b57aa__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-35-677e714a64c1c__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-32-677e7089d37ed__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-37-677e71d07e283__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-19-677d015a22631__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-34-677e70e5ef167__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-4-677cf70d35587__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-31-677e705b1f746__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-33-677e70b520281__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-2-677cf62608ccb__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-6-677cf836e20bd__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-14-677cfece125a2__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-12-677cfdd8e5ab7__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-27-677d12eff1187__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-39-677e72289295d__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-41-677e72a6ee6a8__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-30-677d14da83f61__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-40-677e727a2bbb6__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/Cw95ZfXSSkf-png__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-24-677d109751518__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/CyGhEAHSRoY-png__700.jpg",
+    "https://static.boredpanda.com/blog/wp-content/uploads/2025/01/relatable-memes-jokes-memespointt-43-677e7303d7dd4__700.jpg",
+]
 
 
 async def fetch_bytes(url: str) -> bytes:
@@ -317,12 +414,10 @@ class Codunot(commands.Cog):
 
         try:
             source_url = random.choice(ACTION_GIF_SOURCES[action])
-            
-            # Create an embed with the GIF
-            if action == "hug":
-                text = f"{interaction.user.mention} gave {target_user.mention} a hug!"
-            else:
-                text = f"{interaction.user.mention} {ACTION_TEXT[action]} {target_user.mention}!"
+            text = random.choice(ACTION_MESSAGES[action]).format(
+                user=interaction.user.mention,
+                target=target_user.mention
+            )
             
             embed = discord.Embed(
                 description=text,
@@ -351,6 +446,47 @@ class Codunot(commands.Cog):
     @app_commands.describe(target_user="The user you want to kick")
     async def kick_slash(self, interaction: discord.Interaction, target_user: discord.User):
         await self._send_action_gif(interaction, "kick", target_user)
+
+    @app_commands.command(name="slap", description="🖐️ Slap any user with a random anime GIF")
+    @app_commands.describe(target_user="The user you want to slap")
+    async def slap_slash(self, interaction: discord.Interaction, target_user: discord.User):
+        await self._send_action_gif(interaction, "slap", target_user)
+
+    @app_commands.command(name="wish_goodmorning", description="🌅 Wish someone a very good morning with a GIF")
+    @app_commands.describe(target_user="The user you want to wish good morning")
+    async def wish_goodmorning_slash(self, interaction: discord.Interaction, target_user: discord.User):
+        await self._send_action_gif(interaction, "wish_goodmorning", target_user)
+
+    @app_commands.command(name="bet", description="🪙 Bet on heads or tails with a coin flip")
+    @app_commands.describe(side="Choose heads or tails")
+    @app_commands.choices(side=[
+        app_commands.Choice(name="heads", value="heads"),
+        app_commands.Choice(name="tails", value="tails"),
+    ])
+    async def bet_slash(self, interaction: discord.Interaction, side: app_commands.Choice[str]):
+        result = random.choice(["heads", "tails"])
+        did_win = side.value == result
+
+        if did_win:
+            message = (
+                f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed correctly and wins! 🎉"
+            )
+        else:
+            message = (
+                f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed **{side.value}** and lost this round."
+            )
+
+        await interaction.response.send_message(message, ephemeral=False)
+
+    @app_commands.command(name="meme", description="😂 Send a random meme")
+    async def meme_slash(self, interaction: discord.Interaction):
+        meme_url = random.choice(MEME_SOURCES)
+        embed = discord.Embed(
+            title="😂 Random Meme",
+            color=0x00BFFF,
+        )
+        embed.set_image(url=meme_url)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
 async def setup(bot: commands.Bot):
