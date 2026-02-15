@@ -6,7 +6,7 @@ TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
 BOT_ID = "1435987186502733878"
 
 _vote_cache = {}
-CACHE_SECONDS = 90  # 1.5 minutes
+CACHE_SECONDS = 60  # 1 minute
 
 async def has_voted(user_id: int) -> bool:
     now = time.time()
