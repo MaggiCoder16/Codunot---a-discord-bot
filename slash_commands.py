@@ -63,7 +63,7 @@ ACTION_GIF_SOURCES = {
     ],
     "wish_goodmorning": [
         "https://media.tenor.com/xwlZJGC0EqwAAAAj/pengu-pudgy.gif",
-        "https://tenor.com/view/have-a-great-day-good-day-have-a-good-day-nice-day-enjoy-your-day-gif-16328321276428216691",
+        "https://media.tenor.com/4pnZsJP06XMAAAAj/have-a-great-day-good-day.gif",
         "https://media.tenor.com/xlwtvJtC6FAAAAAM/jjk-jujutsu-kaisen.gif",
         "https://c.tenor.com/6VbeqshMfkEAAAAd/tenor.gif",
     ],
