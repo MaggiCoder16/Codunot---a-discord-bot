@@ -83,16 +83,16 @@ ACTION_MESSAGES = {
         "🌟 {user} delivered a legendary friendship hug to {target}.",
     ],
     "kiss": [
-        "💋 {user} gave {target} a sweet kiss!",
-        "🌹 {user} kissed {target} and left everyone blushing.",
-        "✨ {user} sent {target} a dramatic movie-scene kiss.",
-        "💕 {user} gave {target} a soft little kiss.",
-        "🥰 {user} kissed {target} with pure wholesome energy.",
-        "🎀 {user} surprised {target} with an adorable kiss.",
-        "💞 {user} planted a lovely kiss on {target}.",
-        "🌟 {user} kissed {target} and sparkles appeared everywhere.",
-        "🫣 {user} stole a quick kiss from {target}!",
-        "🍓 {user} gave {target} a super cute kiss.",
+        "💋🥰{user} gave {target} a sweet kiss!",
+        "🌹💋 {user} kissed {target} and left everyone blushing.",
+        "✨💋 {user} sent {target} a dramatic movie-scene kiss.",
+        "💕💋 {user} gave {target} a soft little kiss.",
+        "🥰💋 {user} kissed {target} with pure wholesome energy.",
+        "🎀💋 {user} surprised {target} with an adorable kiss.",
+        "💞💋 {user} planted a lovely kiss on {target}.",
+        "🌟💋 {user} kissed {target} and sparkles appeared everywhere.",
+        "🫣💋 {user} stole a quick kiss from {target}!",
+        "🍓💋 {user} gave {target} a super cute kiss.",
     ],
     "kick": [
         "🥋 {user} launched a playful kick at {target}!",
@@ -421,7 +421,7 @@ class Codunot(commands.Cog):
             
             embed = discord.Embed(
                 description=text,
-                color=0xFFA500  # Orange color for the side line
+                color=0xFFA500
             )
             embed.set_image(url=source_url)
             
@@ -487,7 +487,6 @@ class Codunot(commands.Cog):
         )
         embed.set_image(url=meme_url)
         await interaction.response.send_message(embed=embed, ephemeral=False)
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Codunot(bot))
