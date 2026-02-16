@@ -382,11 +382,20 @@ def cleanup_expired_votes():
 load_vote_unlocks()
 cleanup_expired_votes()
 
+class VoteView(discord.ui.View):
+	def __init__(self):
+		super().__init__(timeout=None)
+
+		self.add_item(
+			discord.ui.Button(
+				label="🗳️ Vote Now",
+				url="https://top.gg/bot/1435987186502733878/vote",
+				style=discord.ButtonStyle.link
+			)
+		)
+
+
 async def require_vote(message) -> None:
-	# Owner bypass
-	if await is_owner_user(message.author):
-		return
-	
 	user_id = message.author.id
 	now = time.time()
 
@@ -399,17 +408,56 @@ async def require_vote(message) -> None:
 		save_vote_unlocks()
 		return
 
-	vote_message = (
-		"🚫 **This feature requires a Top.gg vote**\n\n"
-		"🗳️ Vote to unlock **Image generations, merging & editing, Video generations, "
-		"Text-To-Speech & File tools** for **12 hours** 💙\n\n"
-		"👉 https://top.gg/bot/1435987186502733878/vote\n\n"
-		"⏱️ After 12 hours, you'll need to vote again to regain access. So, press on the 'every 12 hours' and 'remind me' buttons while you vote.\n"
-		"⏳ Once you vote, please wait for **5-10 seconds** before retrying."
+	embed = discord.Embed(
+		title="🚫 ACCESS LOCKED — VOTE REQUIRED",
+		description=(
+			"🗳️ This is a **premium feature**.\n\n"
+			"Vote on Top.gg to unlock **12 HOURS** of creative power 💙"
+		),
+		color=0x5865F2
 	)
-	
-	await message.channel.send(vote_message)
 
+	embed.add_field(
+		name="✨ What You Unlock",
+		value=(
+			"🎨 Image Generation — `/generate_image`\n"
+			"🎬 Video Generation — `/generate_video`\n"
+			"🔊 Text-to-Speech — `/generate_tts`\n"
+			"🖌️ Edit Images (send image + instruction)\n"
+			"🖼️ Merge Images (attach 2+ images + say merge)\n"
+			"📄 File Reading & Summaries\n"
+			"🖼️ Image Analysis\n"
+			"💬 Interactive Slash Commands"
+		),
+		inline=False
+	)
+
+	embed.add_field(
+		name="💬 Slash Action Examples",
+		value=(
+			"🤗 `/hug @user`\n"
+			"💋 `/kiss @user`\n"
+			"🥋 `/kick @user`\n"
+			"🖐️ `/slap @user`\n"
+			"🌅 `/wish_goodmorning @user`\n"
+			"🪙 `/bet heads/tails`\n"
+			"😂 `/meme`\n\n"
+			"Example results:\n"
+			"Alex gave Sarah a hug 🤗\n"
+			"Mike kissed Sophia 💋\n"
+			"The coin landed on heads! Mary wins! 🎉"
+		),
+		inline=False
+	)
+
+	embed.set_footer(text="🔓 After voting, you may use these commands for 12 hours.")
+
+	view = VoteView()
+
+	await message.channel.send(embed=embed, view=view)
+
+	vote_message = "User attempted locked feature. Vote required."
+	
 	is_dm = isinstance(message.channel, discord.DMChannel)
 	chan_id = f"dm_{message.author.id}" if is_dm else str(message.channel.id)
 	
