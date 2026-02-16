@@ -8,7 +8,7 @@ REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
 
 async def call_replicate(
     prompt: str,
-    model: str = "prunaai/gpt-oss-120b-fast",
+    model: str = "prunaai/gpt-oss-120b-fast:e994aeeb46519a8ed196fe72650b4d522280dabd2b67129580d164088133f8ff",
     temperature: float = 0.7,
     max_tokens: int = 8000,
     system_prompt: str | None = None
