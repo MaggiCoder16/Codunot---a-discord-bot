@@ -67,6 +67,7 @@ jobs:
           DEAPI_WEBHOOK_URL: ${{ secrets.DEAPI_WEBHOOK_URL }}
           DEAPI_RESULT_BASE: ${{ secrets.DEAPI_RESULT_BASE }}
           TOPGG_TOKEN: ${{ secrets.TOPGG_TOKEN }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           
         run: |
           timeout 3h python -u groq_bot.py || true
