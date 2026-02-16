@@ -13,8 +13,8 @@ BOT_ID = "1435987186502733878"
 VOTE_LOG_FILE = Path(os.getenv("TOPGG_VOTE_LOG_FILE", "topgg_vote_log.jsonl"))
 
 _vote_cache = {}
-CACHE_SECONDS = 60  # positive cache: 1 minute
-NEGATIVE_CACHE_SECONDS = 15  # short negative cache to avoid stale denials
+CACHE_SECONDS = 60
+NEGATIVE_CACHE_SECONDS = 15
 DEFAULT_POLL_ATTEMPTS = 3
 DEFAULT_POLL_INTERVAL_SECONDS = 2
 
@@ -36,7 +36,6 @@ def _log_vote_event(event_type: str, user_id: int, **details: Any) -> None:
         with VOTE_LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(json.dumps(payload, ensure_ascii=False) + "\n")
     except Exception:
-        # Logging should never break the vote check flow.
         return
 
 
