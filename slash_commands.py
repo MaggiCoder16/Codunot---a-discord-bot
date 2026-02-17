@@ -479,7 +479,7 @@ class Codunot(commands.Cog):
                 f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
             )
 
-async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
+    async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
         if target_user.id == interaction.user.id:
             await interaction.response.send_message(
                 f"😅 You can't /{action} yourself. Pick someone else!",
