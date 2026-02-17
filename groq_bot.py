@@ -95,27 +95,27 @@ channel_last_chess_result = {}
 # ---------------- SETUP SLASH COMMANDS ----------------
 @bot.event
 async def setup_hook():
-    import slash_commands
-    
-    slash_commands.memory = memory
-    slash_commands.channel_modes = channel_modes
-    slash_commands.channel_chess = channel_chess
-    slash_commands.user_vote_unlocks = user_vote_unlocks
-    slash_commands.chess_engine = chess_engine
-    slash_commands.OWNER_IDS = OWNER_IDS
-    slash_commands.VOTE_DURATION = VOTE_DURATION
-    slash_commands.BOT_NAME = BOT_NAME
-    slash_commands.boost_image_prompt = boost_image_prompt
-    slash_commands.boost_video_prompt = boost_video_prompt
-    slash_commands.save_vote_unlocks = save_vote_unlocks
-    
-    await slash_commands.setup(bot)
+	import slash_commands
+	
+	slash_commands.memory = memory
+	slash_commands.channel_modes = channel_modes
+	slash_commands.channel_chess = channel_chess
+	slash_commands.user_vote_unlocks = user_vote_unlocks
+	slash_commands.chess_engine = chess_engine
+	slash_commands.OWNER_IDS = OWNER_IDS
+	slash_commands.VOTE_DURATION = VOTE_DURATION
+	slash_commands.BOT_NAME = BOT_NAME
+	slash_commands.boost_image_prompt = boost_image_prompt
+	slash_commands.boost_video_prompt = boost_video_prompt
+	slash_commands.save_vote_unlocks = save_vote_unlocks
+	
+	await slash_commands.setup(bot)
 
-    try:
-        synced = await bot.tree.sync()
-        print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
-    except Exception as e:
-        print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
+	try:
+		synced = await bot.tree.sync()
+		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
+	except Exception as e:
+		print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
 
 # ---------------- COMMANDS ----------------
 @bot.command(name="codunot_help")
@@ -512,41 +512,41 @@ def format_duration(num: int, unit: str) -> str:
 	return f"{num} {name}s" if num > 1 else f"1 {name}"
 
 async def send_long_message(channel, text):
-    max_len = 2000
-    remaining = str(text or "")
+	max_len = 2000
+	remaining = str(text or "")
 
-    while remaining:
-        if len(remaining) <= max_len:
-            try:
-                await channel.send(remaining)
-            except discord.errors.Forbidden:
-                print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
-                return
-            except Exception as e:
-                print(f"[SEND ERROR] {e}")
-                return
-            break
+	while remaining:
+		if len(remaining) <= max_len:
+			try:
+				await channel.send(remaining)
+			except discord.errors.Forbidden:
+				print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
+				return
+			except Exception as e:
+				print(f"[SEND ERROR] {e}")
+				return
+			break
 
-        newline_idx = remaining.rfind("\n", 0, max_len)
-        space_idx = remaining.rfind(" ", 0, max_len)
-        split_at = max(newline_idx, space_idx)
+		newline_idx = remaining.rfind("\n", 0, max_len)
+		space_idx = remaining.rfind(" ", 0, max_len)
+		split_at = max(newline_idx, space_idx)
 
-        if split_at <= 0:
-            split_at = max_len
-        else:
-            split_at += 1
+		if split_at <= 0:
+			split_at = max_len
+		else:
+			split_at += 1
 
-        chunk = remaining[:split_at]
-        remaining = remaining[split_at:]
-        
-        try:
-            await channel.send(chunk)
-        except discord.errors.Forbidden:
-            print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
-            return
-        except Exception as e:
-            print(f"[SEND ERROR] {e}")
-            return
+		chunk = remaining[:split_at]
+		remaining = remaining[split_at:]
+		
+		try:
+			await channel.send(chunk)
+		except discord.errors.Forbidden:
+			print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
+			return
+		except Exception as e:
+			print(f"[SEND ERROR] {e}")
+			return
 	
 async def process_queue():
 	while True:
@@ -572,28 +572,28 @@ def humanize_and_safeify(text, short=False):
 	return text
 	
 async def send_human_reply(channel, reply_text):
-    if hasattr(channel, "trigger_typing"):
-        try:
-            await channel.trigger_typing()
-        except discord.errors.Forbidden:
-            print(f"[PERMISSION ERROR] Cannot trigger typing in channel {channel.id}")
-        except:
-            pass
+	if hasattr(channel, "trigger_typing"):
+		try:
+			await channel.trigger_typing()
+		except discord.errors.Forbidden:
+			print(f"[PERMISSION ERROR] Cannot trigger typing in channel {channel.id}")
+		except:
+			pass
 
-    if hasattr(channel, "guild") and channel.guild:
-        for member in channel.guild.members:
-            reply_text = reply_text.replace(f"@{member.name}", member.mention)
-            reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
+	if hasattr(channel, "guild") and channel.guild:
+		for member in channel.guild.members:
+			reply_text = reply_text.replace(f"@{member.name}", member.mention)
+			reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
 
-            reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
-            reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
+			reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
+			reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
 
-    try:
-        await send_long_message(channel, reply_text)
-    except discord.errors.Forbidden:
-        print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
-    except Exception as e:
-        print(f"[SEND ERROR] {e}")
+	try:
+		await send_long_message(channel, reply_text)
+	except discord.errors.Forbidden:
+		print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
+	except Exception as e:
+		print(f"[SEND ERROR] {e}")
 
 async def build_reply_context(message):
 	"""
@@ -793,45 +793,45 @@ async def handle_roast_mode(chan_id, message, user_message):
 	memory.persist()
 
 async def generate_and_reply(chan_id, message, content, mode):
-    guild_id = message.guild.id if message.guild else None
-    if guild_id is not None and not await can_send_in_guild(guild_id):
-        return
-    
-    # ---------------- CHECK FOR REPLY CONTEXT ----------------
-    reply_context = await build_reply_context(message)
+	guild_id = message.guild.id if message.guild else None
+	if guild_id is not None and not await can_send_in_guild(guild_id):
+		return
+	
+	# ---------------- CHECK FOR REPLY CONTEXT ----------------
+	reply_context = await build_reply_context(message)
 
-    prompt = (
-        build_general_prompt(chan_id, mode, message, include_last_image=False)
-        + reply_context
-        + f"\nUser says:\n{content}\n\nReply:"
-    )
-    
-    # ---------------- GENERATE RESPONSE ----------------
-    try:
-        response = await call_groq_with_health(prompt, temperature=0.7, mode=mode)
-    except Exception as e:
-        print(f"[API ERROR] {e}")
-        response = None
-    
-    # ---------------- HUMANIZE / SAFEIFY ----------------
-    if response:
-        if mode == "funny":
-            reply = humanize_and_safeify(response)
-        else:  # serious or roast handled separately
-            reply = response.strip()
-            if reply and not reply.endswith(('.', '!', '?')):
-                reply += '.'
-    else:
-        reply = choose_fallback()
-    
-    # ---------------- SEND REPLY ----------------
-    await send_human_reply(message.channel, reply)
-    
-    # ---------------- SAVE TO MEMORY ----------------
-    channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
-    channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
-    memory.add_message(chan_id, BOT_NAME, reply)
-    memory.persist()
+	prompt = (
+		build_general_prompt(chan_id, mode, message, include_last_image=False)
+		+ reply_context
+		+ f"\nUser says:\n{content}\n\nReply:"
+	)
+	
+	# ---------------- GENERATE RESPONSE ----------------
+	try:
+		response = await call_groq_with_health(prompt, temperature=0.7, mode=mode)
+	except Exception as e:
+		print(f"[API ERROR] {e}")
+		response = None
+	
+	# ---------------- HUMANIZE / SAFEIFY ----------------
+	if response:
+		if mode == "funny":
+			reply = humanize_and_safeify(response)
+		else:  # serious or roast handled separately
+			reply = response.strip()
+			if reply and not reply.endswith(('.', '!', '?')):
+				reply += '.'
+	else:
+		reply = choose_fallback()
+	
+	# ---------------- SEND REPLY ----------------
+	await send_human_reply(message.channel, reply)
+	
+	# ---------------- SAVE TO MEMORY ----------------
+	channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
+	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+	memory.add_message(chan_id, BOT_NAME, reply)
+	memory.persist()
 
 # ---------------- IMAGE EXTRACTION ----------------
 async def extract_image_bytes(message) -> bytes | None:
@@ -999,6 +999,7 @@ async def handle_file_message(message, mode):
 	for attachment in message.attachments:
 		if attachment.content_type and attachment.content_type.startswith("image/"):
 			return None
+	await require_vote(message)
 	
 	# Check daily limit
 	if not check_limit(message, "attachments"):
