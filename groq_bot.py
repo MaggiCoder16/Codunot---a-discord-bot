@@ -300,27 +300,38 @@ async def replicate_test(ctx: commands.Context, *, message: str):
 		print(f"[REPLICATE TEST ERROR] {e}")
 
 @bot.command(name="test_gpt_groq")
-async def test_gpt_groq(ctx: commands.Context, *, message: str):
+async def test_gpt_groq(ctx: commands.Context, mode: str = "funny", *, message: str):
     """
     Test Groq's GPT OSS 120B model (Owner only)
-    Usage: !test_gpt_groq your message here
+    Usage: !test_gpt_groq [funny/serious/roast] your message
+    Example: !test_gpt_groq roast my friend Alex
     """
 
     if not await is_owner_user(ctx.author):
         await ctx.send("🚫 Owner only command.")
         return
 
-    await ctx.send("🧪 Testing Groq GPT OSS 120B...")
+    valid_modes = {"funny", "serious", "roast"}
+    if mode not in valid_modes:
+        await ctx.send("❌ Invalid mode. Use: `funny`, `serious`, or `roast`")
+        return
+
+    await ctx.send(f"🧪 Testing GPT OSS 120B in `{mode}` mode...")
 
     try:
+        if mode == "roast":
+            prompt = build_roast_prompt("test", message)
+        else:
+            prompt = build_general_prompt("test", mode, None, False) + f"\nUser says:\n{message}\n\nReply:"
+
         response = await call_groq(
-            prompt=message,
+            prompt=prompt,
             model="openai/gpt-oss-120b",
-            temperature=0.7,
+            temperature=1.3 if mode == "roast" else 0.7,
         )
 
         if response:
-            await send_long_message(ctx.channel, f"**GPT OSS 120B Response:**\n{response}")
+            await send_long_message(ctx.channel, f"**GPT OSS 120B ({mode}):**\n{response}")
         else:
             await ctx.send("❌ Groq call failed — check logs.")
 
