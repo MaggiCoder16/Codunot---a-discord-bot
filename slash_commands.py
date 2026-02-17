@@ -190,10 +190,6 @@ async def fetch_bytes(url: str) -> bytes:
 #  VOTE CHECK
 
 async def require_vote_deferred(interaction: discord.Interaction) -> bool:
-    """
-    Vote check function for commands that have already deferred.
-    Uses followup.send() instead of response.send_message().
-    """
     if interaction.user.id in OWNER_IDS:
         return True
 
@@ -209,23 +205,75 @@ async def require_vote_deferred(interaction: discord.Interaction) -> bool:
             save_vote_unlocks()
         return True
 
-    await interaction.followup.send(
-        "🚫 **This feature requires a Top.gg vote**\n\n"
-        "🗳️ Vote to unlock **Image generations, merging & editing, Video generations, "
-        "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
-        "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
-        "⏱️ After 12 hours, you'll need to vote again to regain access.\n"
-        "⏳ Once you vote, please wait for **about 5 minutes** before retrying.",
-        ephemeral=False
+    embed = discord.Embed(
+        title="🔒 Vote Required to Unlock This Feature",
+        description=(
+            "This feature is locked behind a **free vote** on Top.gg!\n"
+            "Vote once every 12 hours to unlock a ton of powerful features 💙"
+        ),
+        color=0x5865F2
     )
+    embed.add_field(
+        name="🎨 Creative Tools",
+        value=(
+            "• 🖼️ **Image Analysis** — send any image\n"
+            "• 🎨 **Generate Image** — `/generate_image`\n"
+            "• 🖌️ **Edit Images** — send image + instruction\n"
+            "• 🖼️ **Merge Images** — attach 2+ images + say merge\n"
+            "• 🎬 **Generate Video** — `/generate_video`\n"
+            "• 🔊 **Text-to-Speech** — `/generate_tts`"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="📁 File Tools",
+        value=(
+            "• 📄 **PDF Reading** — upload any PDF\n"
+            "• 📝 **DOCX Reading** — upload Word documents\n"
+            "• 📃 **TXT Reading** — upload text files\n"
+            "• 🔍 **Smart Summaries** — get instant file summaries"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="💬 Slash Action Commands",
+        value=(
+            "• 🤗 `/hug @user` — give someone a warm hug\n"
+            "• 💋 `/kiss @user` — send a kiss with a GIF\n"
+            "• 🥋 `/kick @user` — kick someone (playfully!)\n"
+            "• 🖐️ `/slap @user` — slap with dramatic effect\n"
+            "• 🌅 `/wish_goodmorning @user` — brighten someone's day\n"
+            "• 🪙 `/bet [heads/tails]` — flip a coin and bet\n"
+            "• 😂 `/meme` — get a random hot meme\n\n"
+            "*Each sends a random GIF with custom text!*"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="⏱️ How It Works",
+        value=(
+            "1️⃣ Click **Vote Now** below\n"
+            "2️⃣ Vote on Top.gg (takes 5 seconds!)\n"
+            "3️⃣ Wait ~5 minutes for it to register\n"
+            "4️⃣ All features unlock for **12 hours** 🎉\n"
+            "5️⃣ Vote again after 12 hours to keep access"
+        ),
+        inline=False
+    )
+    embed.set_footer(text="🗳️ Voting is completely free and takes 5 seconds!")
+
+    view = discord.ui.View(timeout=None)
+    view.add_item(discord.ui.Button(
+        label="🗳️ Vote Now",
+        url="https://top.gg/bot/1435987186502733878/vote",
+        style=discord.ButtonStyle.link
+    ))
+
+    await interaction.followup.send(embed=embed, view=view, ephemeral=False)
     return False
 
 
 async def require_vote_slash(interaction: discord.Interaction) -> bool:
-    """
-    Vote check function for commands that have NOT deferred yet.
-    Uses response.send_message().
-    """
     if interaction.user.id in OWNER_IDS:
         return True
 
@@ -241,15 +289,71 @@ async def require_vote_slash(interaction: discord.Interaction) -> bool:
             save_vote_unlocks()
         return True
 
-    await interaction.response.send_message(
-        "🚫 **This feature requires a Top.gg vote**\n\n"
-        "🗳️ Vote to unlock **Image generations, merging & editing, Video generations, "
-        "Text-To-Speech & File tools** for **12 hours** 💙\n\n"
-        "👉 https://top.gg/bot/1435987186502733878/vote\n\n"
-        "⏱️ After 12 hours, you'll need to vote again to regain access.\n"
-        "⏳ Once you vote, please wait for **about 5 minutes** before retrying.",
-        ephemeral=False
+    embed = discord.Embed(
+        title="🔒 Vote Required to Unlock This Feature",
+        description=(
+            "This feature is locked behind a **free vote** on Top.gg!\n"
+            "Vote once every 12 hours to unlock a ton of powerful features 💙"
+        ),
+        color=0x5865F2
     )
+    embed.add_field(
+        name="🎨 Creative Tools",
+        value=(
+            "• 🖼️ **Image Analysis** — send any image\n"
+            "• 🎨 **Generate Image** — `/generate_image`\n"
+            "• 🖌️ **Edit Images** — send image + instruction\n"
+            "• 🖼️ **Merge Images** — attach 2+ images + say merge\n"
+            "• 🎬 **Generate Video** — `/generate_video`\n"
+            "• 🔊 **Text-to-Speech** — `/generate_tts`"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="📁 File Tools",
+        value=(
+            "• 📄 **PDF Reading** — upload any PDF\n"
+            "• 📝 **DOCX Reading** — upload Word documents\n"
+            "• 📃 **TXT Reading** — upload text files\n"
+            "• 🔍 **Smart Summaries** — get instant file summaries"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="💬 Slash Action Commands",
+        value=(
+            "• 🤗 `/hug @user` — give someone a warm hug\n"
+            "• 💋 `/kiss @user` — send a kiss with a GIF\n"
+            "• 🥋 `/kick @user` — kick someone (playfully!)\n"
+            "• 🖐️ `/slap @user` — slap with dramatic effect\n"
+            "• 🌅 `/wish_goodmorning @user` — brighten someone's day\n"
+            "• 🪙 `/bet [heads/tails]` — flip a coin and bet\n"
+            "• 😂 `/meme` — get a random hot meme\n\n"
+            "*Each sends a random GIF with custom text!*"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="⏱️ How It Works",
+        value=(
+            "1️⃣ Click **Vote Now** below\n"
+            "2️⃣ Vote on Top.gg (takes 5 seconds!)\n"
+            "3️⃣ Your vote gets registered instantly! You can now use these features!\n"
+            "4️⃣ All features unlock for **12 hours** 🎉\n"
+            "5️⃣ Vote again after 12 hours to keep access"
+        ),
+        inline=False
+    )
+    embed.set_footer(text="🗳️ Voting is completely free and takes 5 seconds!")
+
+    view = discord.ui.View(timeout=None)
+    view.add_item(discord.ui.Button(
+        label="🗳️ Vote Now",
+        url="https://top.gg/bot/1435987186502733878/vote",
+        style=discord.ButtonStyle.link
+    ))
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
     return False
 
 # =========================
