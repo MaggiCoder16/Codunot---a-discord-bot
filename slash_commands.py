@@ -479,7 +479,7 @@ class Codunot(commands.Cog):
                 f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
             )
 
-    async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
+async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
         if target_user.id == interaction.user.id:
             await interaction.response.send_message(
                 f"😅 You can't /{action} yourself. Pick someone else!",
@@ -495,7 +495,7 @@ class Codunot(commands.Cog):
 
         await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 
-        await interaction.followup.send("🎉 **Loading your GIF...**")
+        loading_msg = await interaction.followup.send("🎉 **Loading your GIF...**", wait=True)
 
         try:
             source_url = random.choice(ACTION_GIF_SOURCES[action])
@@ -507,13 +507,12 @@ class Codunot(commands.Cog):
             embed = discord.Embed(description=text, color=0xFFA500)
             embed.set_image(url=source_url)
 
-            await interaction.followup.send(embed=embed)
+            await asyncio.sleep(3)
+            await loading_msg.edit(content=None, embed=embed)
 
         except Exception as e:
             print(f"[SLASH {action.upper()} ERROR] {e}")
-            await interaction.followup.send(
-                f"🤔 Couldn't generate a {action} GIF right now. Try again in a bit."
-            )
+            await loading_msg.edit(content=f"🤔 Couldn't generate a {action} GIF right now. Try again in a bit.")
 
     @app_commands.command(name="hug", description="🤗 Hug any user with a random GIF (Vote Required)")
     @app_commands.describe(target_user="The user you want to hug")
