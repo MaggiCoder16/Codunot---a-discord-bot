@@ -1922,7 +1922,7 @@ async def on_message(message: Message):
 async def on_ready():
 	await bot.change_presence(
 		activity=discord.CustomActivity(
-			name="🍊 /help · codunot.bot"
+			name="🍊 /help · codunot - discord chatbot"
 		),
 		status=discord.Status.online
 	)
