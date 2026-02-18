@@ -226,7 +226,7 @@ def _build_vote_embed() -> discord.Embed:
             "• 🖐️ `/slap @user` — slap with dramatic effect\n"
             "• 🌅 `/wish_goodmorning @user` — brighten someone's day\n"
             "• 🪙 `/bet [heads/tails]` — flip a coin and bet\n"
-            "• 😂 `/meme` — get a random hot meme\n\n"
+            "• 😂 `/meme` — get a random funny meme\n\n"
             "*Each sends a random GIF with custom text!*"
         ),
         inline=False
