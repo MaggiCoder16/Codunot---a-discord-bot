@@ -52,8 +52,9 @@ load_usage()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 BOT_NAME = os.getenv("BOT_NAME", "Codunot")
 TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
-OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
+OWNER_IDS = {int(os.environ.get("OWNER_ID", 0)), 1220934047794987048, 1167443519070290051}
 OWNER_IDS.discard(0)
+BYPASS_IDS = {1220934047794987048, 1167443519070290051}
 VOTE_DURATION = 12 * 60 * 60
 MAX_MEMORY = 45
 RATE_LIMIT = 30
@@ -467,6 +468,10 @@ class VoteView(discord.ui.View):
 
 async def require_vote(message) -> None:
 	user_id = message.author.id
+
+	if user_id in OWNER_IDS or user_id in BYPASS_IDS:
+		return
+
 	now = time.time()
 
 	unlock_time = user_vote_unlocks.get(user_id)
