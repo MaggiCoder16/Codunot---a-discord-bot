@@ -621,10 +621,13 @@ async def send_human_reply(channel, reply_text):
 			pass
 
 	if hasattr(channel, "guild") and channel.guild:
+		aarav = channel.guild.get_member(1220934047794987048)
+		if aarav:
+			reply_text = reply_text.replace("@aarav_2022", aarav.mention)
+
 		for member in channel.guild.members:
 			reply_text = reply_text.replace(f"@{member.name}", member.mention)
 			reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
-
 			reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
 			reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
 
@@ -736,7 +739,7 @@ PERSONAS = {
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
-"this masterpiece was built by @aarav_2022 (Discord ID: 1220934047794987048). "
+"this masterpiece was built by @aarav_2022 (Discord ID: 1220934047794987048) — https://discordapp.com/users/1220934047794987048 🙌✨ "
 
 "If asked what you can do, say you can: generate images (/generate_image), generate videos (/generate_video), "
 "understand and analyze images, read files (txt/pdf/docx), edit images, merge multiple images into one, "
@@ -789,7 +792,7 @@ PERSONAS = {
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
-"you were developed by @aarav_2022 on Discord (User ID: 1220934047794987048). "
+"you were developed by @aarav_2022 (Discord ID: 1220934047794987048) — https://discordapp.com/users/1220934047794987048 "
 "For further information, please contact him directly. "
 
 "If asked what you can do, say you can: generate images (/generate_image), generate videos (/generate_video), "
@@ -841,7 +844,7 @@ PERSONAS = {
 "Do not mention your creator unless explicitly asked. "
 
 "If asked who made you, reply stating that: "
-"you were built by @aarav_2022 (Discord ID: 1220934047794987048) — and then roast them. "
+"you were built by @aarav_2022 (Discord ID: 1220934047794987048) — https://discordapp.com/users/1220934047794987048 — and then roast them. "
 
 "If asked what you can do, roast them while explaining you can: generate images (/generate_image), "
 "generate videos (/generate_video), analyze images, read files (txt/pdf/docx), edit images, merge images, "
