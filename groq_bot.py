@@ -617,31 +617,20 @@ def humanize_and_safeify(text, short=False):
 	return text
 	
 async def send_human_reply(channel, reply_text):
-	if hasattr(channel, "trigger_typing"):
-		try:
-			await channel.trigger_typing()
-		except discord.errors.Forbidden:
-			print(f"[PERMISSION ERROR] Cannot trigger typing in channel {channel.id}")
-		except:
-			pass
+    if hasattr(channel, "trigger_typing"):
+        try:
+            await channel.trigger_typing()
+        except discord.errors.Forbidden:
+            print(f"[PERMISSION ERROR] Cannot trigger typing in channel {channel.id}")
+        except:
+            pass
 
-	if hasattr(channel, "guild") and channel.guild:
-		aarav = channel.guild.get_member(1220934047794987048)
-		if aarav:
-			reply_text = reply_text.replace("@aarav_2022", aarav.mention)
-
-		for member in channel.guild.members:
-			reply_text = reply_text.replace(f"@{member.name}", member.mention)
-			reply_text = reply_text.replace(f"<@{member.name}>", member.mention)
-			reply_text = reply_text.replace(f"@{member.display_name}", member.mention)
-			reply_text = reply_text.replace(f"<@{member.display_name}>", member.mention)
-
-	try:
-		await send_long_message(channel, reply_text)
-	except discord.errors.Forbidden:
-		print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
-	except Exception as e:
-		print(f"[SEND ERROR] {e}")
+    try:
+        await send_long_message(channel, reply_text)
+    except discord.errors.Forbidden:
+        print(f"[PERMISSION ERROR] Cannot send message in channel {channel.id} - Missing Permissions")
+    except Exception as e:
+        print(f"[SEND ERROR] {e}")
 
 async def build_reply_context(message):
 	"""
