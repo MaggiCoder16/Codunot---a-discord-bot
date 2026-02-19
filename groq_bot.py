@@ -624,6 +624,15 @@ async def send_human_reply(channel, reply_text):
             print(f"[PERMISSION ERROR] Cannot trigger typing in channel {channel.id}")
         except:
             pass
+    if hasattr(channel, "guild") and channel.guild:
+        def replace_mention(match):
+            username = match.group(1).lower()
+            for member in channel.guild.members:
+                if member.name.lower() == username or member.display_name.lower() == username:
+                    return member.mention
+            return match.group(0)
+
+        reply_text = re.sub(r'@(\w+)', replace_mention, reply_text)
 
     try:
         await send_long_message(channel, reply_text)
