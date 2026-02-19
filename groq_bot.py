@@ -1823,12 +1823,23 @@ async def on_message(message: Message):
 		channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 		channel_memory[chan_id].append(f"{message.author.display_name}: {content}")
 		memory.add_message(chan_id, message.author.display_name, content)
-		
+
 		# ---------- BOT PING RULE ----------
 		if not is_dm:
-			if bot.user not in message.mentions:
-				return  # Don't respond, but memory is already saved above
-		
+			is_reply_to_bot = False
+			if message.reference:
+				ref = message.reference.resolved
+				if not ref and message.reference.message_id:
+					try:
+						ref = await message.channel.fetch_message(message.reference.message_id)
+					except Exception:
+						pass
+				if ref and ref.author.id == bot.user.id:
+					is_reply_to_bot = True
+
+			if bot.user not in message.mentions and not is_reply_to_bot:
+				return
+
 		# ---------- STRIP BOT MENTION ----------
 		content = re.sub(rf"<@!?\s*{bot_id}\s*>", "", message.content).strip()
 		content_lower = content.lower()
