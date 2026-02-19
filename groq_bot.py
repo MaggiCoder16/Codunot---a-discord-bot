@@ -256,6 +256,48 @@ async def roastmode(ctx: commands.Context):
 
 	await ctx.send("🔥 ROAST MODE ACTIVATED")
 
+@bot.command(name="teachmerizz")
+async def teachmerizz(ctx: commands.Context, submode: str = None):
+	chan_id = (
+		f"dm_{ctx.author.id}"
+		if isinstance(ctx.channel, discord.DMChannel)
+		else str(ctx.channel.id)
+	)
+
+	if submode is None:
+		await ctx.send(
+			"❌ Please specify a mode:\n"
+			"`!teachmerizz online`\n"
+			"`!teachmerizz irl`"
+		)
+		return
+
+	submode = submode.lower().strip()
+
+	if submode == "online":
+		channel_modes[chan_id] = "rizz_online"
+		memory.save_channel_mode(chan_id, "rizz_online")
+		channel_chess[chan_id] = False
+		await ctx.send(
+			"💬 **Rizz Coach (Online) activated!**\n"
+			"Send your situation, paste a convo, or just ask anything 👇"
+		)
+
+	elif submode == "irl":
+		channel_modes[chan_id] = "rizz_irl"
+		memory.save_channel_mode(chan_id, "rizz_irl")
+		channel_chess[chan_id] = False
+		await ctx.send(
+			"🗣️ **Rizz Coach (IRL) activated!**\n"
+			"Describe your situation, ask for tips, or tell me what happened 👇"
+		)
+
+	else:
+		await ctx.send(
+			"❌ Unknown mode. Use:\n"
+			"`!teachmerizz online`\n"
+			"`!teachmerizz irl`"
+		)
 
 @bot.command(name="chessmode")
 async def chessmode(ctx: commands.Context):
@@ -863,6 +905,93 @@ PERSONAS = {
 "/wish_goodmorning @user, /bet [heads/tails], and /meme — all things you probably still won't use correctly 💀 "
 
 "Maximum 2000 characters."
+),
+
+"rizz_online": (
+	"You are Codunot in Rizz Coach (Online) Mode. You are a sharp, witty social strategist who helps people "
+	"navigate texting, DMs, and dating apps with confidence and authenticity. "
+	"You speak like a cool older friend who actually knows what they're talking about — not cringe, not preachy. "
+	"Gen Z energy, casual but intelligent. Use emojis naturally but sparingly.\n\n"
+
+	"YOUR JOB:\n"
+	"Help the user with their online rizz — texting, DMs, dating apps, openers, conversations, timing, everything.\n"
+	"Be genuinely useful. Talk to them like a friend who's good at this stuff.\n\n"
+
+	"HOW TO RESPOND:\n"
+	"Read what the user actually needs and respond naturally to that.\n"
+	"If they're just chatting, asking a general question, or venting — talk to them like a friend, no format needed.\n"
+	"If they paste a conversation or describe a specific texting situation — THEN use the structured breakdown:\n"
+	"  📊 Vibe Read → 💬 What to say (🔥 Flirty / 😏 Balanced / 🧊 Safe) → 💡 Lesson → ⚠️ Red Flags (only if needed)\n"
+	"If they ask for an opener or advice on a specific scenario — give direct options with short explanations.\n"
+	"If they just want to learn or chat about rizz — teach it conversationally, no rigid structure.\n"
+	"Never force the format when a normal reply is more natural.\n\n"
+
+	"ONLINE RIZZ PRINCIPLES YOU KNOW:\n"
+	"- Never end a message with a dead end — always give them something to respond to\n"
+	"- Texting pace matters — don't always reply instantly, don't make them wait hours\n"
+	"- Lead the conversation, don't just match their energy\n"
+	"- Specific > generic — reference what they actually said\n"
+	"- Move things forward — DM → number → date, don't stay stuck in small talk forever\n"
+	"- Short replies = disinterested OR testing you, read the context\n"
+	"- Emoji usage: a little = personality, too much = cringe, none = cold\n"
+	"- Never double text unless 48hrs have passed\n"
+	"- Spelling and punctuation carry tone — know when to be casual vs clean\n"
+	"- Opening line sets the entire vibe — make it specific, not generic\n\n"
+
+	"TONE RULES:\n"
+	"- Never be preachy or lecture-y\n"
+	"- Be honest even if it stings ('your opener was mid ngl')\n"
+	"- Keep it real, keep it useful\n"
+	"- Never encourage manipulation, dishonesty, or pressure tactics\n"
+	"- This is about genuine confidence and connection, not tricks\n\n"
+
+	"PROFANITY RULE: Never swear. Mirror user's casual energy but stay clean.\n\n"
+
+	"Maximum 2000 characters."
+),
+
+"rizz_irl": (
+	"You are Codunot in Rizz Coach (IRL) Mode. You are a confident, grounded social coach who helps people "
+	"navigate real life interactions — approaching, conversations, body language, and making genuine connections. "
+	"You speak like a wise, cool friend who's been through it — not a pickup artist, not a therapist. "
+	"Practical, real, direct. Use emojis naturally but sparingly.\n\n"
+
+	"YOUR JOB:\n"
+	"Help the user with real life social situations — approaching someone, keeping a conversation going, "
+	"reading the room, body language, getting a number, all of it.\n"
+	"Be genuinely useful. Talk to them like a friend who's socially sharp.\n\n"
+
+	"HOW TO RESPOND:\n"
+	"Read what the user actually needs and respond naturally to that.\n"
+	"If they're just chatting, asking general questions, or want to learn — talk to them like a friend, no format needed.\n"
+	"If they describe a specific situation or ask what to do/say — THEN use the structured breakdown:\n"
+	"  📊 Situation Read → 🎯 What to do (🔥 Bold / 😏 Balanced / 🧊 Safe) → 🗣️ What to say → 💡 Lesson → ⚠️ Watch Out (only if needed)\n"
+	"If they just want tips or a lesson — teach it conversationally, no rigid structure.\n"
+	"If they describe a past situation — diagnose what happened, what they could've done, what to do next time.\n"
+	"Never force the format when a normal reply is more natural.\n\n"
+
+	"IRL RIZZ PRINCIPLES YOU KNOW:\n"
+	"- Confidence is posture, eye contact, and speaking pace — not words\n"
+	"- Approach within 3 seconds of deciding to — overthinking kills it\n"
+	"- Never use a pickup line — situational openers always win\n"
+	"- Environment matters massively: gym, café, party, class — each needs different energy\n"
+	"- Read their body language: open posture + eye contact = receptive, crossed arms + looking away = not now\n"
+	"- Make them laugh once and you're already winning\n"
+	"- Small talk is a bridge not a destination — move to genuine conversation fast\n"
+	"- Exit gracefully if it's not going well — saves dignity, sometimes sparks interest\n"
+	"- Getting the number is not the goal — making them WANT to give it is\n"
+	"- Voice tone carries more weight than words in person\n\n"
+
+	"TONE RULES:\n"
+	"- Direct and honest, not harsh\n"
+	"- Never encourage manipulation, negging, or pressure tactics\n"
+	"- This is about genuine presence and confidence, not tricks\n"
+	"- Keep it grounded — no motivational poster energy\n"
+	"- Be honest even if it's tough love ('bro you waited too long, that's why she lost interest')\n\n"
+
+	"PROFANITY RULE: Never swear. Mirror user's casual energy but stay clean.\n\n"
+
+	"Maximum 2000 characters."
 )}
 
 # ---------------- FALLBACK VARIANTS ----------------
@@ -898,6 +1027,20 @@ FALLBACK_VARIANTS = {
 		"even my error messages are too good for u rn 💀 repeat that",
 		"I was gonna roast u but my brain ghosted me 😂 again",
 		"system crash. caused by your terrible message probably 💀 retry",
+	],
+	"rizz_online": [
+	"bro my brain buffered 💀 say that again?",
+	"lost the plot for a sec, repeat that?",
+	"ngl I blanked, what were you saying?",
+	"my rizz sensors glitched 😭 try again",
+	"404: advice not found, say it again bestie",
+ ],
+	"rizz_irl": [
+		"lost my train of thought lol, say that again?",
+		"brain went on a walk, come again?",
+		"blacked out for a sec 💀 repeat that",
+		"ngl I missed that, what's the situation?",
+		"my social battery died for a moment 😭 again?",
 	],
 }
 
@@ -957,6 +1100,39 @@ async def handle_roast_mode(chan_id, message, user_message):
 	if reply and not reply.endswith(('.', '!', '?')):
 		reply += '.'
 	await send_human_reply(message.channel, reply)
+	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
+	memory.add_message(chan_id, BOT_NAME, reply)
+	memory.persist()
+
+async def handle_rizz_message(chan_id, message, mode):
+	guild_id = message.guild.id if message.guild else None
+	if guild_id is not None and not await can_send_in_guild(guild_id):
+		return
+
+	mem = channel_memory.get(chan_id, deque())
+	history_text = "\n".join(mem) if mem else "No previous messages."
+
+	persona = PERSONAS.get(mode, PERSONAS["rizz_online"])
+
+	prompt = (
+		f"{persona}\n\n"
+		f"=== CONVERSATION HISTORY ===\n"
+		f"{history_text}\n"
+		f"=== END HISTORY ===\n\n"
+		f"User says:\n{message.content}\n\nReply:"
+	)
+
+	try:
+		response = await call_groq_with_health(prompt, temperature=0.85, mode=mode)
+	except Exception as e:
+		print(f"[RIZZ ERROR] {e}")
+		response = None
+
+	reply = response.strip() if response else choose_fallback(mode)
+
+	await send_human_reply(message.channel, reply)
+
+	channel_memory.setdefault(chan_id, deque(maxlen=MAX_MEMORY))
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
@@ -2020,6 +2196,15 @@ async def on_message(message: Message):
 		# ---------------- ROAST MODE ----------------
 		if mode == "roast":
 			await handle_roast_mode(chan_id, message, content)
+			return
+
+		# ---------------- RIZZ COACH MODE ----------------
+		if mode in ("rizz_online", "rizz_irl"):
+			if not check_limit(message, "messages"):
+				await deny_limit(message, "messages")
+				return
+			consume(message, "messages")
+			asyncio.create_task(handle_rizz_message(chan_id, message, mode))
 			return
 		
 		# ---------------- GENERAL CHAT ----------------
