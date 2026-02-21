@@ -24,6 +24,7 @@ from deAPI_client_text2speech import text_to_speech, TextToSpeechError
 from bot_chess import OnlineChessEngine
 from groq_client import call_groq
 from replicate_client import call_replicate
+from google_ai_studio_client import call_google_ai_studio
 from slang_normalizer import apply_slang_map
 
 import chess
@@ -187,6 +188,16 @@ async def help_command(ctx: commands.Context):
 			"• 🪙 Coin Flip Bet — `/bet [heads/tails]`\n"
 			"• 😂 Random Meme — `/meme`\n\n"
 			"Each command sends a random GIF with custom text!"
+		),
+		inline=False
+	)
+
+	embed.add_field(
+		name="🛠️ Server Setup (Owner-Only Slash)",
+		value=(
+			"Configure where Codunot can chat in your server:\n"
+			"• `/configure server`\n"
+			"• `/configure channels`"
 		),
 		inline=False
 	)
@@ -394,6 +405,34 @@ async def test_llama(ctx: commands.Context, mode: str = "funny", *, message: str
 	except Exception as e:
 		await ctx.send(f"❌ Error: {e}")
 		print(f"[TEST_LLAMA ERROR] {e}")
+
+
+@bot.command(name="test")
+async def test_provider(ctx: commands.Context, provider: str = None, *, message: str = None):
+	"""
+	Provider test command (Owner only).
+	Usage: !test google your message
+	"""
+	if not await is_owner_user(ctx.author):
+		await ctx.send("🚫 Owner only command.")
+		return
+
+	if not provider or provider.lower() != "google" or not message:
+		await ctx.send("Usage: `!test google MESSAGE`")
+		return
+
+	await ctx.send("🧪 Testing Google AI Studio (Gemini 2.5 Flash-Lite)...")
+
+	response = await call_google_ai_studio(
+		prompt=message,
+		model="gemini-2.5-flash-lite",
+		temperature=0.7,
+	)
+
+	if response:
+		await send_long_message(ctx.channel, f"**Google AI Studio Response:**\n{response}")
+	else:
+		await ctx.send("❌ Google AI Studio call failed. Check API key/model and logs.")
 
 # ---------------- MODELS ----------------
 PRIMARY_MODEL = "openai/gpt-oss-120b"
