@@ -129,7 +129,19 @@ async def setup_hook():
 
 	try:
 		synced = await bot.tree.sync()
-		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s)")
+		synced_names = sorted(cmd.name for cmd in synced)
+		print(f"[SLASH COMMANDS] Synced {len(synced)} global command(s): {', '.join(synced_names)}")
+
+		# Safety: ensure /transcribe is globally registered after sync.
+		# If Discord returns stale command list on first attempt, retry once.
+		if "transcribe" not in synced_names:
+			print("[SLASH COMMANDS] /transcribe not found after first sync, retrying global sync...")
+			synced_retry = await bot.tree.sync()
+			retry_names = sorted(cmd.name for cmd in synced_retry)
+			print(
+				f"[SLASH COMMANDS] Retry sync complete ({len(synced_retry)} cmds): "
+				f"{', '.join(retry_names)}"
+			)
 	except Exception as e:
 		print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
 
