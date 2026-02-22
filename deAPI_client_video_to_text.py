@@ -3,7 +3,7 @@ import asyncio
 import aiohttp
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
-VIDEO_TO_TEXT_ENDPOINT = "https://api.deapi.ai/api/analysis/video-to-text"
+VIDEO_TO_TEXT_ENDPOINT = "https://api.deapi.ai/api/v1/client/vid2txt"
 RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")
 
 
