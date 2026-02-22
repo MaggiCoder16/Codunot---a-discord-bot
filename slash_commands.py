@@ -4,6 +4,7 @@ from discord.ext import commands
 import os
 import time
 import io
+import json
 import aiohttp
 import asyncio
 import random
@@ -14,6 +15,7 @@ from deAPI_client_image import generate_image
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
 from deAPI_client_video_to_text import transcribe_video, VideoToTextError
+from google_ai_studio_client import call_google_ai_studio
 
 from usage_manager import (
 	check_limit,
@@ -645,6 +647,127 @@ class Codunot(commands.Cog):
 			chunk = remaining[:split_at]
 			remaining = remaining[split_at:]
 			await interaction.followup.send(chunk, ephemeral=False)
+
+	def _safe_json_parse(self, payload: str) -> dict | None:
+		if not payload:
+			return None
+
+		cleaned = payload.strip()
+		if cleaned.startswith("```"):
+			cleaned = cleaned.strip("`")
+			if cleaned.lower().startswith("json"):
+				cleaned = cleaned[4:]
+			cleaned = cleaned.strip()
+
+		try:
+			return json.loads(cleaned)
+		except Exception:
+			start = cleaned.find("{")
+			end = cleaned.rfind("}")
+			if start != -1 and end != -1 and start < end:
+				try:
+					return json.loads(cleaned[start:end + 1])
+				except Exception:
+					return None
+		return None
+
+	async def _collect_recent_user_messages(self, channel: discord.abc.Messageable, user_id: int, limit: int = 25) -> list[str]:
+		messages: list[str] = []
+		try:
+			async for message in channel.history(limit=180):
+				if message.author.id != user_id:
+					continue
+				if message.author.bot:
+					continue
+				content = (message.content or "").strip()
+				if not content:
+					continue
+				messages.append(content)
+				if len(messages) >= limit:
+					break
+		except Exception as e:
+			print(f"[GUESSAGE FETCH ERROR] {e}")
+
+		messages.reverse()
+		return messages
+
+	@app_commands.command(name="guessage", description="🔍 Guess a user's age range from recent messages (AI estimate)")
+	@app_commands.describe(target_user="The user whose age you want estimated")
+	async def guessage_slash(self, interaction: discord.Interaction, target_user: discord.User):
+		if not isinstance(interaction.channel, (discord.TextChannel, discord.Thread, discord.DMChannel)):
+			await interaction.response.send_message("❌ This command can only be used in DMs, server channels, or threads.", ephemeral=False)
+			return
+
+		await interaction.response.defer(ephemeral=False)
+		await interaction.edit_original_response(content="🔎 **Collecting recent messages...**")
+
+		recent_messages = await self._collect_recent_user_messages(interaction.channel, target_user.id, limit=25)
+		if len(recent_messages) < 6:
+			await interaction.followup.send(
+				f"⚠️ I found only **{len(recent_messages)}** recent messages from {target_user.mention}. "
+				"I need at least **6** messages for a safer estimate."
+			)
+			return
+
+		await interaction.edit_original_response(content="🧠 **Analyzing language style with Google Studio AI...**")
+
+		joined_messages = "\n".join(f"- {line[:240]}" for line in recent_messages)
+		prompt = (
+			"You estimate an approximate age range from message-writing style only. "
+			"Never claim certainty and keep it strictly as a moderation insight.\n\n"
+			"Return ONLY strict JSON with this exact schema:\n"
+			"{\n"
+			"  \"age_range\": \"13-18\",\n"
+			"  \"exact_guess\": 16,\n"
+			"  \"confidence\": \"low|medium|high\",\n"
+			"  \"reasoning\": [\"reason 1\", \"reason 2\", \"reason 3\"]\n"
+			"}\n\n"
+			"Rules:"
+			"\n- Do not mention protected attributes."
+			"\n- Be concise, max 4 reasoning bullets."
+			"\n- If uncertain, widen the range and set confidence low."
+			"\n- Keep exact_guess inside age_range."
+			"\n\nUser messages:\n"
+			f"{joined_messages}"
+		)
+
+		result_text = await call_google_ai_studio(prompt=prompt, temperature=0.2)
+		payload = self._safe_json_parse(result_text or "")
+
+		if not payload:
+			await interaction.followup.send("🤔 I couldn't parse the AI output this time. Please try `/guessage` again.")
+			return
+
+		age_range = str(payload.get("age_range") or "Unknown")
+		exact_guess = payload.get("exact_guess")
+		confidence = str(payload.get("confidence") or "unknown").capitalize()
+		reasoning = payload.get("reasoning") or []
+		if not isinstance(reasoning, list):
+			reasoning = [str(reasoning)]
+		reasoning_lines = "\n".join(f"• {str(item)[:220]}" for item in reasoning[:4]) or "• Not enough signal from messages."
+
+		await interaction.edit_original_response(content="✨ **Finalizing animated result card...**")
+		await asyncio.sleep(1.3)
+
+		embed = discord.Embed(
+			title="🔎 AI Age Estimate",
+			description=f"Estimated age for {target_user.mention}",
+			color=0x5865F2,
+		)
+		embed.add_field(name="Age Range", value=age_range, inline=True)
+		embed.add_field(name="Exact Guess", value=str(exact_guess) if exact_guess is not None else "Unknown", inline=True)
+		embed.add_field(name="Confidence", value=confidence, inline=True)
+		embed.add_field(name="Reasoning", value=reasoning_lines, inline=False)
+		embed.add_field(
+			name="⚠️ Disclaimer",
+			value="AI estimate for moderation insight only. Not for legal verification.",
+			inline=False,
+		)
+		embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+		if target_user.display_avatar:
+			embed.set_thumbnail(url=target_user.display_avatar.url)
+
+		await interaction.edit_original_response(content=None, embed=embed)
 
 	def _is_allowed_video_url(self, url: str) -> bool:
 		from urllib.parse import urlparse
