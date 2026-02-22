@@ -119,7 +119,7 @@ async def generate_image(
                     status = status_data.get("status")
 
                     if status == "done":
-                        result_url = status_data.get("result_url")
+                        result_url = status_data.get("result_url") or status_data.get("data", {}).get("result_url")
                         if not result_url:
                             raise RuntimeError("Job done but no result_url returned")
 

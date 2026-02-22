@@ -13,6 +13,7 @@ from memory import MemoryManager
 from deAPI_client_image import generate_image
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
+from deAPI_client_video_to_text import transcribe_video, VideoToTextError
 
 from usage_manager import (
 	check_limit,
@@ -40,6 +41,20 @@ save_vote_unlocks = None
 set_server_mode = None
 set_channels_mode = None
 get_guild_config = None
+
+ALLOWED_TRANSCRIBE_HOSTS = (
+	"youtube.com",
+	"www.youtube.com",
+	"youtu.be",
+	"twitch.tv",
+	"www.twitch.tv",
+	"x.com",
+	"www.x.com",
+	"twitter.com",
+	"www.twitter.com",
+	"kick.com",
+	"www.kick.com",
+)
 
 ACTION_GIF_SOURCES = {
 	"hug": [
@@ -314,10 +329,10 @@ class ConfigureGroup(app_commands.Group):
 			return False
 
 		if interaction.guild.owner_id != interaction.user.id:
-			await interaction.response.send_message(
-				"❌ Only the **server owner** can use `/configure`.",
-				ephemeral=True
-			)
+			if interaction.response.is_done():
+				await interaction.followup.send("❌ You are not the server owner.", ephemeral=True)
+			else:
+				await interaction.response.send_message("❌ You are not the server owner.", ephemeral=True)
 			return False
 
 		if set_server_mode is None or set_channels_mode is None or get_guild_config is None:
@@ -374,6 +389,15 @@ class ConfigureGroup(app_commands.Group):
 			f"✅ Configuration updated: I will now only chat in these channel(s): {mentions}",
 			ephemeral=False
 		)
+
+	@configure_server.error
+	@configure_channels.error
+	async def configure_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+		print(f"[CONFIGURE ERROR] {error}")
+		if interaction.response.is_done():
+			await interaction.followup.send("❌ You are not the server owner.", ephemeral=True)
+		else:
+			await interaction.response.send_message("❌ You are not the server owner.", ephemeral=True)
 
 
 class Codunot(commands.Cog):
@@ -591,6 +615,65 @@ class Codunot(commands.Cog):
 			await interaction.followup.send(
 				f"{interaction.user.mention} 🤔 Couldn't generate speech right now. Please try again later."
 			)
+
+	async def _send_long_interaction_message(self, interaction: discord.Interaction, text: str):
+		max_len = 2000
+		remaining = (text or "").strip()
+		while remaining:
+			if len(remaining) <= max_len:
+				await interaction.followup.send(remaining, ephemeral=False)
+				break
+
+			newline_idx = remaining.rfind("\n", 0, max_len)
+			space_idx = remaining.rfind(" ", 0, max_len)
+			split_at = max(newline_idx, space_idx)
+
+			if split_at <= 0:
+				split_at = max_len
+			else:
+				split_at += 1
+
+			chunk = remaining[:split_at]
+			remaining = remaining[split_at:]
+			await interaction.followup.send(chunk, ephemeral=False)
+
+	def _is_allowed_video_url(self, url: str) -> bool:
+		from urllib.parse import urlparse
+		try:
+			host = (urlparse(url).hostname or "").lower()
+		except Exception:
+			return False
+		return host in ALLOWED_TRANSCRIBE_HOSTS
+
+	@app_commands.command(name="transcribe", description="📝 Transcribe a supported video URL (max 30 mins)")
+	@app_commands.describe(video_url="Supported: YouTube, Twitch VOD, X, Kick")
+	async def transcribe_slash(self, interaction: discord.Interaction, video_url: str):
+		if not self._is_allowed_video_url(video_url):
+			await interaction.response.send_message(
+				"❌ Only YouTube, Twitch VODs, X, and Kick video URLs are allowed.",
+				ephemeral=False,
+			)
+			return
+
+		await interaction.response.defer(ephemeral=False)
+		await interaction.edit_original_response(content="📝 Transcribing video... this can take a little while.")
+
+		try:
+			transcript = await transcribe_video(video_url=video_url, max_minutes=30)
+		except VideoToTextError as e:
+			await interaction.followup.send(f"❌ {e}", ephemeral=False)
+			return
+		except Exception as e:
+			print(f"[SLASH TRANSCRIBE ERROR] {e}")
+			await interaction.followup.send("🤔 Couldn't transcribe this video right now. Please try again later.", ephemeral=False)
+			return
+
+		if not transcript:
+			await interaction.followup.send("⚠️ Transcription completed but returned empty text.", ephemeral=False)
+			return
+
+		await interaction.followup.send("✅ Transcription complete:", ephemeral=False)
+		await self._send_long_interaction_message(interaction, transcript)
 
 	async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
 		if target_user.id == interaction.user.id:

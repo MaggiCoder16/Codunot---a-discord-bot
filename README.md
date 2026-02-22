@@ -5,19 +5,33 @@
 ***Lightning fast responses ~0.1 - 0.2 seconds, and excellent at coding, sends code in parts, taking Discord’s message character limit into account”***
 
 ***🟢 Modes:***
-😎 Fun — jokes, memes & lighthearted energy → type this in chat: !funmode
-🔥 Roast — playful burns for anyone → type this in chat: !roastmode
-📘 Serious — clean, focused, fact-based help → type this in chat: !seriousmode
-♟️ Chess — play chess with me → type this in chat: !chessmode
+😎 Fun — jokes, memes & lighthearted energy → type this in chat: `!funmode` or use `/funmode`
+🔥 Roast — playful burns for anyone → type this in chat: `!roastmode` or use `/roastmode`
+📘 Serious — clean, focused, fact-based help → type this in chat: `!seriousmode` or use `/seriousmode`
+♟️ Chess — play chess with me → type this in chat: `!chessmode` or use `/chessmode`
+💬 Rizz Coach — online + IRL coaching → type this in chat: `!teachmerizz online` / `!teachmerizz irl` or use `/teachmerizz`
 
 ***✨ Bonus Powers:***
 📄 Can read files and summarize their content
 🖼️ Can see and understand images
 🎨 Can generate/edit images from your prompts
 🎬 Can generate videos from your prompts
+📝 Can transcribe videos to text with `/transcribe` *(only YouTube, Twitch VODs, X, Kick | max 30 mins)*
 🔊 Can generate text-to-speech audio from your text
+🌐 Can auto-search the web when fresh/current info is needed *(news, current leaders, latest updates)*
 
 ⚙️ Server owners can now use `/configure server` or `/configure channels` to control where Codunot is allowed to chat in a server
+
+## Command Help
+
+Use `!codunot_help` to see the full in-bot command list and features.
+
+### Slash Commands
+
+- **Modes:** `/funmode`, `/roastmode`, `/seriousmode`, `/teachmerizz`, `/chessmode`
+- **Generation / Analysis:** `/generate_image`, `/generate_video`, `/generate_tts`, `/transcribe`
+- **Server config (owner-only):** `/configure server`, `/configure channels`
+- **Fun action commands:** `/hug`, `/kiss`, `/kick`, `/slap`, `/wish_goodmorning`, `/bet`, `/meme`
 
 🔐 ***Account Types***
 
