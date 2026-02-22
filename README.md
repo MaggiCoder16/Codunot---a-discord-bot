@@ -29,7 +29,7 @@ Use `!codunot_help` to see the full in-bot command list and features.
 ### Slash Commands
 
 - **Modes:** `/funmode`, `/roastmode`, `/seriousmode`, `/teachmerizz`, `/chessmode`
-- **Generation / Analysis:** `/generate_image`, `/generate_video`, `/generate_tts`, `/transcribe`
+- **Generation / Analysis:** `/generate_image`, `/generate_video`, `/generate_tts`, `/transcribe`, `/guessage`
 - **Server config (owner-only):** `/configure server`, `/configure channels`
 - **Fun action commands:** `/hug`, `/kiss`, `/kick`, `/slap`, `/wish_goodmorning`, `/bet`, `/meme`
 
