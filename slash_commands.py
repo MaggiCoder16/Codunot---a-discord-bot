@@ -671,16 +671,59 @@ class Codunot(commands.Cog):
 					return None
 		return None
 
-	async def _collect_recent_user_messages(self, channel: discord.abc.Messageable, user_id: int, limit: int = 25) -> list[str]:
+	def _compact_message_for_prompt(self, text: str, max_len: int = 180) -> str:
+		clean = " ".join((text or "").split())
+		if not clean:
+			return ""
+
+		# Compress repeated tokens like: XD XD XD XD ...
+		tokens = clean.split(" ")
+		compacted: list[str] = []
+		last = None
+		repeat_count = 0
+		for token in tokens:
+			if token == last:
+				repeat_count += 1
+				if repeat_count <= 3:
+					compacted.append(token)
+				continue
+			last = token
+			repeat_count = 1
+			compacted.append(token)
+
+		result = " ".join(compacted)
+		if len(result) > max_len:
+			return result[:max_len].rstrip() + "..."
+		return result
+
+	def _clean_reasoning_items(self, items: list[str]) -> list[str]:
+		seen = set()
+		cleaned: list[str] = []
+		for item in items:
+			line = self._compact_message_for_prompt(str(item), max_len=170)
+			if not line:
+				continue
+			key = line.lower()
+			if key in seen:
+				continue
+			seen.add(key)
+			cleaned.append(line)
+			if len(cleaned) >= 4:
+				break
+		return cleaned
+
+	async def _collect_recent_user_messages(self, channel: discord.abc.Messageable, user_id: int, limit: int = 60) -> list[str]:
 		messages: list[str] = []
 		try:
-			async for message in channel.history(limit=180):
+			async for message in channel.history(limit=450):
 				if message.author.id != user_id:
 					continue
 				if message.author.bot:
 					continue
-				content = (message.content or "").strip()
+				content = self._compact_message_for_prompt((message.content or "").strip(), max_len=180)
 				if not content:
+					continue
+				if len(content) < 3:
 					continue
 				messages.append(content)
 				if len(messages) >= limit:
@@ -701,17 +744,18 @@ class Codunot(commands.Cog):
 		await interaction.response.defer(ephemeral=False)
 		await interaction.edit_original_response(content="🔎 **Collecting recent messages...**")
 
-		recent_messages = await self._collect_recent_user_messages(interaction.channel, target_user.id, limit=25)
-		if len(recent_messages) < 6:
+		recent_messages = await self._collect_recent_user_messages(interaction.channel, target_user.id, limit=60)
+		sample_count = len(recent_messages)
+		if sample_count < 10:
 			await interaction.followup.send(
-				f"⚠️ I found only **{len(recent_messages)}** recent messages from {target_user.mention}. "
-				"I need at least **6** messages for a safer estimate."
+				f"⚠️ I found only **{sample_count}** recent messages from {target_user.mention}. "
+				"I need at least **10** messages for a better estimate."
 			)
 			return
 
-		await interaction.edit_original_response(content="🧠 **Analyzing language style with Google Studio AI...**")
+		await interaction.edit_original_response(content="🧠 **Analyzing message data...**")
 
-		joined_messages = "\n".join(f"- {line[:240]}" for line in recent_messages)
+		joined_messages = "\n".join(f"- {line}" for line in recent_messages)
 		prompt = (
 			"You estimate an approximate age range from message-writing style only. "
 			"Never claim certainty and keep it strictly as a moderation insight.\n\n"
@@ -720,13 +764,18 @@ class Codunot(commands.Cog):
 			"  \"age_range\": \"13-18\",\n"
 			"  \"exact_guess\": 16,\n"
 			"  \"confidence\": \"low|medium|high\",\n"
-			"  \"reasoning\": [\"reason 1\", \"reason 2\", \"reason 3\"]\n"
+			"  \"reasoning\": [\"short reason 1\", \"short reason 2\", \"short reason 3\"]\n"
 			"}\n\n"
 			"Rules:"
 			"\n- Do not mention protected attributes."
+			"\n- Use writing style only (slang density, punctuation style, topic maturity, sentence complexity)."
+			"\n- Reasoning bullets must be short (<= 140 chars), non-repetitive, and no copied long phrases from messages."
 			"\n- Be concise, max 4 reasoning bullets."
 			"\n- If uncertain, widen the range and set confidence low."
 			"\n- Keep exact_guess inside age_range."
+			"\n- If sample_count < 20, confidence must be low or medium."
+			"\n- If sample_count >= 40 and signals are consistent, confidence may be high."
+			f"\n\nSample count: {sample_count}"
 			"\n\nUser messages:\n"
 			f"{joined_messages}"
 		)
@@ -744,7 +793,8 @@ class Codunot(commands.Cog):
 		reasoning = payload.get("reasoning") or []
 		if not isinstance(reasoning, list):
 			reasoning = [str(reasoning)]
-		reasoning_lines = "\n".join(f"• {str(item)[:220]}" for item in reasoning[:4]) or "• Not enough signal from messages."
+		reasoning = self._clean_reasoning_items([str(item) for item in reasoning])
+		reasoning_lines = "\n".join(f"• {item}" for item in reasoning) or "• Not enough signal from messages."
 
 		await interaction.edit_original_response(content="✨ **Finalizing animated result card...**")
 		await asyncio.sleep(1.3)
@@ -757,6 +807,7 @@ class Codunot(commands.Cog):
 		embed.add_field(name="Age Range", value=age_range, inline=True)
 		embed.add_field(name="Exact Guess", value=str(exact_guess) if exact_guess is not None else "Unknown", inline=True)
 		embed.add_field(name="Confidence", value=confidence, inline=True)
+		embed.add_field(name="Messages Analyzed", value=str(sample_count), inline=True)
 		embed.add_field(name="Reasoning", value=reasoning_lines, inline=False)
 		embed.add_field(
 			name="⚠️ Disclaimer",
