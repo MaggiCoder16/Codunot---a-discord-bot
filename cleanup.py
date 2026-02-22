@@ -19,7 +19,21 @@ async def on_ready():
     try:
         print(f"Bot logged in as {client.user}")
         
-        channel = await client.fetch_channel(CHANNEL_ID)
+        try:
+            channel = await client.fetch_channel(CHANNEL_ID)
+        except discord.Forbidden:
+            print(
+                "Missing access to the configured channel. "
+                "Verify CHANNEL_ID points to a channel the bot can view and that "
+                "the bot has 'View Channel' and 'Read Message History' permissions."
+            )
+            return
+        except discord.NotFound:
+            print(
+                "Configured CHANNEL_ID was not found. "
+                "Double-check that the ID is correct and from a server where the bot is present."
+            )
+            return
         print(f"Found channel: {channel} (Type: {type(channel).__name__})")
         
         # Check if it's a valid channel type (DM or server text channel)
