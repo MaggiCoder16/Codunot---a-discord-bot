@@ -45,6 +45,7 @@ get_guild_config = None
 ALLOWED_TRANSCRIBE_HOSTS = (
 	"youtube.com",
 	"www.youtube.com",
+	"m.youtube.com",
 	"youtu.be",
 	"twitch.tv",
 	"www.twitch.tv",
@@ -54,6 +55,14 @@ ALLOWED_TRANSCRIBE_HOSTS = (
 	"www.twitter.com",
 	"kick.com",
 	"www.kick.com",
+)
+
+ALLOWED_TRANSCRIBE_HOST_SUFFIXES = (
+	"youtube.com",
+	"twitch.tv",
+	"x.com",
+	"twitter.com",
+	"kick.com",
 )
 
 ACTION_GIF_SOURCES = {
@@ -643,7 +652,11 @@ class Codunot(commands.Cog):
 			host = (urlparse(url).hostname or "").lower()
 		except Exception:
 			return False
-		return host in ALLOWED_TRANSCRIBE_HOSTS
+
+		if host in ALLOWED_TRANSCRIBE_HOSTS:
+			return True
+
+		return any(host.endswith(f".{suffix}") for suffix in ALLOWED_TRANSCRIBE_HOST_SUFFIXES)
 
 	@app_commands.command(name="transcribe", description="📝 Transcribe a supported video URL (max 30 mins)")
 	@app_commands.describe(video_url="Supported: YouTube, Twitch VOD, X, Kick")
