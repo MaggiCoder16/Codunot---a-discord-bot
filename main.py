@@ -44,11 +44,9 @@ async def deapi_webhook(req: Request):
     if event_type == "job.processing":
         return JSONResponse(status_code=200, content={"status": "ack"})
 
-    if event_type == "job.completed" or "result_url" in data:
-        result_url = data.get("result_url")
-
-        if request_id and result_url:
-            RESULTS[request_id] = result_url
+    if event_type == "job.completed" or "result_url" in data or "transcription" in data or "text" in data:
+        if request_id:
+            RESULTS[request_id] = data
             print(f"[Webhook] Completed: {request_id}")
             return JSONResponse(status_code=200, content={"status": "ok"})
 
@@ -109,7 +107,7 @@ async def topgg_webhook(req: Request):
 @app.get("/result/{request_id}")
 async def get_result(request_id: str):
     if request_id in RESULTS:
-        return {"status": "done", "result_url": RESULTS[request_id]}
+        return {"status": "done", "data": RESULTS[request_id]}
 
     return {"status": "pending"}
 

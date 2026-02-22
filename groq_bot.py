@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timedelta, timezone, date
 from collections import deque
 import urllib.parse
+import html
 
 import discord
 from discord import Message, app_commands
@@ -154,6 +155,8 @@ async def help_command(ctx: commands.Context):
 			"`!roastmode` or `/roastmode`\n\n"
 			"📘 **Serious Mode** — focused, fact-based help\n"
 			"`!seriousmode` or `/seriousmode`\n\n"
+			"💬 **Rizz Coach Mode** — online + IRL social coaching\n"
+			"`!teachmerizz online`, `!teachmerizz irl` or `/teachmerizz`\n\n"
 			"♟️ **Chess Mode** — play chess inside Discord\n"
 			"`!chessmode` or `/chessmode`"
 		),
@@ -169,9 +172,11 @@ async def help_command(ctx: commands.Context):
 			"• 🖼️ Image Analysis\n"
 			"• 🎨 Generate Image — `/generate_image`\n"
 			"• 🎬 Generate Video — `/generate_video`\n"
+			"• 📝 Video to Text (YT/Twitch/X/Kick, max 30 mins) — `/transcribe`\n"
 			"• 🔊 Text-to-Speech — `/generate_tts`\n"
 			"• 🖌️ Edit Images (send image + instruction)\n"
-			"• 🖼️ Merge Images (attach 2+ images + say 'merge')"
+			"• 🖼️ Merge Images (attach 2+ images + say 'merge')\n"
+			"• 🌐 Smart Web Search (auto when needed for fresh info)"
 		),
 		inline=False
 	)
@@ -211,11 +216,11 @@ async def help_command(ctx: commands.Context):
 			"• 30 attachments per 2 months\n\n"
 			"🔵 **Premium** — $10 / 2 months\n"
 			"• 100 messages/day\n"
-			"• 15 attachments/day\n"
+			"• 10 attachments/day\n"
 			"• 50 attachments per 2 months\n\n"
 			"🟡 **Gold 👑** — $15 / 2 months\n"
 			"• Unlimited messages\n"
-			"• 25 attachments/day\n"
+			"• 15 attachments/day\n"
 			"• 100 attachments per 2 months"
 		),
 		inline=False
@@ -805,11 +810,11 @@ PERSONAS = {
 "Never use the full uncensored version of any swear word. This is important to avoid the bot getting timed out or banned in servers. "
 
 "FEATURES & SLASH COMMANDS YOU CAN HELP WITH:\n"
-"Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !chessmode / /chessmode\n"
+"Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !teachmerizz / /teachmerizz, !chessmode / /chessmode\n"
 "Server Config (owner-only slash): /configure server, /configure channels\n"
 "Image Generation: /generate_image [prompt] — generates an AI image from a text prompt\n"
 "Video Generation: /generate_video [prompt] — generates a short AI video from a text prompt\n"
-"Text-to-Speech: /generate_tts [text] — converts text into spoken audio (max 150 chars)\n"
+"Text-to-Speech: /generate_tts [text] — converts text into spoken audio (max 150 chars)\nVideo Transcription: /transcribe [video_url] — transcribe YouTube/Twitch VOD/X/Kick video to text (max 30 mins)\n"
 "Image Editing: attach an image + type your edit instruction (e.g. 'make it anime style') — vote required\n"
 "Image Merging: attach 2+ images + use a merge keyword ('merge', 'combine', 'blend', etc.) — vote required\n"
 "Image Analysis: attach any image and ask about it — Codunot AI will describe and analyze it\n"
@@ -821,13 +826,13 @@ PERSONAS = {
 "Help command: !codunot_help — shows full bot info\n"
 "Support server: https://discord.gg/xEQpE7WS8z\n"
 "Tiers: Basic (free, 50 msg/day), Premium ($10/2mo, 100 msg/day), Gold ($15/2mo, unlimited)\n"
-"If the user asks about any of these features, explain how to use them clearly and helpfully.\n\n"
+"If the user asks about any of these features, explain how to use them clearly and helpfully. For latest/current info (like news, prime ministers, recent updates), use web search context before answering.\n\n"
 
 "GLOBAL RULES: Always check conversation history when the user refers to previous questions or messages. "
 "If the user wants help related to you - the chatbot, or they have questions about you, or they want to report bugs or give feedbacks/feature requests, tell them to type !codunot_help to know all about the bot (you), or tell them to join the support server: https://discord.gg/xEQpE7WS8z "
 "If the user wants to generate an image, tell them to use the /generate_image slash command, and then enter their prompt. "
 "If the user wants to generate a video, tell them to use the /generate_video slash command, and then enter their prompt. "
-"If the user wants to generate text to speech audio, tell them to use the /generate_tts slash command, and then enter their text. "
+"If the user wants to generate text to speech audio, tell them to use the /generate_tts slash command, and then enter their text. If the user wants video transcription, tell them to use /transcribe with a supported URL (YouTube, Twitch VOD, X, Kick; max 30 mins). "
 "If the user asks what model you use, tell them to contact your owner . "
 "You were coded in discord.py "
 "If chat logs or screenshots are pasted, analyze them carefully and treat them as valid context. "
@@ -845,7 +850,7 @@ PERSONAS = {
 
 "If asked what you can do, say you can: generate images (/generate_image), generate videos (/generate_video), "
 "understand and analyze images, read files (txt/pdf/docx), edit images, merge multiple images into one, "
-"text-to-speech (/generate_tts), chat in four modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
+"text-to-speech (/generate_tts), video-to-text transcription (/transcribe), chat in rizz mode and four core modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
 "and run interactive slash commands like /hug @user, /kiss @user, /kick @user, /slap @user, "
 "/wish_goodmorning @user, /bet [heads/tails], and /meme for random memes. "
 
@@ -867,7 +872,7 @@ PERSONAS = {
 "Never use the full uncensored version of any swear word. This is important to avoid the bot getting timed out or banned in servers. "
 
 "FEATURES & SLASH COMMANDS YOU CAN HELP WITH:\n"
-"Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !chessmode / /chessmode\n"
+"Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !teachmerizz / /teachmerizz, !chessmode / /chessmode\n"
 "Server Config (owner-only slash): /configure server, /configure channels\n"
 "Image Generation: /generate_image [prompt] — generates an AI image from a text prompt\n"
 "Video Generation: /generate_video [prompt] — generates a short AI video from a text prompt\n"
@@ -923,7 +928,7 @@ PERSONAS = {
 "Never use the full uncensored version of any swear word. This is important to avoid the bot getting timed out or banned in servers. "
 
 "FEATURES & SLASH COMMANDS YOU CAN HELP WITH:\n"
-"Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !chessmode / /chessmode\n"
+"Modes (prefix or slash): !funmode / /funmode, !roastmode / /roastmode, !seriousmode / /seriousmode, !teachmerizz / /teachmerizz, !chessmode / /chessmode\n"
 "Server Config (owner-only slash): /configure server, /configure channels\n"
 "Image Generation: /generate_image [prompt] — generates an AI image from a text prompt\n"
 "Video Generation: /generate_video [prompt] — generates a short AI video from a text prompt\n"
@@ -958,7 +963,7 @@ PERSONAS = {
 
 "If asked what you can do, roast them while explaining you can: generate images (/generate_image), "
 "generate videos (/generate_video), analyze images, read files (txt/pdf/docx), edit images, merge images, "
-"text-to-speech (/generate_tts), chat in four modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
+"text-to-speech (/generate_tts), video-to-text transcription (/transcribe), chat in rizz mode and four core modes (fun, roast, serious, chess), use server config (/configure server, /configure channels), play text-based games, "
 "and flex interactive slash commands like /hug @user, /kiss @user, /kick @user, /slap @user, "
 "/wish_goodmorning @user, /bet [heads/tails], and /meme — all things you probably still won't use correctly 💀 "
 
@@ -1205,8 +1210,13 @@ async def generate_and_reply(chan_id, message, content, mode):
 	# ---------------- CHECK FOR REPLY CONTEXT ----------------
 	reply_context = await build_reply_context(message)
 
+	search_context = ""
+	if await should_search_web(content):
+		search_context = await search_web_context(content)
+
 	prompt = (
 		build_general_prompt(chan_id, mode, message, include_last_image=False)
+		+ (f"\n=== WEB SEARCH CONTEXT ===\n{search_context}\n=== END WEB SEARCH CONTEXT ===\n" if search_context else "")
 		+ reply_context
 		+ f"\nUser says:\n{content}\n\nReply:"
 	)
@@ -1237,6 +1247,69 @@ async def generate_and_reply(chan_id, message, content, mode):
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
+
+async def should_search_web(user_text: str) -> bool:
+	"""Ask the model if fresh web data is likely needed for this user query."""
+	if not user_text.strip():
+		return False
+
+	classifier_prompt = (
+		"You are a strict classifier. Answer ONLY YES or NO.\n"
+		"Should this query use live web search for freshness/current events/factual lookup?\n"
+		"Search is useful for latest news, current leaders, recent updates, rankings, dates, and changing facts.\n"
+		"Search is not needed for opinions, casual chat, coding help, writing, or timeless explanations.\n\n"
+		f"Query: {user_text}\n"
+		"Answer:"
+	)
+
+	try:
+		decision = await call_groq(
+			prompt=classifier_prompt,
+			model="llama-3.3-70b-versatile",
+			temperature=0.0,
+		)
+		return (decision or "").strip().upper().startswith("YES")
+	except Exception as e:
+		print(f"[WEB SEARCH DECIDER ERROR] {e}")
+		return False
+
+
+async def search_web_context(query: str, max_results: int = 5) -> str:
+	"""Fetch lightweight web search snippets from DuckDuckGo HTML results."""
+	encoded = urllib.parse.quote_plus(query)
+	url = f"https://duckduckgo.com/html/?q={encoded}"
+
+	try:
+		async with aiohttp.ClientSession() as session:
+			async with session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+				if resp.status != 200:
+					return ""
+				html_text = await resp.text()
+
+		result_pattern = re.compile(
+			r'<a[^>]*class="result__a"[^>]*href="(?P<link>[^"]+)"[^>]*>(?P<title>.*?)</a>.*?'
+			r'<a[^>]*class="result__snippet"[^>]*>(?P<snippet>.*?)</a>',
+			re.S,
+		)
+
+		items = []
+		for match in result_pattern.finditer(html_text):
+			if len(items) >= max_results:
+				break
+
+			title = re.sub(r"<.*?>", "", match.group("title"))
+			title = html.unescape(title).strip()
+			snippet = re.sub(r"<.*?>", "", match.group("snippet"))
+			snippet = html.unescape(snippet).strip()
+			link = html.unescape(match.group("link")).strip()
+
+			if title and snippet:
+				items.append(f"- {title}\n  {snippet}\n  Source: {link}")
+
+		return "\n".join(items)
+	except Exception as e:
+		print(f"[WEB SEARCH ERROR] {e}")
+		return ""
 
 # ---------------- IMAGE EXTRACTION ----------------
 async def extract_image_bytes(message) -> bytes | None:
