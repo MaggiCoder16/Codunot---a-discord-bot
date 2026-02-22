@@ -54,9 +54,12 @@ jobs:
           [ -f daily_usage.json ] || echo '{}' > daily_usage.json
           [ -f total_usage.json ] || echo '{"attachments":{}}' > total_usage.json
           [ -f vote_unlocks.json ] || echo '{}' > vote_unlocks.json
+          [ -f guild_chat_config.json ] || echo '{}' > guild_chat_config.json
           echo "=== Current usage data ==="
           cat daily_usage.json
           cat total_usage.json
+          echo "=== Current guild chat config ==="
+          cat guild_chat_config.json
       
       - name: Run Codunot Bot
         env:
@@ -80,8 +83,9 @@ jobs:
           echo "=== Updated usage data ==="
           cat daily_usage.json || echo "daily_usage.json missing"
           cat total_usage.json || echo "total_usage.json missing"
+          cat guild_chat_config.json || echo "guild_chat_config.json missing"
       
-      - name: Persist JSON data (usage + votes)
+      - name: Persist JSON data (usage + votes + guild config)
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -94,11 +98,11 @@ jobs:
           git merge origin/main --no-edit || true
           
           # Stage ONLY JSON files
-          git add daily_usage.json total_usage.json vote_unlocks.json
+          git add daily_usage.json total_usage.json vote_unlocks.json guild_chat_config.json
           
           # Commit only if JSON files actually changed
           if ! git diff --cached --quiet; then
-            git commit -m "Update usage & vote unlock data [skip ci]"
+            git commit -m "Update persisted bot data [skip ci]"
             
             # Push with retry logic
             for i in {1..3}; do

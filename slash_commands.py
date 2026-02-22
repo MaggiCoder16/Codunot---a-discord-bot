@@ -334,10 +334,11 @@ class ConfigureGroup(app_commands.Group):
 		if not await self._ensure_guild_owner(interaction):
 			return
 
-		set_server_mode(interaction.guild.id)
+		channel_ids = [ch.id for ch in interaction.guild.text_channels]
+		set_server_mode(interaction.guild.id, channel_ids)
 		await interaction.response.send_message(
 			"✅ Configuration updated: I can now chat in **the whole server** when pinged.",
-			ephemeral=True
+			ephemeral=False
 		)
 
 	@app_commands.command(name="channels", description="Restrict bot chat to selected channel(s) in this server")
@@ -371,7 +372,7 @@ class ConfigureGroup(app_commands.Group):
 		mentions = ", ".join(ch.mention for ch in selected_channels)
 		await interaction.response.send_message(
 			f"✅ Configuration updated: I will now only chat in these channel(s): {mentions}",
-			ephemeral=True
+			ephemeral=False
 		)
 
 

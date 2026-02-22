@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 CONFIG_FILE = Path("guild_chat_config.json")
 DEFAULT_MODE = "server"
@@ -65,8 +65,12 @@ def save_guild_chat_config() -> None:
         print(f"[CONFIG] Failed to save guild chat config: {e}")
 
 
-def set_server_mode(guild_id: int) -> None:
-    _guild_chat_config[guild_id] = {"mode": "server", "channels": []}
+def set_server_mode(guild_id: int, channel_ids: Optional[List[int]] = None) -> None:
+    deduped_channels: List[int] = []
+    if channel_ids:
+        deduped_channels = sorted(set(channel_ids))
+
+    _guild_chat_config[guild_id] = {"mode": "server", "channels": deduped_channels}
     save_guild_chat_config()
 
 
