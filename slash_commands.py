@@ -712,27 +712,40 @@ class Codunot(commands.Cog):
 				break
 		return cleaned
 
-	async def _collect_recent_user_messages(self, channel: discord.abc.Messageable, user_id: int, limit: int = 60) -> list[str]:
+	async def _collect_recent_user_messages(
+		self,
+		channel: discord.abc.Messageable,
+		user_id: int,
+		limit: int = 60,
+		max_scan: int = 4000,
+	) -> tuple[list[str], int, bool]:
 		messages: list[str] = []
+		scanned = 0
+		fetch_failed = False
+
 		try:
-			async for message in channel.history(limit=450):
-				if message.author.id != user_id:
-					continue
+			async for message in channel.history(limit=max_scan):
+				scanned += 1
 				if message.author.bot:
 					continue
+				if message.author.id != user_id:
+					continue
+
 				content = self._compact_message_for_prompt((message.content or "").strip(), max_len=180)
 				if not content:
 					continue
 				if len(content) < 3:
 					continue
+
 				messages.append(content)
 				if len(messages) >= limit:
 					break
 		except Exception as e:
+			fetch_failed = True
 			print(f"[GUESSAGE FETCH ERROR] {e}")
 
 		messages.reverse()
-		return messages
+		return messages, scanned, fetch_failed
 
 	@app_commands.command(name="guessage", description="🔍 Guess a user's age range from recent messages (AI estimate)")
 	@app_commands.describe(target_user="The user whose age you want estimated")
@@ -742,14 +755,29 @@ class Codunot(commands.Cog):
 			return
 
 		await interaction.response.defer(ephemeral=False)
+		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
+
+		if not await require_vote_deferred(interaction):
+			return
+
+		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 		await interaction.edit_original_response(content="🔎 **Collecting recent messages...**")
 
-		recent_messages = await self._collect_recent_user_messages(interaction.channel, target_user.id, limit=60)
+		recent_messages, scanned_count, fetch_failed = await self._collect_recent_user_messages(
+			interaction.channel,
+			target_user.id,
+			limit=60,
+		)
 		sample_count = len(recent_messages)
 		if sample_count < 10:
+			error_hint = ""
+			if fetch_failed:
+				error_hint = " I may be missing **Read Message History** permission in this channel."
 			await interaction.followup.send(
-				f"⚠️ I found only **{sample_count}** recent messages from {target_user.mention}. "
+				f"⚠️ I found only **{sample_count}** recent messages from {target_user.mention} "
+				f"after scanning **{scanned_count}** recent channel messages. "
 				"I need at least **10** messages for a better estimate."
+				f"{error_hint}"
 			)
 			return
 
