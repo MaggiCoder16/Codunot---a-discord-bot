@@ -69,6 +69,8 @@ jobs:
           DEAPI_API_KEY: ${{ secrets.DEAPI_API_KEY }}
           DEAPI_WEBHOOK_URL: ${{ secrets.DEAPI_WEBHOOK_URL }}
           DEAPI_RESULT_BASE: ${{ secrets.DEAPI_RESULT_BASE }}
+          DEAPI_VID2TXT_WEBHOOK_URL: ${{ secrets.DEAPI_VID2TXT_WEBHOOK_URL }}
+          DEAPI_VID2TXT_BASE_URL: ${{ secrets.DEAPI_VID2TXT_BASE_URL }}
           TOPGG_TOKEN: ${{ secrets.TOPGG_TOKEN }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
