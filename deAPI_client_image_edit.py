@@ -1,144 +1,71 @@
 import os
 import asyncio
 import aiohttp
-import io
-import random
-
-# ============================================================
-# CONFIG
-# ============================================================
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY")
-if not DEAPI_API_KEY:
-    raise RuntimeError("DEAPI_API_KEY not set")
+EDIT_URL = "https://api.deapi.ai/api/generation/image-to-image"
+RESULT_BASE = os.getenv("DEAPI_RESULT_BASE")
 
-WEBHOOK_URL = os.getenv("DEAPI_WEBHOOK_URL")
-if not WEBHOOK_URL:
-    raise RuntimeError("DEAPI_WEBHOOK_URL not set")
+class Img2ImgError(Exception):
+    pass
 
-IMG2IMG_URL = "https://api.deapi.ai/api/v1/client/img2img"
-# Your webhook server base URL
-RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000") 
 
-FLUX_MODEL = "Flux_2_Klein_4B_BF16"
+async def warm_webhook_server():
+    if not RESULT_BASE:
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            await session.get(RESULT_BASE, timeout=5)
+    except Exception:
+        pass
 
-DEFAULT_STEPS = 4
-MAX_STEPS = 4
 
-# ============================================================
-# UTILITIES
-# ============================================================
+async def edit_image(image_url: str, prompt: str, model="sdxl", max_retries=60, delay=5):
+    headers = {
+        "Authorization": f"Bearer {DEAPI_API_KEY}",
+        "Content-Type": "application/json",
+    }
 
-async def _poll_result(session: aiohttp.ClientSession, request_id: str) -> bytes:
-    """Helper to poll your webhook server for the result."""
-    poll_url = f"{RESULT_URL_BASE}/result/{request_id}"
-    max_attempts = 40
-    delay = 3
+    payload = {
+        "image_url": image_url,
+        "prompt": prompt,
+        "model": model,
+        "webhook_url": f"{RESULT_BASE}/webhook" if RESULT_BASE else None,
+    }
 
-    for attempt in range(max_attempts):
-        try:
-            async with session.get(poll_url) as r:
-                if r.status != 200:
-                    await asyncio.sleep(delay)
-                    continue
+    async with aiohttp.ClientSession(headers=headers) as session:
 
-                status_data = await r.json()
-                status = status_data.get("status")
+        await warm_webhook_server()
 
-                if status == "done":
-                    result_url = status_data.get("result_url") or status_data.get("data", {}).get("result_url")
-                    if not result_url:
-                        raise RuntimeError("Job done but no result_url")
-                    
-                    async with session.get(result_url) as img_resp:
-                        if img_resp.status != 200:
-                            raise RuntimeError(f"Download failed: {img_resp.status}")
-                        return await img_resp.read()
+        async with session.post(EDIT_URL, json=payload) as resp:
+            if resp.status != 200:
+                raise Img2ImgError(f"Submission failed: {await resp.text()}")
+            data = await resp.json()
 
-                elif status == "pending":
-                    print(f"[deAPI Poll] Attempt {attempt + 1}/{max_attempts}: pending...")
-                    await asyncio.sleep(delay)
-                else:
-                    raise RuntimeError(f"Unexpected status: {status}")
-        except Exception as e:
-            print(f"[deAPI Poll] Error: {e}")
+        request_id = data.get("request_id")
+        if not request_id:
+            raise Img2ImgError("No request_id returned")
+
+        print(f"[IMG2IMG] Submitted | request_id={request_id}")
+
+        for attempt in range(max_retries):
             await asyncio.sleep(delay)
 
-    raise RuntimeError("Polling timed out. Check your webhook server.")
+            async with session.get(f"{RESULT_BASE}/result/{request_id}") as res:
+                if res.status != 200:
+                    continue
+                status_data = await res.json()
 
-# ============================================================
-# IMAGE GENERATION (WEBHOOK + POLL RESULT)
-# ============================================================
+            result_url = (
+                status_data.get("result_url")
+                or status_data.get("data", {}).get("result_url")
+                or status_data.get("raw", {}).get("result_url")
+            )
 
-async def edit_image(image_bytes: bytes, prompt: str = "", steps: int = DEFAULT_STEPS) -> bytes:
-    """Submit a single-image Flux img2img request."""
-    steps = min(int(steps or DEFAULT_STEPS), MAX_STEPS)
-    seed = random.randint(1, 2**32 - 1)
+            if result_url:
+                print("[IMG2IMG] Result received.")
+                return result_url
 
-    # Added Accept header required by deAPI
-    headers = {
-        "Authorization": f"Bearer {DEAPI_API_KEY}",
-        "Accept": "application/json"
-    }
+            print(f"[IMG2IMG] Waiting... {attempt+1}/{max_retries}")
 
-    payload = {
-        "model": FLUX_MODEL,
-        "prompt": prompt.strip() or "high quality image edit",
-        "steps": steps,
-        "seed": seed,
-        "webhook_url": WEBHOOK_URL,
-    }
-
-    form = aiohttp.FormData()
-    form.add_field("image", image_bytes, filename="input.jpg", content_type="image/jpeg")
-    for k, v in payload.items():
-        form.add_field(k, str(v))
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
-            print(f"[deAPI IMG2IMG] Status: {resp.status} | RPM: {resp.headers.get('x-ratelimit-remaining')}")
-            if resp.status != 200:
-                raise RuntimeError(await resp.text())
-            data = await resp.json()
-
-        request_id = data["data"]["request_id"]
-        return await _poll_result(session, request_id)
-
-
-async def merge_images(images: list[bytes], prompt: str = "", steps: int = DEFAULT_STEPS) -> bytes:
-    """Submit a multi-image Flux merge request."""
-    if len(images) < 2:
-        raise ValueError("merge_images requires at least 2 images")
-
-    steps = min(int(steps or DEFAULT_STEPS), MAX_STEPS)
-    seed = random.randint(1, 2**32 - 1)
-
-    headers = {
-        "Authorization": f"Bearer {DEAPI_API_KEY}",
-        "Accept": "application/json"
-    }
-
-    payload = {
-        "model": FLUX_MODEL,
-        "prompt": prompt.strip() or "A high quality merge of these subjects",
-        "steps": steps,
-        "seed": seed,
-        "webhook_url": WEBHOOK_URL,
-    }
-
-    form = aiohttp.FormData()
-    for i, img in enumerate(images):
-        form.add_field("images[]", img, filename=f"input_{i}.jpg", content_type="image/jpeg")
-    
-    for k, v in payload.items():
-        form.add_field(k, str(v))
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(IMG2IMG_URL, data=form, headers=headers) as resp:
-            print(f"[deAPI Merge] Status: {resp.status} | RPM: {resp.headers.get('x-ratelimit-remaining')}")
-            if resp.status != 200:
-                raise RuntimeError(await resp.text())
-            data = await resp.json()
-
-        request_id = data["data"]["request_id"]
-        return await _poll_result(session, request_id)
+        raise Img2ImgError("Timed out waiting for edited image.")
