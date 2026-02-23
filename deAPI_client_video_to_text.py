@@ -49,6 +49,8 @@ async def transcribe_video(*, video_url: str, max_minutes: int = 30) -> str:
                 raise VideoToTextError("No request_id returned")
             print(f"[TRANSCRIBE] Submitted | request_id={request_id}")
 
+    await asyncio.sleep(15)
+
     poll_url = f"{RENDER_BASE}/result/{request_id}"
     async with aiohttp.ClientSession() as session:
         for attempt in range(20):
