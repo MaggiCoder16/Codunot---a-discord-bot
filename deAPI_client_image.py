@@ -11,7 +11,7 @@ RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")
 logger = logging.getLogger(__name__)
 
 ASPECT_RATIO_DIMENSIONS = {
-    "1:1": (768, 768),
+    "1:1": (512, 512),
     "16:9": (1024, 576),
     "9:16": (576, 1024),
     "4:3": (896, 672),
@@ -47,7 +47,7 @@ async def _submit_job(
     *,
     prompt: str,
     model: str,
-    aspect_ratio: str = "16:9",
+    aspect_ratio: str = "1:1",
     steps: int = 8,
 ) -> str:
     width, height = _dimensions_from_aspect_ratio(aspect_ratio)
@@ -87,7 +87,7 @@ async def _submit_job(
 async def generate_image(
     prompt: str,
     model: str = "ZImageTurbo_INT8",
-    aspect_ratio: str = "16:9",
+    aspect_ratio: str = "1:1",
     steps: int = 8,
     wait_for_result: bool = True,
     max_retries: int = 60,

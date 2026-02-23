@@ -509,7 +509,7 @@ class Codunot(commands.Cog):
 
 		try:
 			boosted_prompt = await boost_image_prompt(prompt)
-			image_bytes = await generate_image(boosted_prompt, aspect_ratio="16:9", steps=15)
+			image_bytes = await generate_image(boosted_prompt, aspect_ratio="1:1", steps=15)
 
 			await interaction.followup.send(
 				content=f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`" if len(prompt) > 150 else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`",
