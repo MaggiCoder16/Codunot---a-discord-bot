@@ -76,4 +76,4 @@ Use `!codunot_help` to see the full in-bot command list and features.
 ***Thanks, and have a great day ahead!***
 
 # CREDITS
-**Groq API, deAPI, and Meta Llama**
+**Groq API, deAPI, and OpenAI**
