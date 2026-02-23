@@ -876,24 +876,30 @@ class Codunot(commands.Cog):
 		if not await require_vote_deferred(interaction):
 			return
 	
-		await interaction.edit_original_response(content="✅ **Vote verified! Transcribing... this may take a few minutes ⏳**")
+		await interaction.edit_original_response(content="✅ **Vote verified! Submitting transcription...**")
 	
 		try:
-			transcript = await transcribe_video(video_url=video_url, max_minutes=30)
+			request_id = await transcribe_video(video_url=video_url, max_minutes=30)
+	
+			railway_base = os.getenv("DEAPI_VID2TXT_BASE_URL", "").strip().rstrip("/")
+			if railway_base:
+				async with aiohttp.ClientSession() as session:
+					await session.post(
+						f"{railway_base}/register-transcription",
+						json={"request_id": request_id, "channel_id": interaction.channel.id},
+					)
+	
 		except VideoToTextError as e:
 			await interaction.edit_original_response(content=f"❌ {e}")
 			return
 		except Exception as e:
 			print(f"[SLASH TRANSCRIBE ERROR] {e}")
-			await interaction.edit_original_response(content="🤔 Couldn't transcribe this video right now. Please try again later.")
+			await interaction.edit_original_response(content="🤔 Couldn't transcribe this video right now.")
 			return
 	
-		if not transcript:
-			await interaction.edit_original_response(content="⚠️ Transcription completed but returned empty text.")
-			return
-	
-		await interaction.edit_original_response(content="✅ **Transcription complete:**")
-		await self._send_long_interaction_message(interaction, transcript)
+		await interaction.edit_original_response(
+			content="📝 Transcription submitted! I'll post the result here when it's ready."
+		)
 
 	async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
 		if target_user.id == interaction.user.id:
