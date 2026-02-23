@@ -8,6 +8,7 @@ import json
 import aiohttp
 import asyncio
 import random
+import traceback
 from typing import Optional
 
 from memory import MemoryManager
@@ -520,7 +521,8 @@ class Codunot(commands.Cog):
 			save_usage()
 
 		except Exception as e:
-			print(f"[SLASH IMAGE ERROR] {e}")
+			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
+			traceback.print_exc()
 			await interaction.followup.send(
 				f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later."
 			)
@@ -568,7 +570,8 @@ class Codunot(commands.Cog):
 			save_usage()
 
 		except Exception as e:
-			print(f"[SLASH VIDEO ERROR] {e}")
+			print(f"[SLASH VIDEO ERROR] type={type(e).__name__} err={e}")
+			traceback.print_exc()
 			await interaction.followup.send(
 				f"{interaction.user.mention} 🤔 Couldn't generate video right now. Please try again later."
 			)

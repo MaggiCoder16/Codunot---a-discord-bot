@@ -2,11 +2,13 @@ import os
 import aiohttp
 import asyncio
 import random
+import logging
 from typing import Optional
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
 TXT2VID_ENDPOINT = "https://api.deapi.ai/api/v1/client/txt2video"
 RESULT_URL_BASE = os.getenv("DEAPI_RESULT_BASE", "http://localhost:8000")
+logger = logging.getLogger(__name__)
 
 class Text2VidError(Exception):
     pass
@@ -19,7 +21,7 @@ async def warm_webhook_server():
             await session.get(RESULT_URL_BASE, timeout=5)
         print("[Warmup] Webhook server awake.")
     except Exception as e:
-        print("[Warmup] Warmup skipped:", e)
+        logger.warning("[Warmup] Warmup skipped: %s", e)
 
 async def _submit_job(session: aiohttp.ClientSession, *, prompt: str, model: str) -> tuple[str, int]:
     seed = random.randint(0, 2**32 - 1)
@@ -72,6 +74,7 @@ async def generate_video(*, prompt: str, model: str = "Ltx2_19B_Dist_FP8", wait_
                     try:
                         async with session.get(poll_url) as res:
                             if res.status != 200:
+                                logger.info("[VIDEO GEN] Poll attempt %s not ready (HTTP %s)", attempt + 1, res.status)
                                 continue
                             status_data = await res.json()
                             result_url = (
@@ -85,7 +88,8 @@ async def generate_video(*, prompt: str, model: str = "Ltx2_19B_Dist_FP8", wait_
                                     if vresp.status != 200:
                                         raise Text2VidError(f"Failed to download video (status {vresp.status})")
                                     return await vresp.read()
-                    except Exception:
+                    except Exception as e:
+                        logger.exception("[VIDEO GEN] Polling/download error on attempt %s: %s", attempt + 1, e)
                         continue
             raise Text2VidError("Video not ready after polling timeout. Check your webhook server.")
     return None
