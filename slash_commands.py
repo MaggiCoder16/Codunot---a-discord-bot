@@ -43,6 +43,7 @@ save_vote_unlocks = None
 set_server_mode = None
 set_channels_mode = None
 get_guild_config = None
+pending_transcriptions: dict[str, int] = {}
 
 ALLOWED_TRANSCRIBE_HOSTS = (
 	"youtube.com",
@@ -869,26 +870,30 @@ class Codunot(commands.Cog):
 				ephemeral=False,
 			)
 			return
-
+	
 		await interaction.response.defer(ephemeral=False)
-		await interaction.edit_original_response(content="📝 Transcribing video... this can take a little while.")
-
+		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
+	
+		if not await require_vote_deferred(interaction):
+			return
+	
+		await interaction.edit_original_response(content="✅ **Vote verified! Submitting transcription...**")
+	
 		try:
-			transcript = await transcribe_video(video_url=video_url, max_minutes=30)
+			request_id = await transcribe_video(video_url=video_url, max_minutes=30)
+			pending_transcriptions[request_id] = interaction.channel.id
+
 		except VideoToTextError as e:
-			await interaction.followup.send(f"❌ {e}", ephemeral=False)
+			await interaction.edit_original_response(content=f"❌ {e}")
 			return
 		except Exception as e:
 			print(f"[SLASH TRANSCRIBE ERROR] {e}")
-			await interaction.followup.send("🤔 Couldn't transcribe this video right now. Please try again later.", ephemeral=False)
+			await interaction.edit_original_response(content="🤔 Couldn't transcribe this video right now.")
 			return
-
-		if not transcript:
-			await interaction.followup.send("⚠️ Transcription completed but returned empty text.", ephemeral=False)
-			return
-
-		await interaction.followup.send("✅ Transcription complete:", ephemeral=False)
-		await self._send_long_interaction_message(interaction, transcript)
+	
+		await interaction.edit_original_response(
+			content=f"📝 Transcription submitted! I'll post the result here when it's ready."
+		)
 
 	async def _send_action_gif(self, interaction: discord.Interaction, action: str, target_user: discord.User):
 		if target_user.id == interaction.user.id:
