@@ -2,7 +2,8 @@ import os
 import aiohttp
 
 DEAPI_API_KEY = os.getenv("DEAPI_API_KEY", "").strip()
-VIDEO_TO_TEXT_ENDPOINT = "https://api.deapi.ai/api/v1/client/vid2txt"
+DEAPI_BASE_URL = os.getenv("DEAPI_BASE_URL", "https://api.deapi.ai").strip().rstrip("/")
+VIDEO_TO_TEXT_ENDPOINT = f"{DEAPI_BASE_URL}/api/v1/client/vid2txt"
 
 
 class VideoToTextError(Exception):
@@ -13,9 +14,9 @@ async def transcribe_video(*, video_url: str, max_minutes: int = 30) -> str:
     if not DEAPI_API_KEY:
         raise VideoToTextError("DEAPI_API_KEY is not set")
 
-    webhook_url = os.getenv("DEAPI_VID2TXT_WEBHOOK_URL") or os.getenv("DEAPI_WEBHOOK_URL")
+    webhook_url = os.getenv("DEAPI_WEBHOOK_URL", "").strip()
     if not webhook_url:
-        raise VideoToTextError("DEAPI_VID2TXT_WEBHOOK_URL (or DEAPI_WEBHOOK_URL fallback) is not set")
+        raise VideoToTextError("DEAPI_WEBHOOK_URL is not set")
 
     headers = {
         "Authorization": f"Bearer {DEAPI_API_KEY}",

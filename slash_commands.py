@@ -437,10 +437,18 @@ class Codunot(commands.Cog):
 			return False
 		return interaction.client.get_guild(interaction.guild_id) is None
 
-	def _paid_usage_key(self, interaction: discord.Interaction) -> str | None:
-		if self._bot_missing_from_guild(interaction):
-			return self._dm_usage_key(interaction)
-		return None
+	async def _resolve_paid_usage_key(self, interaction: discord.Interaction) -> str | None:
+		if not self._bot_missing_from_guild(interaction):
+			return None
+
+		try:
+			dm_channel = interaction.user.dm_channel or await interaction.user.create_dm()
+			if dm_channel is not None:
+				return str(dm_channel.id)
+		except Exception as e:
+			print(f"[PAID USAGE KEY] Failed to resolve DM channel ID: {e}")
+
+		return self._dm_usage_key(interaction)
 
 	def _should_deliver_paid_output_in_dm(self, interaction: discord.Interaction) -> bool:
 		return self._bot_missing_from_guild(interaction)
@@ -539,7 +547,7 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="generate_image", description="🖼️ Generate an AI image from a text prompt")
 	@app_commands.describe(prompt="Describe the image you want to generate")
 	async def generate_image_slash(self, interaction: discord.Interaction, prompt: str):
-		usage_key = self._paid_usage_key(interaction)
+		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
@@ -592,7 +600,7 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="generate_video", description="🎬 Generate an AI video from a text prompt")
 	@app_commands.describe(prompt="Describe the video you want to generate")
 	async def generate_video_slash(self, interaction: discord.Interaction, prompt: str):
-		usage_key = self._paid_usage_key(interaction)
+		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
@@ -645,7 +653,7 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio")
 	@app_commands.describe(text="The text you want to convert to speech")
 	async def generate_tts_slash(self, interaction: discord.Interaction, text: str):
-		usage_key = self._paid_usage_key(interaction)
+		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 
@@ -965,10 +973,27 @@ class Codunot(commands.Cog):
 
 		return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, filtered_query, ""))
 
+	def _transcribe_register_base(self) -> str:
+		from urllib.parse import urlparse
+
+		webhook_url = os.getenv("DEAPI_WEBHOOK_URL", "").strip()
+		if webhook_url:
+			parsed = urlparse(webhook_url)
+			if parsed.scheme and parsed.netloc:
+				return f"{parsed.scheme}://{parsed.netloc}"
+
+		deapi_base = os.getenv("DEAPI_BASE_URL", "").strip().rstrip("/")
+		if deapi_base:
+			parsed = urlparse(deapi_base)
+			if parsed.scheme and parsed.netloc:
+				return f"{parsed.scheme}://{parsed.netloc}"
+
+		return ""
+
 	@app_commands.command(name="transcribe", description="📝 Transcribe a supported video URL (max 30 mins)")
 	@app_commands.describe(video_url="Supported: YouTube, Twitch VOD, X, Kick")
 	async def transcribe_slash(self, interaction: discord.Interaction, video_url: str):
-		usage_key = self._paid_usage_key(interaction)
+		usage_key = await self._resolve_paid_usage_key(interaction)
 		normalized_video_url = self._normalize_transcribe_url(video_url)
 		if not normalized_video_url:
 			await interaction.response.send_message(
@@ -1001,18 +1026,25 @@ class Codunot(commands.Cog):
 		try:
 			request_id = await transcribe_video(video_url=normalized_video_url, max_minutes=30)
 	
-			railway_base = os.getenv("DEAPI_VID2TXT_BASE_URL", "").strip().rstrip("/")
-			if railway_base:
-				async with aiohttp.ClientSession() as session:
-					await session.post(
-						f"{railway_base}/register-transcription",
-						json={
-							"request_id": request_id,
-							"channel_id": interaction.channel.id,
-							"user_id": interaction.user.id,
-							"deliver_in_dm": deliver_in_dm,
-						},
-					)
+			register_base = self._transcribe_register_base()
+			if not register_base:
+				raise RuntimeError("Transcription register base URL is not configured")
+
+			async with aiohttp.ClientSession() as session:
+				async with session.post(
+					f"{register_base}/register-transcription",
+					json={
+						"request_id": request_id,
+						"channel_id": interaction.channel.id,
+						"user_id": interaction.user.id,
+						"deliver_in_dm": deliver_in_dm,
+					},
+					timeout=aiohttp.ClientTimeout(total=15),
+				) as register_resp:
+					if register_resp.status >= 300:
+						raise RuntimeError(
+							f"Transcription registration failed ({register_resp.status}): {await register_resp.text()}"
+						)
 
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key)
