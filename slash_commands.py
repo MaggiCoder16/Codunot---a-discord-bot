@@ -15,7 +15,7 @@ from memory import MemoryManager
 from deAPI_client_image import generate_image
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
-from deAPI_client_video_to_text import transcribe_video, VideoToTextError
+from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
 from google_ai_studio_client import call_google_ai_studio
 
 from usage_manager import (
@@ -994,6 +994,34 @@ class Codunot(commands.Cog):
 
 		return ""
 
+	async def _send_transcription_fallback_result(
+		self,
+		*,
+		request_id: str,
+		channel_id: int,
+		user_id: int,
+		deliver_in_dm: bool,
+	):
+		try:
+			transcript_text = await wait_for_transcription_text(request_id=request_id)
+		except Exception as e:
+			print(f"[TRANSCRIBE FALLBACK] Could not fetch transcript for {request_id}: {e}")
+			return
+
+		message = f"✅ **Transcription complete:**\n{transcript_text[:1900]}"
+		try:
+			if deliver_in_dm:
+				user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+				await user.send(message)
+			else:
+				channel = self.bot.get_channel(channel_id)
+				if channel is None:
+					channel = await self.bot.fetch_channel(channel_id)
+				await channel.send(message)
+			print(f"[TRANSCRIBE FALLBACK] Delivered transcript for {request_id}")
+		except Exception as e:
+			print(f"[TRANSCRIBE FALLBACK] Discord send failed for {request_id}: {e}")
+
 	@app_commands.command(name="transcribe", description="📝 Transcribe a supported video URL (max 30 mins)")
 	@app_commands.describe(video_url="Supported: YouTube, Twitch VOD, X, Kick")
 	async def transcribe_slash(self, interaction: discord.Interaction, video_url: str):
@@ -1031,8 +1059,6 @@ class Codunot(commands.Cog):
 			request_id = await transcribe_video(video_url=normalized_video_url, max_minutes=30)
 	
 			register_base = self._transcribe_register_base()
-			if not register_base:
-				raise RuntimeError("Transcription register base URL is not configured")
 
 			register_channel_id = interaction.channel.id
 			if deliver_in_dm:
@@ -1046,25 +1072,38 @@ class Codunot(commands.Cog):
 					except Exception as e:
 						print(f"[TRANSCRIBE REGISTER] DM channel resolve failed: {e}")
 
-			async with aiohttp.ClientSession() as session:
-				async with session.post(
-					f"{register_base}/register-transcription",
-					json={
-						"request_id": request_id,
-						"channel_id": register_channel_id,
-						"user_id": interaction.user.id,
-						"deliver_in_dm": deliver_in_dm,
-					},
-					timeout=aiohttp.ClientTimeout(total=15),
-				) as register_resp:
-					if register_resp.status >= 300:
-						raise RuntimeError(
-							f"Transcription registration failed ({register_resp.status}): {await register_resp.text()}"
-						)
+			if register_base:
+				try:
+					async with aiohttp.ClientSession() as session:
+						async with session.post(
+							f"{register_base}/register-transcription",
+							json={
+								"request_id": request_id,
+								"channel_id": register_channel_id,
+								"user_id": interaction.user.id,
+								"deliver_in_dm": deliver_in_dm,
+							},
+							timeout=aiohttp.ClientTimeout(total=15),
+						) as register_resp:
+							if register_resp.status >= 300:
+								print(
+									f"[TRANSCRIBE REGISTER] registration failed ({register_resp.status}): {await register_resp.text()}"
+								)
+				except Exception as register_error:
+					print(f"[TRANSCRIBE REGISTER] register-transcription error: {register_error}")
 
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key)
 			save_usage()
+
+			asyncio.create_task(
+				self._send_transcription_fallback_result(
+					request_id=request_id,
+					channel_id=register_channel_id,
+					user_id=interaction.user.id,
+					deliver_in_dm=deliver_in_dm,
+				)
+			)
 	
 		except VideoToTextError as e:
 			await interaction.edit_original_response(content=f"❌ {e}")
