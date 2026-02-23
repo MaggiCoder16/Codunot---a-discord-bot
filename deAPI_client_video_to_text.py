@@ -13,7 +13,7 @@ async def transcribe_video(*, video_url: str, max_minutes: int = 30) -> str:
     if not DEAPI_API_KEY:
         raise VideoToTextError("DEAPI_API_KEY is not set")
 
-    webhook_url = os.getenv("DEAPI_VID2TXT_WEBHOOK_URL")
+    webhook_url = os.getenv("DEAPI_WEBHOOK_URL")
     if not webhook_url:
         raise VideoToTextError("DEAPI_VID2TXT_WEBHOOK_URL is not set")
 
