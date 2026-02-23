@@ -136,22 +136,36 @@ def get_usage(key: str) -> dict:
 
 	return usage
 
-def check_limit(message_or_interaction, kind: str) -> bool:
+def check_limit(message_or_interaction, kind: str, usage_key: str | None = None) -> bool:
 	if is_owner(message_or_interaction):
 		return True  # Owners bypass all limits
 	
-	key = get_tier_key(message_or_interaction)
+	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
+	if usage_key is not None:
+		if usage_key in GOLD_IDS:
+			tier = "gold"
+		elif usage_key in PREMIUM_IDS:
+			tier = "premium"
+		else:
+			tier = "basic"
 	usage = get_usage(key)
 	limit = LIMITS[tier][kind]
 	return usage[kind] < limit
 
-def consume(message_or_interaction, kind: str):
+def consume(message_or_interaction, kind: str, usage_key: str | None = None):
 	if is_owner(message_or_interaction):
 		return  # Don't consume for owners
 	
-	key = get_tier_key(message_or_interaction)
+	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
+	if usage_key is not None:
+		if usage_key in GOLD_IDS:
+			tier = "gold"
+		elif usage_key in PREMIUM_IDS:
+			tier = "premium"
+		else:
+			tier = "basic"
 	usage = get_usage(key)
 
 	if usage[kind] >= LIMITS[tier][kind]:
@@ -177,15 +191,22 @@ def _prune(history: list[float]) -> list[float]:
 	cutoff = now - ROLLING_WINDOW.total_seconds()
 	return [t for t in history if t >= cutoff]
 
-def check_total_limit(message_or_interaction, kind: str) -> bool:
+def check_total_limit(message_or_interaction, kind: str, usage_key: str | None = None) -> bool:
 	if is_owner(message_or_interaction):
 		return True  # Owners bypass total limits
 	
 	if kind != "attachments":
 		return True
 
-	key = get_tier_key(message_or_interaction)
+	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
+	if usage_key is not None:
+		if usage_key in GOLD_IDS:
+			tier = "gold"
+		elif usage_key in PREMIUM_IDS:
+			tier = "premium"
+		else:
+			tier = "basic"
 	limit = TOTAL_LIMITS[tier]
 
 	history = attachment_history.get(key, [])
@@ -194,14 +215,14 @@ def check_total_limit(message_or_interaction, kind: str) -> bool:
 
 	return len(history) < limit
 
-def consume_total(message_or_interaction, kind: str):
+def consume_total(message_or_interaction, kind: str, usage_key: str | None = None):
 	if is_owner(message_or_interaction):
 		return  # Don't consume for owners
 	
 	if kind != "attachments":
 		return
 
-	key = get_tier_key(message_or_interaction)
+	key = usage_key or get_tier_key(message_or_interaction)
 	history = attachment_history.setdefault(key, [])
 
 	ts = datetime.utcnow().timestamp()
@@ -209,6 +230,13 @@ def consume_total(message_or_interaction, kind: str):
 
 	daily = get_usage(key)["attachments"]
 	tier = get_tier_from_message(message_or_interaction)
+	if usage_key is not None:
+		if usage_key in GOLD_IDS:
+			tier = "gold"
+		elif usage_key in PREMIUM_IDS:
+			tier = "premium"
+		else:
+			tier = "basic"
 	daily_limit = LIMITS[tier]["attachments"]
 	total_limit = TOTAL_LIMITS[tier]
 

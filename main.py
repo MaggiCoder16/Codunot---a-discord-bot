@@ -17,7 +17,7 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 VOTE_FILE = Path("topgg_votes.json")
 VOTE_DURATION_SECONDS = 60 * 60 * 12
 
-PENDING_TRANSCRIPTIONS: dict[str, int] = {}
+PENDING_TRANSCRIPTIONS: dict[str, dict] = {}
 
 def load_votes():
     if not VOTE_FILE.exists():
@@ -58,14 +58,43 @@ async def send_discord_message(channel_id: int, content: str):
             await client.post(url, headers=headers, json={"content": chunk})
 
 
+async def send_discord_dm(user_id: int, content: str):
+    headers = {
+        "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient() as client:
+        dm_resp = await client.post(
+            "https://discord.com/api/v10/users/@me/channels",
+            headers=headers,
+            json={"recipient_id": str(user_id)},
+        )
+        if dm_resp.status_code >= 300:
+            print(f"[Webhook] Failed to create DM channel for user {user_id}: {dm_resp.status_code}")
+            return
+
+        dm_channel_id = dm_resp.json().get("id")
+        if not dm_channel_id:
+            print(f"[Webhook] DM channel missing for user {user_id}")
+            return
+
+        await send_discord_message(int(dm_channel_id), content)
+
+
 @app.post("/register-transcription")
 async def register_transcription(req: Request):
     body = await req.json()
     request_id = body.get("request_id")
     channel_id = body.get("channel_id")
+    user_id = body.get("user_id")
+    deliver_in_dm = bool(body.get("deliver_in_dm", False))
     if request_id and channel_id:
-        PENDING_TRANSCRIPTIONS[request_id] = int(channel_id)
-        print(f"[Register] request_id={request_id} → channel_id={channel_id}")
+        PENDING_TRANSCRIPTIONS[request_id] = {
+            "channel_id": int(channel_id),
+            "user_id": int(user_id) if user_id else None,
+            "deliver_in_dm": deliver_in_dm,
+        }
+        print(f"[Register] request_id={request_id} → channel_id={channel_id} dm={deliver_in_dm}")
     return {"status": "ok"}
 
 
@@ -92,12 +121,26 @@ async def deapi_webhook(req: Request):
                 or data.get("text")
             )
 
-            channel_id = PENDING_TRANSCRIPTIONS.pop(request_id, None)
-            if channel_id and transcript and DISCORD_BOT_TOKEN:
-                print(f"[Webhook] Sending transcript to channel {channel_id}")
-                await send_discord_message(channel_id, f"✅ **Transcription complete:**\n{transcript}")
-            elif channel_id and not transcript:
-                await send_discord_message(channel_id, "⚠️ Transcription completed but returned empty text.")
+            delivery = PENDING_TRANSCRIPTIONS.pop(request_id, None)
+            if delivery and transcript and DISCORD_BOT_TOKEN:
+                channel_id = delivery.get("channel_id")
+                user_id = delivery.get("user_id")
+                deliver_in_dm = bool(delivery.get("deliver_in_dm"))
+
+                if deliver_in_dm and user_id:
+                    print(f"[Webhook] Sending transcript to user DM {user_id}")
+                    await send_discord_dm(user_id, f"✅ **Transcription complete:**\n{transcript}")
+                elif channel_id:
+                    print(f"[Webhook] Sending transcript to channel {channel_id}")
+                    await send_discord_message(channel_id, f"✅ **Transcription complete:**\n{transcript}")
+            elif delivery and not transcript:
+                channel_id = delivery.get("channel_id")
+                user_id = delivery.get("user_id")
+                deliver_in_dm = bool(delivery.get("deliver_in_dm"))
+                if deliver_in_dm and user_id:
+                    await send_discord_dm(user_id, "⚠️ Transcription completed but returned empty text.")
+                elif channel_id:
+                    await send_discord_message(channel_id, "⚠️ Transcription completed but returned empty text.")
 
             return JSONResponse(status_code=200, content={"status": "ok"})
 
