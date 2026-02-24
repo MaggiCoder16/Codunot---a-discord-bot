@@ -473,7 +473,7 @@ class Codunot(commands.Cog):
 
 		try:
 			await interaction.user.send(
-				"📩 I generated this in DMs because I'm not in that server, so I can't post the full output there.",
+				f"{content}\n\n📩 I generated this in DMs because I'm not in that server, so I can't post the full output there.",
 				file=discord.File(io.BytesIO(payload_bytes), filename=filename),
 			)
 			await interaction.followup.send(
