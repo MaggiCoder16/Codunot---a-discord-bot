@@ -836,6 +836,45 @@ class Codunot(commands.Cog):
 		messages.reverse()
 		return messages, scanned, fetch_failed
 
+	async def _collect_recent_user_messages_across_guild(
+		self,
+		guild: discord.Guild,
+		user_id: int,
+		exclude_channel_ids: set[int] | None = None,
+		limit: int = 60,
+		max_scan_per_channel: int = 1200,
+	) -> tuple[list[str], int, bool, int]:
+		messages: list[str] = []
+		scanned_total = 0
+		fetch_failed = False
+		channels_used = 0
+		exclude_ids = exclude_channel_ids or set()
+
+		for channel in guild.text_channels:
+			if channel.id in exclude_ids:
+				continue
+
+			channel_messages, scanned_count, failed = await self._collect_recent_user_messages(
+				channel,
+				user_id,
+				limit=max(1, limit - len(messages)),
+				max_scan=max_scan_per_channel,
+			)
+			scanned_total += scanned_count
+			fetch_failed = fetch_failed or failed
+
+			if channel_messages:
+				channels_used += 1
+				messages.extend(channel_messages)
+
+			if len(messages) >= limit:
+				break
+
+		if len(messages) > limit:
+			messages = messages[-limit:]
+
+		return messages, scanned_total, fetch_failed, channels_used
+
 	@app_commands.command(name="guessage", description="🔍 Guess a user's age range from recent messages (AI estimate)")
 	@app_commands.describe(target_user="The user whose age you want estimated")
 	async def guessage_slash(self, interaction: discord.Interaction, target_user: discord.User):
@@ -857,14 +896,36 @@ class Codunot(commands.Cog):
 			target_user.id,
 			limit=60,
 		)
+		source_channels_used = 1 if recent_messages else 0
+
+		if len(recent_messages) == 0 and interaction.guild is not None:
+			await interaction.edit_original_response(content="🔎 **No messages in this channel. Searching other server channels...**")
+			exclude_channel_ids: set[int] = set()
+			if interaction.channel_id is not None:
+				exclude_channel_ids.add(interaction.channel_id)
+			if isinstance(interaction.channel, discord.Thread) and interaction.channel.parent_id:
+				exclude_channel_ids.add(interaction.channel.parent_id)
+
+			alt_messages, alt_scanned, alt_fetch_failed, alt_channels_used = await self._collect_recent_user_messages_across_guild(
+				interaction.guild,
+				target_user.id,
+				exclude_channel_ids=exclude_channel_ids,
+				limit=60,
+			)
+			scanned_count += alt_scanned
+			fetch_failed = fetch_failed or alt_fetch_failed
+			if alt_messages:
+				recent_messages = alt_messages
+				source_channels_used = alt_channels_used
+
 		sample_count = len(recent_messages)
 		if sample_count < 10:
 			error_hint = ""
 			if fetch_failed:
-				error_hint = " I may be missing **Read Message History** permission in this channel."
+				error_hint = " I may be missing **Read Message History** permission in one or more channels."
 			await interaction.followup.send(
 				f"⚠️ I found only **{sample_count}** recent messages from {target_user.mention} "
-				f"after scanning **{scanned_count}** recent channel messages. "
+				f"after scanning **{scanned_count}** channel messages. "
 				"I need at least **10** messages for a better estimate."
 				f"{error_hint}"
 			)
@@ -913,25 +974,43 @@ class Codunot(commands.Cog):
 		reasoning = self._clean_reasoning_items([str(item) for item in reasoning])
 		reasoning_lines = "\n".join(f"• {item}" for item in reasoning) or "• Not enough signal from messages."
 
-		await interaction.edit_original_response(content="✨ **Finalizing animated result card...**")
-		await asyncio.sleep(1.3)
+		await interaction.edit_original_response(content="✨ **Designing your new age insight card...**")
+		await asyncio.sleep(1.0)
+
+		confidence_lower = confidence.lower()
+		confidence_badge = {
+			"high": "🟢 High",
+			"medium": "🟡 Medium",
+			"low": "🔴 Low",
+		}.get(confidence_lower, "⚪ Unknown")
+
+		guess_display = str(exact_guess) if exact_guess is not None else "Unknown"
+		summary_line = f"**Range:** `{age_range}` • **Best Guess:** `{guess_display}` • **Confidence:** {confidence_badge}"
 
 		embed = discord.Embed(
-			title="🔎 AI Age Estimate",
-			description=f"Estimated age for {target_user.mention}",
-			color=0x5865F2,
+			title="🧭 Message Style Insight Panel",
+			description=(
+				f"Target: {target_user.mention}\n"
+				f"{summary_line}"
+			),
+			color=0x8A63D2,
 		)
-		embed.add_field(name="Age Range", value=age_range, inline=True)
-		embed.add_field(name="Exact Guess", value=str(exact_guess) if exact_guess is not None else "Unknown", inline=True)
-		embed.add_field(name="Confidence", value=confidence, inline=True)
-		embed.add_field(name="Messages Analyzed", value=str(sample_count), inline=True)
-		embed.add_field(name="Reasoning", value=reasoning_lines, inline=False)
 		embed.add_field(
-			name="⚠️ Disclaimer",
-			value="AI estimate for moderation insight only. Not for legal verification.",
+			name="📊 Analysis Stats",
+			value=(
+				f"• Messages analyzed: **{sample_count}**\n"
+				f"• Channel messages scanned: **{scanned_count}**\n"
+				f"• Source channels used: **{source_channels_used}**"
+			),
 			inline=False,
 		)
-		embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+		embed.add_field(name="🧠 Why this estimate", value=reasoning_lines, inline=False)
+		embed.add_field(
+			name="⚠️ Important",
+			value="Style-based model estimate only. Use as a soft moderation signal, never for verification.",
+			inline=False,
+		)
+		embed.set_footer(text=f"Requested by {interaction.user.display_name} • /guessage")
 		if target_user.display_avatar:
 			embed.set_thumbnail(url=target_user.display_avatar.url)
 
