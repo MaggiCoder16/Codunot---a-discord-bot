@@ -2,40 +2,48 @@
 
 > Built by a 13-year-old developer.
 
-Codunot brings powerful AI directly into your Discord server or DMs with lightning-fast replies (around **0.1–0.2s**).
-
----
-
 ## 🌐 Website
 
-A premium orange-themed multi-page website is in `website/`.
+The full website is in `website/` with these pages:
 
-### Pages
-
-- `index.html` — Landing page + hero + top.gg widget + server ticker
-- `features.html` — Full features overview
-- `commands.html` — Commands table
-- `stats.html` — Stats/uptime + top.gg widget block
-- `reviews.html` — Community testimonials
-- `roadmap.html` — Upcoming goals
+- `index.html` — Hero, uptime, top.gg widget, communities strip, fun command highlights
+- `features.html` — Full feature explanations + how to use modes
+- `commands.html` — Human-language command center
+- `stats.html` — Uptime/stats + top.gg widget
+- `reviews.html` — User feedback section
+- `roadmap.html` — Planned next features
 - `changelog.html` — Recent updates
-- `faq.html` — Frequently asked questions
-- `support.html` — Owner/profile support + invite links
+- `faq.html` — Practical usage answers
+- `support.html` — Owner contact and quick links
 
-### How to view the website
+## ▶️ Run locally
 
 ```bash
 cd website
 python -m http.server 8080
 ```
 
-Then open: `http://localhost:8080/index.html`
+Open: `http://localhost:8080/index.html`
 
----
+## 🧩 Communities data (Discord API export)
 
-## 🔗 Core Links
+To refresh `website/communities.json` from the Discord API:
+
+```bash
+# Windows CMD
+set DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
+python website\tools\export_communities.py
+```
+
+Optional invite mapping:
+
+```bash
+set COMMUNITY_INVITES_JSON={"GUILD_ID":"https://discord.gg/yourinvite"}
+```
+
+## 🔗 Core links
 
 - Add to Server: https://discord.com/oauth2/authorize?client_id=1435987186502733878&permissions=277025643520&integration_type=0&scope=applications.commands+bot
-- Add as App: https://discord.com/oauth2/authorize?client_id=1435987186502733878&integration_type=1&scope=applications.commands
+- Add as App/Login: https://discord.com/oauth2/authorize?client_id=1435987186502733878&integration_type=1&scope=applications.commands
 - Vote: https://top.gg/bot/1435987186502733878/vote
 - Official Discord: https://discord.gg/GVuFk5gxtW

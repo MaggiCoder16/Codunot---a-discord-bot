@@ -1,17 +1,34 @@
-const year = document.getElementById('year');
-if (year) year.textContent = new Date().getFullYear();
+const yearEl = document.getElementById('year');
+if (yearEl) yearEl.textContent = new Date().getFullYear();
 
-const track = document.getElementById('server-track');
-if (track) {
-  const names = [
-    'Code Cave', 'Night Owls Hub', 'Pixel Arena', 'Study Circle', 'Meme Republic',
-    'Build & Ship', 'Chill Gamers', 'Anime Corner', 'Music Lounge', 'AI Workshop',
-    'Founders Den', 'Creators Guild', 'Dev School', 'Gen Z Spot', 'Server Lab'
-  ];
+async function loadCommunities() {
+  const track = document.getElementById('community-track');
+  if (!track) return;
 
-  const html = [...names, ...names]
-    .map((n) => `<span class="server-pill">${n} • Codunot online</span>`)
-    .join('');
+  try {
+    const res = await fetch('communities.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('Failed to load communities.json');
+    const communities = await res.json();
 
-  track.innerHTML = html;
+    const cards = communities.map((c) => `
+      <a class="community-card" href="${c.invite}" target="_blank" rel="noopener">
+        <img src="${c.icon}" alt="${c.name} icon" />
+        <div>
+          <div class="community-name">${c.name}</div>
+          <div class="community-members">${c.members}</div>
+        </div>
+      </a>
+    `);
+
+    track.innerHTML = [...cards, ...cards].join('');
+  } catch {
+    track.innerHTML = `
+      <a class="community-card" href="https://discord.gg/GVuFk5gxtW" target="_blank" rel="noopener">
+        <img src="https://cdn.top.gg/icons/799571124189618176/041c2d0d7f2919cb19e56f2e1f8a0d79e7dc9940f870adf07feab99dd3ce0a04.webp" alt="Codunot" />
+        <div><div class="community-name">Official Codunot Server</div><div class="community-members">Tap to join</div></div>
+      </a>
+    `;
+  }
 }
+
+loadCommunities();
