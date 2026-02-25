@@ -2388,7 +2388,7 @@ async def on_message(message: Message):
 async def on_ready():
 	await bot.change_presence(
 		activity=discord.CustomActivity(
-			name="🍊 !codunot_help · codunot - discord chatbot"
+			name="🍊 !codunot_help · https://maggicoder16.github.io/codunot-website/"
 		),
 		status=discord.Status.online
 	)
