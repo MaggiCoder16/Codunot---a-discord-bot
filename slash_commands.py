@@ -386,9 +386,14 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 		opts = _get_ytdl_options(tier, allow_playlist=True)
 		opts.pop("extract_flat", None)
 		opts["playlistend"] = 50
-		opts["ignorerrors"] = True
-		with yt_dlp.YoutubeDL(opts) as ytdl:
-			return ytdl.extract_info(url, download=False)
+		opts["ignoreerrors"] = True
+		try:
+			with yt_dlp.YoutubeDL(opts) as ytdl:
+				return ytdl.extract_info(url, download=False)
+		except Exception:
+			opts["extract_flat"] = "in_playlist"
+			with yt_dlp.YoutubeDL(opts) as ytdl:
+				return ytdl.extract_info(url, download=False)
 
 	data = await loop.run_in_executor(None, _extract)
 	if not data:
@@ -1425,9 +1430,10 @@ class Codunot(commands.Cog):
 
 			stub_tracks = [
 				_build_track_from_info(e, interaction.user.mention, tier)
+				if e.get("url") and e.get("duration")
+				else _build_track_from_flat_entry(e, interaction.user.mention, tier)
 				for e in entries
 			]
-
 			queue = self._queue_for_guild(interaction.guild.id)
 
 			if voice_client.is_playing() or voice_client.is_paused():
