@@ -288,6 +288,10 @@ YTDL_OPTIONS = {
 	"nocheckcertificate": True,
 	"default_search": "ytsearch",
 	"source_address": "0.0.0.0",
+	"user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	"add_header": [
+		"Accept-Language: en-US,en;q=0.9",
+	],
 }
 
 FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
