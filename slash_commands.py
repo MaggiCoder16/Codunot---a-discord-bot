@@ -1110,82 +1110,83 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="play", description="🎵 Play a song in your voice channel (HD free, 320kbps Premium/Gold)")
 	@app_commands.describe(song="Song name or URL")
 	async def play_slash(self, interaction: discord.Interaction, song: str):
+	
 		if interaction.guild is None:
-			await interaction.response.send_message(
-				"❌ This command can only be used inside a server.",
-				ephemeral=False
-			)
 			return
-
+	
 		if not interaction.user.voice or not interaction.user.voice.channel:
-			await interaction.response.send_message(
-				"🎧 Join a voice channel first, then try `/play` again.",
-				ephemeral=False
-			)
 			return
-
+	
 		await interaction.response.defer()
-
+	
+		await interaction.edit_original_response(content="🗳️ Checking your vote status...")
+	
+		if not await require_vote_deferred(interaction):
+			return
+	
+		await interaction.edit_original_response(content="🎵 Joining voice channel...")
+	
 		channel = interaction.user.voice.channel
 		voice_client = interaction.guild.voice_client
-
+	
 		try:
 			if voice_client and voice_client.is_connected():
 				if voice_client.channel.id != channel.id:
-					await interaction.followup.send(
-						f"🎧 I'm already playing in {voice_client.channel.mention}. Join there to control playback.",
-						ephemeral=False
-					)
 					return
 			else:
 				voice_client = await channel.connect()
 		except Exception as e:
 			print(f"[PLAY] Voice connect error: {e}")
-			await interaction.followup.send(
-				"❌ I couldn't join your voice channel. Check my permissions."
-			)
 			return
-
+	
 		tier = get_tier_from_message(interaction)
 		queries = _build_query_candidates(song)
+	
 		try:
 			info = await _extract_song_info(queries, tier)
 		except Exception as e:
 			print(f"[PLAY] Extraction error: {e}")
-			await interaction.followup.send(
-				"❌ I couldn't fetch that song. Try a different search or URL.\n"
-				"If YouTube blocks the bot, set `YTDL_COOKIES` to a cookies.txt export."
-			)
 			return
-
+	
 		track = _build_track_from_info(info, interaction.user.mention, tier)
+	
 		if not track.get("stream_url"):
-			await interaction.followup.send(
-				"❌ I couldn't get a playable audio stream for that song."
-			)
+			print("[PLAY] No stream_url in track")
 			return
-
+	
 		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
 		queue = self._queue_for_guild(interaction.guild.id)
-
+	
 		if voice_client.is_playing() or voice_client.is_paused():
 			queue.append(track)
 			await interaction.followup.send(
 				f"✅ Queued **{track['title']}** at position {len(queue)}."
 			)
 			return
-
+	
+		if not voice_client or not voice_client.is_connected():
+			try:
+				voice_client = await channel.connect()
+			except Exception as e:
+				print(f"[PLAY] Reconnect failed: {e}")
+				return
+	
 		try:
 			embed = await self._start_track(interaction.guild, voice_client, track)
 		except Exception as e:
 			print(f"[PLAY] Voice play error: {e}")
-			await interaction.followup.send(
-				"❌ I couldn't start playback. Is FFmpeg installed?"
-			)
+	
+			try:
+				if voice_client and voice_client.is_connected():
+					voice_client.stop()
+			except:
+				pass
+	
 			return
-
+	
 		view = MusicControls(self, interaction.guild.id)
 		message = await interaction.followup.send(embed=embed, view=view)
+	
 		guild_now_message[interaction.guild.id] = {
 			"channel_id": message.channel.id,
 			"message_id": message.id,
