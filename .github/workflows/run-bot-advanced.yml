@@ -47,15 +47,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Write cookies.txt (optional)
+      - name: Write cookies.txt (plain)
         run: |
-          if [ -n "${{ secrets.YTDL_COOKIES_TXT }}" ]; then
-            mkdir -p .secrets
-            echo "${{ secrets.YTDL_COOKIES_TXT }}" | base64 -d > .secrets/cookies.txt
-            echo "cookies.txt written"
-          else
-            echo "No YTDL_COOKIES_B64 secret set"
-          fi
+          mkdir -p .secrets
+          cat << 'EOF' > .secrets/cookies.txt
+          ${{ secrets.YTDL_COOKIES_TXT }}
+          EOF
       
       - name: Initialize usage files if missing
         run: |
