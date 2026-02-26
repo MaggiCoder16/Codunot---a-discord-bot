@@ -291,10 +291,9 @@ YTDL_OPTIONS = {
     "nocheckcertificate": True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
-    "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
     "extractor_args": {
         "youtube": {
-            "player_client": ["ios"],
+            "player_client": ["web_creator", "mweb", "ios"],
             "skip": ["dash", "hls"]
         }
     },
@@ -339,16 +338,16 @@ def _build_query_candidates(song: str) -> list[str]:
 
 
 def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
-	options = dict(YTDL_OPTIONS)
-	if tier in {"premium", "gold"}:
-		options["format"] = "bestaudio/best"
-	else:
-		options["format"] = "bestaudio[abr<=192]/bestaudio/best"
-	if allow_playlist:
-		options["noplaylist"] = False
-	
-	return options
-
+    options = dict(YTDL_OPTIONS)
+    if tier in {"premium", "gold"}:
+        options["format"] = "bestaudio/best"
+    else:
+        options["format"] = "bestaudio[abr<=192]/bestaudio/best"
+    if allow_playlist:
+        options["noplaylist"] = False
+    if COOKIE_PATH:
+        options["cookiefile"] = COOKIE_PATH
+    return options
 
 def _get_quality_label(tier: str) -> str:
 	return "320kbps" if tier in {"premium", "gold"} else "HD"
