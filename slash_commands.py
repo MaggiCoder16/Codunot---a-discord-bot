@@ -386,6 +386,7 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 		opts = _get_ytdl_options(tier, allow_playlist=True)
 		opts.pop("extract_flat", None)
 		opts["playlistend"] = 50
+		opts["ignorerrors"] = True
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(url, download=False)
 
