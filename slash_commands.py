@@ -287,7 +287,7 @@ def _get_ytdl_options(tier: str) -> dict:
 		options["format"] = "bestaudio/best"
 	else:
 		options["format"] = "bestaudio[abr<=192]/bestaudio/best"
-	cookie_path = os.getenv("YTDL_COOKIES", "").strip()
+	cookie_path = os.getenv("YTDL_COOKIES_TXT", "").strip()
 	if cookie_path:
 		options["cookiefile"] = cookie_path
 	return options
