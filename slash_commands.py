@@ -291,8 +291,13 @@ YTDL_OPTIONS = {
     "nocheckcertificate": True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
-    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "extractor_args": {'youtube': {'player_client': ['android', 'web']}},
+    "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["ios"],
+            "skip": ["dash", "hls"]
+        }
+    },
 }
 
 FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
