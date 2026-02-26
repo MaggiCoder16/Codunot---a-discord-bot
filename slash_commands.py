@@ -380,16 +380,12 @@ async def _extract_song_info(queries: list[str], tier: str) -> dict:
 
 
 async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
-	"""
-	Extract all entries from a playlist URL.
-	Returns a list of raw yt-dlp info dicts (one per track).
-	Raises on total failure.
-	"""
 	loop = asyncio.get_running_loop()
 
 	def _extract():
 		opts = _get_ytdl_options(tier, allow_playlist=True)
-		opts["extract_flat"] = "in_playlist"
+		opts.pop("extract_flat", None)
+		opts["playlistend"] = 50
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(url, download=False)
 
@@ -397,7 +393,7 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 	if not data:
 		raise Exception("No data returned from playlist extractor.")
 
-	entries = [e for e in data.get("entries", []) if e]
+	entries = [e for e in data.get("entries", []) if e and e.get("url")]
 	if not entries:
 		raise Exception("Playlist appears to be empty.")
 	return entries
@@ -1393,7 +1389,6 @@ class Codunot(commands.Cog):
 
 		try:
 			if voice_client and voice_client.is_connected():
-				# Already in a different channel — refuse
 				if voice_client.channel.id != channel.id:
 					await interaction.edit_original_response(
 						content=f"❌ I'm already in {voice_client.channel.mention}. Join that channel or stop me first."
@@ -1428,7 +1423,7 @@ class Codunot(commands.Cog):
 				return
 
 			stub_tracks = [
-				_build_track_from_flat_entry(e, interaction.user.mention, tier)
+				_build_track_from_info(e, interaction.user.mention, tier)
 				for e in entries
 			]
 
