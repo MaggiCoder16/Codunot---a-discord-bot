@@ -293,7 +293,7 @@ YTDL_OPTIONS = {
     "source_address": "0.0.0.0",
     "extractor_args": {
         "youtube": {
-            "player_client": ["web_creator", "mweb"],
+            "player_client": ["tv_embedded", "web_creator", "mweb"],
         }
     },
 }
