@@ -1947,16 +1947,10 @@ class Codunot(commands.Cog):
 				f"😅 You can't /{action} yourself. Pick someone else!", ephemeral=False
 			)
 			return
-
+	
 		await interaction.response.defer()
-		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
-
-		if not await require_vote_deferred(interaction):
-			return
-
-		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 		loading_msg = await interaction.followup.send("🎉 **Loading your GIF...**", wait=True)
-
+	
 		try:
 			source_url = random.choice(ACTION_GIF_SOURCES[action])
 			text = random.choice(ACTION_MESSAGES[action]).format(
@@ -1995,43 +1989,33 @@ class Codunot(commands.Cog):
 	async def wish_goodmorning_slash(self, interaction: discord.Interaction, target_user: discord.User):
 		await self._send_action_gif(interaction, "wish_goodmorning", target_user)
 
-	@app_commands.command(name="bet", description="🪙 Bet on heads or tails with a coin flip (Vote Required)")
+	@app_commands.command(name="bet", description="🪙 Bet on heads or tails with a coin flip")
 	@app_commands.describe(side="Choose heads or tails")
 	@app_commands.choices(side=[
 		app_commands.Choice(name="heads", value="heads"),
 		app_commands.Choice(name="tails", value="tails"),
 	])
 	async def bet_slash(self, interaction: discord.Interaction, side: app_commands.Choice[str]):
+	
 		await interaction.response.defer()
-		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
-
-		if not await require_vote_deferred(interaction):
-			return
-
-		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 		await interaction.followup.send("🪙 **Flipping the coin...**")
-
+	
 		result = random.choice(["heads", "tails"])
 		did_win = side.value == result
-
+	
 		if did_win:
 			msg = f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed correctly and wins! 🎉"
 		else:
 			msg = f"🪙 The coin landed on **{result}**! {interaction.user.mention} guessed **{side.value}** and lost this round."
-
+	
 		await interaction.followup.send(msg)
 
-	@app_commands.command(name="meme", description="😂 Send a random meme (Vote Required)")
+	@app_commands.command(name="meme", description="😂 Send a random meme")
 	async def meme_slash(self, interaction: discord.Interaction):
+	
 		await interaction.response.defer()
-		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
-
-		if not await require_vote_deferred(interaction):
-			return
-
-		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
 		await interaction.followup.send("😂 **Loading your meme...**")
-
+	
 		meme_url = random.choice(MEME_SOURCES)
 		embed = discord.Embed(title="😂 Random Meme", color=0x00BFFF)
 		embed.set_image(url=meme_url)
