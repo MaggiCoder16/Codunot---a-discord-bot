@@ -293,7 +293,7 @@ YTDL_OPTIONS = {
     "source_address": "0.0.0.0",
     "extractor_args": {
         "youtube": {
-            "player_client": ["android", "web_creator"],
+            "player_client": ["web_creator", "mweb"],
         }
     },
 }
@@ -346,6 +346,7 @@ def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
         options["noplaylist"] = False
     if COOKIE_PATH:
         options["cookiefile"] = COOKIE_PATH
+    options["js_runtimes"] = f"node:/opt/hostedtoolcache/node/20.20.0/x64/bin/node"
     return options
 
 def _get_quality_label(tier: str) -> str:
