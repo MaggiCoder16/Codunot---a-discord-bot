@@ -1,5 +1,6 @@
 import os
 import io
+import sys
 import asyncio
 import atexit
 import aiohttp
@@ -2405,7 +2406,17 @@ async def on_ready():
 		
 # ---------------- RUN ----------------
 def run():
-	bot.run(DISCORD_TOKEN)
+	if not DISCORD_TOKEN:
+		print("ERROR: DISCORD_TOKEN environment variable is not set. Cannot start the bot.")
+		sys.exit(1)
+	try:
+		bot.run(DISCORD_TOKEN)
+	except discord.errors.LoginFailure as e:
+		print(f"ERROR: Failed to log in to Discord: {e}")
+		sys.exit(1)
+	except discord.errors.PrivilegedIntentsRequired as e:
+		print(f"ERROR: Privileged intents are required but not enabled in the Discord Developer Portal: {e}")
+		sys.exit(1)
 		
 if __name__ == "__main__":
 	atexit.register(save_usage)
