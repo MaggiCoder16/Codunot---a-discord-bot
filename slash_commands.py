@@ -121,18 +121,12 @@ _SPOTIFY_HOSTS = {"open.spotify.com", "play.spotify.com"}
 
 
 def _is_spotify_url(url: str) -> bool:
-	try:
-		parsed = urlparse(url)
-	except Exception:
-		return False
+	parsed = urlparse(url)
 	return (parsed.hostname or "").lower() in _SPOTIFY_HOSTS
 
 
 def _is_spotify_playlist_url(url: str) -> bool:
-	try:
-		parsed = urlparse(url)
-	except Exception:
-		return False
+	parsed = urlparse(url)
 	host = (parsed.hostname or "").lower()
 	return host in _SPOTIFY_HOSTS and parsed.path.lower().startswith("/playlist/")
 
@@ -458,7 +452,7 @@ def _spotify_entry_to_query(entry: dict) -> str | None:
 				name = str(artist).strip()
 			if name:
 				names.append(name)
-		artist_name = ", ".join(names[:2])
+		artist_name = ", ".join(names)
 	elif isinstance(artists, dict):
 		artist_name = (artists.get("name") or "").strip()
 	elif isinstance(artists, str):
@@ -483,14 +477,16 @@ async def _extract_spotify_track_query(url: str, tier: str) -> str:
 
 	data = await loop.run_in_executor(None, _extract)
 	if not data:
-		raise Exception("No data returned from Spotify extractor.")
+		raise Exception(f"No data returned from Spotify extractor for URL: {url}")
 	if "entries" in data:
 		entries = [entry for entry in data.get("entries", []) if entry]
 		if entries:
 			data = entries[0]
 	query = _spotify_entry_to_query(data)
 	if not query:
-		raise Exception("Could not build a search query from Spotify metadata.")
+		raise Exception(
+			f"Could not build a search query from Spotify metadata (title={data.get('title')}, artist={data.get('artist')})."
+		)
 	return query
 
 
