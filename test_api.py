@@ -5,6 +5,7 @@ import requests
 BASE_URL = "https://imggen-api-production.up.railway.app"
 API_KEY = os.getenv("TEST_API_KEY", "").strip()
 HEADERS = {"X-API-Key": API_KEY}
+REQUEST_TIMEOUT = 60
 
 
 def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="1:1"):
@@ -15,7 +16,7 @@ def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="1:1"):
         f"{BASE_URL}/generate",
         headers={**HEADERS, "Content-Type": "application/json"},
         json={"prompt": prompt, "aspect_ratio": aspect_ratio},
-        timeout=60,
+        timeout=REQUEST_TIMEOUT,
     )
 
     if response.status_code != 200:
