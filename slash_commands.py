@@ -10,6 +10,7 @@ import asyncio
 import random
 import traceback
 import tempfile
+import re
 from typing import Optional
 from urllib.parse import urlparse, quote_plus
 
@@ -118,6 +119,7 @@ TRANSCRIBE_HOST_NORMALIZATION = {
 _YT_PLAYLIST_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
 _SC_PLAYLIST_HOSTS = {"soundcloud.com", "www.soundcloud.com"}
 _SPOTIFY_HOSTS = {"open.spotify.com", "play.spotify.com"}
+SPOTIFY_PLAYLIST_FETCH_LIMIT = 50
 
 
 def _is_spotify_url(url: str) -> bool:
@@ -129,6 +131,60 @@ def _is_spotify_playlist_url(url: str) -> bool:
 	parsed = urlparse(url)
 	host = (parsed.hostname or "").lower()
 	return host in _SPOTIFY_HOSTS and parsed.path.lower().startswith("/playlist/")
+
+
+def _spotify_playlist_id_from_url(url: str) -> str | None:
+	parsed = urlparse(url)
+	match = re.match(r"^/playlist/([A-Za-z0-9]+)", parsed.path or "")
+	return match.group(1) if match else None
+
+
+async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
+	playlist_id = _spotify_playlist_id_from_url(url)
+	if not playlist_id:
+		return []
+
+	headers = {"User-Agent": "CodunotBot/1.0"}
+	async with aiohttp.ClientSession(headers=headers) as session:
+		async with session.get(
+			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
+		) as token_resp:
+			if token_resp.status != 200:
+				return []
+			token_data = await token_resp.json()
+		access_token = token_data.get("accessToken")
+		if not access_token:
+			return []
+
+		api_headers = {"Authorization": f"Bearer {access_token}"}
+		# Keep parity with the existing yt-dlp playlist cap in this command.
+		api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit={SPOTIFY_PLAYLIST_FETCH_LIMIT}"
+		async with session.get(api_url, headers=api_headers) as tracks_resp:
+			if tracks_resp.status != 200:
+				return []
+			tracks_data = await tracks_resp.json()
+
+	entries = []
+	for item in tracks_data.get("items", []):
+		track = item.get("track") if isinstance(item, dict) else None
+		if not isinstance(track, dict):
+			continue
+		title = (track.get("name") or "").strip()
+		artists = track.get("artists") if isinstance(track.get("artists"), list) else []
+		artist_names = [a.get("name", "").strip() for a in artists if isinstance(a, dict) and a.get("name")]
+		if not title:
+			continue
+		entries.append(
+			{
+				"title": title,
+				"artists": [{"name": name} for name in artist_names],
+				"artist": ", ".join(artist_names),
+				"url": (track.get("external_urls") or {}).get("spotify"),
+				"duration": (track.get("duration_ms") or 0) // 1000 if track.get("duration_ms") else None,
+			}
+		)
+	return entries
+
 
 def _is_playlist_url(url: str) -> bool:
 	try:
@@ -420,6 +476,7 @@ async def _extract_song_info(queries: list[str], tier: str) -> dict:
 
 async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 	loop = asyncio.get_running_loop()
+	is_spotify_playlist = _is_spotify_playlist_url(url)
 
 	def _extract():
 		opts = _get_ytdl_options(tier, allow_playlist=True)
@@ -429,8 +486,23 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(url, download=False)
 
-	data = await loop.run_in_executor(None, _extract)
+	async def _spotify_fallback() -> list[dict]:
+		if not is_spotify_playlist:
+			return []
+		return await _fetch_spotify_playlist_entries(url)
+
+	try:
+		data = await loop.run_in_executor(None, _extract)
+	except Exception as e:
+		entries = await _spotify_fallback()
+		if entries:
+			print(f"[PLAYLIST EXTRACT] yt-dlp failed for Spotify playlist, using API fallback: {e}")
+			return entries
+		raise
 	if not data:
+		entries = await _spotify_fallback()
+		if entries:
+			return entries
 		raise Exception("No data returned from playlist extractor.")
 
 	entries = [e for e in data.get("entries", []) if e and (e.get("url") or e.get("id"))]
