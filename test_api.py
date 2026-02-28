@@ -8,7 +8,7 @@ REQUEST_TIMEOUT = 60
 ALLOWED_ASPECT_RATIOS = {"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"}
 
 
-def _generate_image_bytes(prompt, aspect_ratio="1:1"):
+def _generate_image_bytes(prompt, aspect_ratio="16:9"):
     """Call imggen txt2img API and return image bytes."""
     api_key = os.getenv("TEST_API_KEY", "").strip()
     if not api_key:
@@ -36,12 +36,12 @@ def _generate_image_bytes(prompt, aspect_ratio="1:1"):
     return response.content
 
 
-async def generate_image(prompt, aspect_ratio="1:1"):
+async def generate_image(prompt, aspect_ratio="16:9"):
     """Async wrapper for slash command integration."""
     return await asyncio.to_thread(_generate_image_bytes, prompt, aspect_ratio)
 
 
-def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="1:1"):
+def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="16:9"):
     image_bytes = _generate_image_bytes(prompt, aspect_ratio)
 
     with open(filename, "wb") as f:
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", default="txt2img_output.jpg", help="Output image filename")
     parser.add_argument(
         "--aspect-ratio",
-        default="1:1",
+        default="16:9",
         choices=sorted(ALLOWED_ASPECT_RATIOS),
         help="Aspect ratio",
     )

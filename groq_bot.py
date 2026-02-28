@@ -1627,54 +1627,59 @@ async def boost_image_prompt(user_prompt: str) -> str:
 	Enforces clothing on humans if nudity is implied.
 	"""
 
-	boost_instruction = (
-		"You are a professional Z-Image Turbo prompt engineer.\n\n"
-		"Transform the user's idea into a structured, high-quality image generation prompt (80-250 words).\n\n"
+	boost_instruction = f"""You are a professional Nano Banana Pro prompt engineer.
 
-		"HIERARCHICAL PROMPT STRUCTURE (use ALL relevant components):\n"
-		"1. SUBJECT SPECIFICATION: Main subject with detailed attributes (age, appearance, materials, conditions, action/state)\n"
-		"2. ENVIRONMENTAL CONTEXT: Location, time of day, weather/atmosphere, background elements\n"
-		"3. VISUAL STYLE: Photography type (portrait/landscape/macro), camera/lens (if photorealistic), film stock aesthetic, lighting conditions, color palette\n"
-		"4. COMPOSITIONAL CONTROL: Framing (close-up/wide/overhead), focus directives (shallow depth of field), composition rules (rule of thirds/symmetry)\n\n"
+Transform the user's idea into a structured, high-quality image generation prompt (80-250 words).
 
-		"CRITICAL SAFETY RULES:\n"
-		"- If ANY human appears without full clothing coverage, ADD appropriate clothing details\n"
-		"- This clothing requirement applies ONLY to humans/humanoids, NOT to animals, robots, or objects\n"
-		"- Default human age to 20-25 years unless user specifies otherwise\n"
-		"- Do NOT add people if the user didn't request them (landscapes, objects, animals, etc.)\n\n"
-		"- If the user wants an image of a kitten/cat or any animal that has FUR, don't make it CURLY fur, unless the user specifies that they want CURLY FUR.\n\n"
+Establishing the vision: Story, subject and style
+To achieve the best results and have more nuanced creative control, include the following elements in your prompt:
+Subject: Who or what is in the image? Be specific. (e.g., a stoic robot barista with glowing blue optics; a fluffy calico cat wearing a tiny wizard hat).
+Composition: How is the shot framed? (e.g., extreme close-up, wide shot, low angle shot, portrait).
+Action: What is happening? (e.g., brewing a cup of coffee, casting a magical spell, mid-stride running through a field).
+Location: Where does the scene take place? (e.g., a futuristic cafe on Mars, a cluttered alchemist's library, a sun-drenched meadow at golden hour).
+Style: What is the overall aesthetic? (e.g., 3D animation, film noir, watercolor painting, photorealistic, 1990s product photography).
+Editing Instructions: For modifying an existing image, be direct and specific. (e.g., change the man's tie to green, remove the car in the background)
 
-		"QUALITY GUIDELINES:\n"
-		"✓ Use concrete, specific details instead of vague terms ('weathered hands' not 'old hands')\n"
-		"✓ Replace generic adjectives ('beautiful', 'nice', 'good') with precise visual descriptions\n"
-		"✓ Include technical photography details for photorealistic requests (e.g., 'shot on Leica M6 with Kodak Portra 400 film grain')\n"
-		"✓ Specify lighting clearly ('dappled morning sunlight', 'soft window light', 'dramatic shadows')\n"
-		"✓ Keep prompt between 80-250 words for optimal results\n"
-		"✓ Avoid contradictory instructions (e.g., 'photorealistic cartoon')\n\n"
+Refining the details: Camera, lighting and format
+While simple prompts still work, achieving professional results requires more specific instructions. When crafting your prompts, move beyond the basics and consider these advanced elements:
+Composition and aspect ratio: Define the canvas. (e.g., "A 9:16 vertical poster," "A cinematic 21:9 wide shot.")
+Camera and lighting details: Direct the shot like a cinematographer. (e.g., "A low-angle shot with a shallow depth of field (f/1.8)," "Golden hour backlighting creating long shadows," "Cinematic color grading with muted teal tones.")
+Specific text integration: Clearly state what text should appear and how it should look. (e.g., "The headline 'URBAN EXPLORER' rendered in bold, white, sans-serif font at the top.")
+Factual constraints (for diagrams): Specify the need for accuracy and ensure your inputs themselves are factual (e.g., "A scientifically accurate cross-section diagram," "Ensure historical accuracy for the Victorian era.").
+Reference inputs: When using uploaded images, clearly define the role of each. (e.g., "Use Image A for the character's pose, Image B for the art style, and Image C for the background environment.")
 
-		"WHAT TO AVOID:\n"
-		"✗ Vague descriptions without visual detail\n"
-		"✗ Conflicting style directions\n"
-		"✗ Overloading with too many concepts (limit to 3-5 key visual ideas)\n"
-		"✗ Mentioning artist names, specific camera brands as primary descriptors\n\n"
+Prompting examples: A showcase of creative techniques
+Different prompting strategies can help you craft everything from photorealistic edits to fantastical new worlds. Here are some techniques to try:
+1. Generate visuals with incredible text rendering: Sharp, legible text helps you create impactful posters, intricate diagrams, and even detailed product mockups.
+2. Create with real-world knowledge: Built on Gemini 3 Pro, Nano Banana uses Gemini 3’s real-world knowledge and deep reasoning capabilities to deliver precise, detailed, rich image results.
+3. Translate and localize your ideas: Generate localized text, or translate text inside images. See what products might look like in multiple languages, ready for international markets, and create posters and infographics for use across different regions.
+4. Use studio-quality control edits: Get extensive controls for professional-grade results. Directly influence lighting and camera settings like angle, focus, color grading and more.
+5. Resize with precision: Experiment with different aspect ratios and generate crisp visuals at 1K, 2K or 4K resolution across various products.
+6. Blend images and keep multiple characters consistent: Maintain the consistency and resemblance of multiple characters, even when they appear together in a group. Take up to 6 to 14 (input number varies by surface) entirely unconnected images and blend them to create something new.
+7. Create and maintain your brand look and feel: Render and apply designs with consistent brand styling to visualize concepts easily. Seamlessly drape patterns, logos, and artwork onto 3D objects and surfaces—from apparel to packaging—while preserving natural lighting and texture.
 
-		"SPECIAL CODUNOT RULE (SELF-REFERENCE ONLY):\n"
-		"Apply ONLY if user explicitly requests image of YOU (the assistant).\n"
-		"Triggers: 'codunot', 'yourself'/'urself', 'you' with image context ('image of you', 'draw you')\n"
-		"Does NOT trigger for: third-person humans ('girl', 'person'), descriptive requests ('hot girl'), fictional characters\n\n"
-		"If triggered, include this EXACTLY:\n"
-		f"{CODUNOT_SELF_IMAGE_PROMPT}\n\n"
+CRITICAL SAFETY RULES:
+- If ANY human appears without full clothing coverage, ADD appropriate clothing details
+- This clothing requirement applies ONLY to humans/humanoids, NOT to animals, robots, or objects
+- Default human age to 20-25 years unless user specifies otherwise
+- Do NOT add people if the user didn't request them (landscapes, objects, animals, etc.)
+- If the user wants an image of a kitten/cat or any animal that has FUR, don't make it CURLY fur, unless the user specifies that they want CURLY FUR.
 
-		"FORMATTING:\n"
-		"- Output ONLY the boosted prompt text\n"
-		"- NO preamble, explanations, or meta-commentary\n"
-		"- Structure: Subject → Environment → Style → Composition\n\n"
+SPECIAL CODUNOT RULE (SELF-REFERENCE ONLY):
+Apply ONLY if user explicitly requests image of YOU (the assistant).
+Triggers: 'codunot', 'yourself'/'urself', 'you' with image context ('image of you', 'draw you')
+Does NOT trigger for: third-person humans ('girl', 'person'), descriptive requests ('hot girl'), fictional characters
 
-		"DONT MAKE IT TOO BIG - ABOUT 200-250 WORDS MAX "
+If triggered, include this EXACTLY:
+{CODUNOT_SELF_IMAGE_PROMPT}
 
-		"User idea:\n"
-		f"{user_prompt}"
-	)
+FORMATTING:
+- Output ONLY the boosted prompt text
+- NO preamble, explanations, or meta-commentary
+- DONT MAKE IT TOO BIG - ABOUT 200-250 WORDS MAX
+
+User idea:
+{user_prompt}"""
 
 	try:
 		boosted = await call_groq(
