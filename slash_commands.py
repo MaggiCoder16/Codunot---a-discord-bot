@@ -836,11 +836,11 @@ class ConfigureGroup(app_commands.Group):
 	async def configure_channels(
 		self,
 		interaction: discord.Interaction,
-		channel_1: discord.TextChannel,
-		channel_2: Optional[discord.TextChannel] = None,
-		channel_3: Optional[discord.TextChannel] = None,
-		channel_4: Optional[discord.TextChannel] = None,
-		channel_5: Optional[discord.TextChannel] = None,
+		channel_1: discord.AppCommandChannel,
+		channel_2: Optional[discord.AppCommandChannel] = None,
+		channel_3: Optional[discord.AppCommandChannel] = None,
+		channel_4: Optional[discord.AppCommandChannel] = None,
+		channel_5: Optional[discord.AppCommandChannel] = None,
 	):
 		if not await self._ensure_guild_owner(interaction):
 			return
@@ -852,7 +852,7 @@ class ConfigureGroup(app_commands.Group):
 		channel_ids = [ch.id for ch in selected_channels]
 		set_channels_mode(interaction.guild.id, channel_ids)
 
-		mentions = ", ".join(ch.mention for ch in selected_channels)
+		mentions = ", ".join(f"<#{ch.id}>" for ch in selected_channels)
 		await interaction.response.send_message(
 			f"✅ Configuration updated: I will now only chat in these channel(s): {mentions}", ephemeral=False
 		)
@@ -861,10 +861,14 @@ class ConfigureGroup(app_commands.Group):
 	@configure_channels.error
 	async def configure_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
 		print(f"[CONFIGURE ERROR] {error}")
-		if interaction.response.is_done():
-			await interaction.followup.send("❌ You are not the server owner.", ephemeral=True)
+		if isinstance(error, app_commands.TransformerError):
+			msg = "❌ I couldn't resolve one of those channels. Please pick channels from the autocomplete list."
 		else:
-			await interaction.response.send_message("❌ You are not the server owner.", ephemeral=True)
+			msg = "❌ You are not the server owner."
+		if interaction.response.is_done():
+			await interaction.followup.send(msg, ephemeral=True)
+		else:
+			await interaction.response.send_message(msg, ephemeral=True)
 
 
 # ── Main Cog ──────────────────────────────────────────────────────────────────
@@ -1406,6 +1410,16 @@ class Codunot(commands.Cog):
 			consume_total(interaction, "attachments", usage_key=usage_key, money_left=balance)
 			save_usage()
 
+		except RuntimeError as e:
+			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
+			if "API request failed (400)" in str(e):
+				await interaction.followup.send(
+					f"{interaction.user.mention} ⚠️ The image API couldn't process that prompt. Please try a different prompt."
+				)
+			else:
+				await interaction.followup.send(
+					f"{interaction.user.mention} 🤔 Couldn't generate image right now. Please try again later."
+				)
 		except Exception as e:
 			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
 			traceback.print_exc()
