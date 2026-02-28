@@ -1,7 +1,7 @@
 {
   "1462315093365883015": {
     "day": "2026-02-28",
-    "messages": 0,
+    "messages": 2,
     "images": 10,
     "files": 0,
     "attachments": 0
@@ -386,7 +386,7 @@
     "attachments": 3
   },
   "1366829116451586198": {
-    "day": "2026-02-27",
+    "day": "2026-02-28",
     "messages": 0,
     "attachments": 0
   },
@@ -508,11 +508,21 @@
   "1129433598253084826": {
     "day": "2026-02-28",
     "messages": 44,
-    "attachments": 3
+    "attachments": 4
   },
   "939848762006835230": {
     "day": "2026-02-28",
     "messages": 0,
+    "attachments": 0
+  },
+  "1458043179042476200": {
+    "day": "2026-02-28",
+    "messages": 2,
+    "attachments": 0
+  },
+  "1435778768424931372": {
+    "day": "2026-02-28",
+    "messages": 7,
     "attachments": 0
   }
 }
