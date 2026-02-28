@@ -17,7 +17,7 @@ from urllib.parse import urlparse, quote_plus
 import yt_dlp
 
 from memory import MemoryManager
-from deAPI_client_image import generate_image
+from test_api import generate_image
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
@@ -1394,8 +1394,7 @@ class Codunot(commands.Cog):
 		await interaction.followup.send("🎨 **Cooking up your image... hang tight ✨**")
 
 		try:
-			boosted_prompt = await boost_image_prompt(prompt)
-			image_bytes = await generate_image(boosted_prompt, aspect_ratio="1:1", steps=15)
+			image_bytes = await generate_image(prompt, aspect_ratio="16:9")
 
 			output_text = (
 				f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}...`"
