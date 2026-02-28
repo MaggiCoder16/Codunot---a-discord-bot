@@ -36,9 +36,28 @@ def _generate_image_bytes(prompt, aspect_ratio="16:9"):
     return response.content
 
 
+def _get_balance(api_key):
+    response = requests.get(
+        f"{BASE_URL}/balance",
+        headers={"X-API-Key": api_key},
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return float(data["balance"])
+
+
 async def generate_image(prompt, aspect_ratio="16:9"):
     """Async wrapper for slash command integration."""
-    return await asyncio.to_thread(_generate_image_bytes, prompt, aspect_ratio)
+    image_bytes = await asyncio.to_thread(_generate_image_bytes, prompt, aspect_ratio)
+    api_key = os.getenv("TEST_API_KEY", "").strip()
+    balance = None
+    if api_key:
+        try:
+            balance = await asyncio.to_thread(_get_balance, api_key)
+        except Exception:
+            balance = None
+    return image_bytes, balance
 
 
 def text_to_image(prompt, filename="txt2img_output.jpg", aspect_ratio="16:9"):
