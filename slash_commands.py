@@ -117,6 +117,18 @@ TRANSCRIBE_HOST_NORMALIZATION = {
 
 _YT_PLAYLIST_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
 _SC_PLAYLIST_HOSTS = {"soundcloud.com", "www.soundcloud.com"}
+_SPOTIFY_HOSTS = {"open.spotify.com", "play.spotify.com"}
+
+
+def _is_spotify_url(url: str) -> bool:
+	parsed = urlparse(url)
+	return (parsed.hostname or "").lower() in _SPOTIFY_HOSTS
+
+
+def _is_spotify_playlist_url(url: str) -> bool:
+	parsed = urlparse(url)
+	host = (parsed.hostname or "").lower()
+	return host in _SPOTIFY_HOSTS and parsed.path.lower().startswith("/playlist/")
 
 def _is_playlist_url(url: str) -> bool:
 	try:
@@ -132,6 +144,8 @@ def _is_playlist_url(url: str) -> bool:
 		return "list=" in query
 	if host in _SC_PLAYLIST_HOSTS:
 		return "/sets/" in parsed.path
+	if host in _SPOTIFY_HOSTS:
+		return parsed.path.lower().startswith("/playlist/")
 	return False
 
 ACTION_GIF_SOURCES = {
@@ -425,6 +439,57 @@ async def _extract_playlist_info(url: str, tier: str) -> list[dict]:
 	return entries
 
 
+def _spotify_entry_to_query(entry: dict) -> str | None:
+	title = (entry.get("title") or "").strip()
+	artists = entry.get("artists")
+	artist_name = ""
+	if isinstance(artists, list):
+		names = []
+		for artist in artists:
+			if isinstance(artist, dict):
+				name = (artist.get("name") or "").strip()
+			else:
+				name = str(artist).strip()
+			if name:
+				names.append(name)
+		artist_name = ", ".join(names)
+	elif isinstance(artists, dict):
+		artist_name = (artists.get("name") or "").strip()
+	elif isinstance(artists, str):
+		artist_name = artists.strip()
+	if not artist_name:
+		artist_name = (
+			(entry.get("artist") or "").strip()
+			or (entry.get("uploader") or "").strip()
+			or (entry.get("channel") or "").strip()
+		)
+	query_text = f"{artist_name} - {title}" if artist_name and title else (title or artist_name)
+	return f"ytsearch1:{query_text}" if query_text else None
+
+
+async def _extract_spotify_track_query(url: str, tier: str) -> str:
+	loop = asyncio.get_running_loop()
+
+	def _extract():
+		opts = _get_ytdl_options(tier)
+		with yt_dlp.YoutubeDL(opts) as ytdl:
+			return ytdl.extract_info(url, download=False)
+
+	data = await loop.run_in_executor(None, _extract)
+	if not data:
+		raise Exception(f"No data returned from Spotify extractor for URL: {url}")
+	if "entries" in data:
+		entries = [entry for entry in data.get("entries", []) if entry]
+		if entries:
+			data = entries[0]
+	query = _spotify_entry_to_query(data)
+	if not query:
+		raise Exception(
+			f"Could not build a search query from Spotify metadata (title={data.get('title')}, artist={data.get('artist')})."
+		)
+	return query
+
+
 async def _resolve_flat_entry(entry: dict, tier: str) -> dict | None:
 	url = entry.get("webpage_url") or entry.get("url")
 	if not url:
@@ -469,6 +534,24 @@ def _build_track_from_flat_entry(entry: dict, requested_by: str, tier: str) -> d
 		"thumbnail": entry.get("thumbnail"),
 		"stream_url": None,
 		"_flat_url": webpage_url,
+		"requested_by": requested_by,
+		"tier": tier,
+		"quality": _get_quality_label(tier),
+	}
+
+
+def _build_track_from_spotify_entry(entry: dict, requested_by: str, tier: str) -> dict:
+	title = entry.get("title") or "Unknown title"
+	webpage_url = entry.get("webpage_url") or entry.get("url")
+	search_query = _spotify_entry_to_query(entry)
+	return {
+		"title": title,
+		"web_url": webpage_url,
+		"uploader": entry.get("artist") or entry.get("uploader") or "Unknown",
+		"duration": entry.get("duration"),
+		"thumbnail": entry.get("thumbnail"),
+		"stream_url": None,
+		"_flat_url": search_query,
 		"requested_by": requested_by,
 		"tier": tier,
 		"quality": _get_quality_label(tier),
@@ -1349,7 +1432,7 @@ class Codunot(commands.Cog):
 		name="play",
 		description="🎵 Play a song or playlist in your voice channel (HD free, 320kbps Premium/Gold)"
 	)
-	@app_commands.describe(song="Song name, URL, or playlist URL (YouTube/SoundCloud)")
+	@app_commands.describe(song="Song name, URL, or playlist URL (YouTube/SoundCloud/Spotify)")
 	async def play_slash(self, interaction: discord.Interaction, song: str):
 		if interaction.guild is None:
 			await interaction.response.send_message("❌ This command can only be used in a server.", ephemeral=True)
@@ -1406,7 +1489,10 @@ class Codunot(commands.Cog):
 				await interaction.edit_original_response(content="❌ That playlist appears to be empty.")
 				return
 
-			stub_tracks = [_build_track_from_flat_entry(e, interaction.user.mention, tier) for e in entries]
+			if _is_spotify_playlist_url(song):
+				stub_tracks = [_build_track_from_spotify_entry(e, interaction.user.mention, tier) for e in entries]
+			else:
+				stub_tracks = [_build_track_from_flat_entry(e, interaction.user.mention, tier) for e in entries]
 			queue = self._queue_for_guild(interaction.guild.id)
 
 			if voice_client.is_playing() or voice_client.is_paused():
@@ -1448,7 +1534,16 @@ class Codunot(commands.Cog):
 			return
 
 		# ── Single track branch ───────────────────────────────────────────────
-		queries = _build_query_candidates(song)
+		if _looks_like_url(song) and _is_spotify_url(song):
+			await interaction.edit_original_response(content="🔍 Resolving Spotify link...")
+			try:
+				queries = [await _extract_spotify_track_query(song, tier)]
+			except Exception as e:
+				print(f"[PLAY] Spotify resolve error: {e}")
+				await interaction.edit_original_response(content="❌ Couldn't resolve that Spotify link. Try another one.")
+				return
+		else:
+			queries = _build_query_candidates(song)
 		await interaction.edit_original_response(content="🔍 Searching for your song...")
 
 		try:

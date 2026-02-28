@@ -25,6 +25,15 @@ python -m http.server 8080
 
 Open: `http://localhost:8080/index.html`
 
+## 🎵 Spotify support notes
+
+- You **do not need a Spotify API key** for `/play` Spotify links in this bot.
+- Spotify links are resolved through `yt-dlp` metadata and then searched on playable sources.
+- Manual requirements:
+  - Use **public** Spotify track/playlist links.
+  - Keep bot voice dependencies working (`ffmpeg`, `discord.py[voice]`, `yt_dlp`).
+  - If source sites rate-limit/age-gate some tracks, provide cookies via `YTDL_COOKIE_CONTENT` or `YTDL_COOKIES_TXT`.
+
 ## 🧩 Communities data (Discord API export)
 
 To refresh `website/communities.json` from the Discord API:
