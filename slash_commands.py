@@ -17,7 +17,7 @@ from urllib.parse import urlparse, quote_plus
 import yt_dlp
 
 from memory import MemoryManager
-from test_api import generate_image
+from test_api import generate_image, ImageAPIError
 from deAPI_client_text2vid import generate_video as text_to_video_512
 from deAPI_client_text2speech import text_to_speech
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
@@ -1410,9 +1410,9 @@ class Codunot(commands.Cog):
 			consume_total(interaction, "attachments", usage_key=usage_key, money_left=balance)
 			save_usage()
 
-		except RuntimeError as e:
+		except ImageAPIError as e:
 			print(f"[SLASH IMAGE ERROR] type={type(e).__name__} err={e}")
-			if "API request failed (400)" in str(e):
+			if e.status_code == 400:
 				await interaction.followup.send(
 					f"{interaction.user.mention} ⚠️ The image API couldn't process that prompt. Please try a different prompt."
 				)

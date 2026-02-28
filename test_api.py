@@ -8,6 +8,12 @@ REQUEST_TIMEOUT = 60
 ALLOWED_ASPECT_RATIOS = {"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"}
 
 
+class ImageAPIError(RuntimeError):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(f"API request failed ({status_code}): {message}")
+        self.status_code = status_code
+
+
 def _generate_image_bytes(prompt, aspect_ratio="16:9"):
     """Call imggen txt2img API and return image bytes."""
     api_key = os.getenv("TEST_API_KEY", "").strip()
@@ -30,7 +36,7 @@ def _generate_image_bytes(prompt, aspect_ratio="16:9"):
             error = response.json().get("error", response.text)
         except ValueError:
             error = response.text
-        raise RuntimeError(f"API request failed ({response.status_code}): {error}")
+        raise ImageAPIError(response.status_code, error)
     if not response.headers.get("Content-Type", "").startswith("image/"):
         raise RuntimeError(f"Unexpected content type: {response.headers.get('Content-Type', 'unknown')}")
     return response.content
