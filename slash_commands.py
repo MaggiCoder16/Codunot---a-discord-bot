@@ -1401,14 +1401,9 @@ class Codunot(commands.Cog):
 				if len(prompt) > 150
 				else f"{interaction.user.mention} 🖼️ Generated: `{prompt}`"
 			)
-			output_text += (
-				f"\n💰 Money left: `${balance:.2f}`"
-				if balance is not None
-				else "\n💰 Money left: `unavailable`"
-			)
 			await self._deliver_paid_attachment(interaction, output_text, "generated_image.png", image_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
-			consume_total(interaction, "attachments", usage_key=usage_key)
+			consume_total(interaction, "attachments", usage_key=usage_key, money_left=balance)
 			save_usage()
 
 		except Exception as e:

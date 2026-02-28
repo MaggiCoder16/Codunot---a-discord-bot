@@ -215,7 +215,7 @@ def check_total_limit(message_or_interaction, kind: str, usage_key: str | None =
 
 	return len(history) < limit
 
-def consume_total(message_or_interaction, kind: str, usage_key: str | None = None):
+def consume_total(message_or_interaction, kind: str, usage_key: str | None = None, money_left: float | None = None):
 	if is_owner(message_or_interaction):
 		return  # Don't consume for owners
 	
@@ -245,6 +245,7 @@ def consume_total(message_or_interaction, kind: str, usage_key: str | None = Non
 		"key=", key,
 		f"daily={daily}/{daily_limit}",
 		f"rolling={len(_prune(history))}/{total_limit}",
+		f"money_left={'unavailable' if money_left is None else f'${money_left:.2f}'}",
 		"time=", datetime.utcfromtimestamp(ts).isoformat()
 	)
 	
