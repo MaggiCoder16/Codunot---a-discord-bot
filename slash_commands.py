@@ -58,6 +58,7 @@ guild_now_message: dict[int, dict] = {}
 guild_queue_messages: dict[int, list[dict]] = {}
 guild_last_text_channel: dict[int, int] = {}
 guild_last_activity = {}
+guild_volumes: dict[int, float] = {}
 _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
 
@@ -304,6 +305,9 @@ YTDL_OPTIONS = {
 }
 
 FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+MUSIC_VOLUME_STEP = 0.1
+MUSIC_VOLUME_MIN = 0.1
+MUSIC_VOLUME_MAX = 2.0
 
 _NODE_CANDIDATES = [
 	"/opt/hostedtoolcache/node/20.20.0/x64/bin/node",
@@ -532,6 +536,14 @@ class MusicControls(discord.ui.View):
 	@discord.ui.button(emoji="▶️", style=discord.ButtonStyle.secondary)
 	async def resume_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_resume(interaction)
+
+	@discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary)
+	async def volume_down_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+		await self.cog._music_volume_change(interaction, -MUSIC_VOLUME_STEP)
+
+	@discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary)
+	async def volume_up_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+		await self.cog._music_volume_change(interaction, MUSIC_VOLUME_STEP)
 
 	@discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary)
 	async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -899,6 +911,14 @@ class Codunot(commands.Cog):
 	def _queue_messages_for_guild(self, guild_id: int) -> list[dict]:
 		return guild_queue_messages.setdefault(guild_id, [])
 
+	def _get_volume_for_guild(self, guild_id: int) -> float:
+		return guild_volumes.get(guild_id, 1.0)
+
+	def _set_volume_for_guild(self, guild_id: int, value: float) -> float:
+		clamped = max(MUSIC_VOLUME_MIN, min(MUSIC_VOLUME_MAX, round(value, 2)))
+		guild_volumes[guild_id] = clamped
+		return clamped
+
 	# ── Music engine ──────────────────────────────────────────────────────────
 
 	async def _start_idle_timer(self, guild_id: int):
@@ -969,7 +989,11 @@ class Codunot(commands.Cog):
 			)
 
 		print(f"[START_TRACK] Starting FFmpegPCMAudio")
-		source = discord.FFmpegPCMAudio(track["stream_url"], **_get_ffmpeg_options())
+		volume = self._get_volume_for_guild(guild.id)
+		source = discord.PCMVolumeTransformer(
+			discord.FFmpegPCMAudio(track["stream_url"], **_get_ffmpeg_options()),
+			volume=volume,
+		)
 		voice_client.play(source, after=_after_playback)
 		print(f"[START_TRACK] voice_client.play() called for: {track.get('title')}")
 
@@ -1055,6 +1079,17 @@ class Codunot(commands.Cog):
 			await interaction.followup.send("▶️ Resumed.", ephemeral=False)
 		else:
 			await interaction.followup.send("❌ Nothing is paused.", ephemeral=False)
+
+	async def _music_volume_change(self, interaction: discord.Interaction, delta: float):
+		guild_id = interaction.guild.id
+		voice_client = interaction.guild.voice_client
+		new_volume = self._set_volume_for_guild(guild_id, self._get_volume_for_guild(guild_id) + delta)
+		if voice_client and voice_client.source and hasattr(voice_client.source, "volume"):
+			voice_client.source.volume = new_volume
+		await interaction.followup.send(
+			f"🔊 Volume set to **{int(new_volume * 100)}%**.",
+			ephemeral=False,
+		)
 
 	async def _music_stop(self, interaction: discord.Interaction):
 		voice_client = interaction.guild.voice_client
