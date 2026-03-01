@@ -142,7 +142,10 @@ def _spotify_playlist_id_from_url(url: str) -> str | None:
 async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 	playlist_id = _spotify_playlist_id_from_url(url)
 	if not playlist_id:
+		print(f"[SPOTIFY] Could not extract playlist ID from URL: {url}")
 		return []
+
+	print(f"[SPOTIFY] Fetching playlist ID: {playlist_id}")
 
 	headers = {
 		"User-Agent": (
@@ -160,33 +163,45 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player",
 			headers={"app-platform": "WebPlayer"},
 		) as token_resp:
+			print(f"[SPOTIFY] Web player token status: {token_resp.status}")
 			if token_resp.status == 200:
 				token_data = await token_resp.json()
 				access_token = token_data.get("accessToken") or ""
+				print(f"[SPOTIFY] Web player token obtained: {bool(access_token)}")
+			else:
+				body = await token_resp.text()
+				print(f"[SPOTIFY] Web player token failed body: {body[:200]}")
 
 		if not access_token:
 			access_token = (os.getenv("SPOTIFY_ACCESS_TOKEN") or "").strip()
 			use_market_from_token = False
+			print(f"[SPOTIFY] Tried SPOTIFY_ACCESS_TOKEN env: {bool(access_token)}")
 
 		if not access_token:
 			client_id = (os.getenv("SPOTIFY_CLIENT_ID") or "").strip()
 			client_secret = (os.getenv("SPOTIFY_CLIENT_SECRET") or "").strip()
+			print(f"[SPOTIFY] Trying client credentials — client_id set: {bool(client_id)}, client_secret set: {bool(client_secret)}")
 			if client_id and client_secret:
 				async with session.post(
 					"https://accounts.spotify.com/api/token",
 					auth=aiohttp.BasicAuth(client_id, client_secret),
 					data={"grant_type": "client_credentials"},
 				) as cred_resp:
+					print(f"[SPOTIFY] Client credentials status: {cred_resp.status}")
 					if cred_resp.status == 200:
 						cred_data = await cred_resp.json()
 						access_token = cred_data.get("access_token") or ""
 						use_market_from_token = False
+						print(f"[SPOTIFY] Client credentials token obtained: {bool(access_token)}")
+					else:
+						body = await cred_resp.text()
+						print(f"[SPOTIFY] Client credentials failed body: {body[:200]}")
 
 		if not access_token:
+			print(f"[SPOTIFY] ERROR: Could not obtain any access token — aborting")
 			return []
 
 		api_headers = {"Authorization": f"Bearer {access_token}"}
-		# Keep parity with the existing yt-dlp playlist cap in this command.
 		api_urls = []
 		if use_market_from_token:
 			api_urls.append(
@@ -201,12 +216,22 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 		tracks_data = None
 		for api_url in api_urls:
 			async with session.get(api_url, headers=api_headers) as tracks_resp:
+				print(f"[SPOTIFY] Tracks API URL: {api_url}")
+				print(f"[SPOTIFY] Tracks API status: {tracks_resp.status}")
 				if tracks_resp.status == 200:
 					tracks_data = await tracks_resp.json()
+					print(f"[SPOTIFY] Tracks API returned data, keys: {list(tracks_data.keys()) if isinstance(tracks_data, dict) else type(tracks_data)}")
 					break
+				else:
+					body = await tracks_resp.text()
+					print(f"[SPOTIFY] Tracks API failed body: {body[:300]}")
+
 		items = tracks_data.get("items") if isinstance(tracks_data, dict) else None
 		if not isinstance(tracks_data, dict) or not isinstance(items, list):
+			print(f"[SPOTIFY] ERROR: tracks_data invalid — tracks_data type={type(tracks_data)}, items type={type(items)}")
 			return []
+
+		print(f"[SPOTIFY] Got {len(items)} items from playlist")
 
 	entries = []
 	for item in tracks_data.get("items", []):
@@ -227,6 +252,8 @@ async def _fetch_spotify_playlist_entries(url: str) -> list[dict]:
 				"duration": (track.get("duration_ms") or 0) // 1000 if track.get("duration_ms") else None,
 			}
 		)
+
+	print(f"[SPOTIFY] Built {len(entries)} track entries")
 	return entries
 
 
@@ -584,27 +611,68 @@ def _spotify_entry_to_query(entry: dict) -> str | None:
 
 
 async def _extract_spotify_track_query(url: str, tier: str) -> str:
-	loop = asyncio.get_running_loop()
+	parsed = urlparse(url)
+	path = parsed.path or ""
+	match = re.match(r"^/track/([A-Za-z0-9]+)", path)
+	if not match:
+		raise Exception(f"Not a valid Spotify track URL: {url}")
+	track_id = match.group(1)
 
-	def _extract():
-		opts = _get_ytdl_options(tier)
-		with yt_dlp.YoutubeDL(opts) as ytdl:
-			return ytdl.extract_info(url, download=False)
+	headers = {
+		"User-Agent": (
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+			"AppleWebKit/537.36 (KHTML, like Gecko) "
+			"Chrome/133.0.0.0 Safari/537.36"
+		),
+		"Referer": "https://open.spotify.com/",
+		"Origin": "https://open.spotify.com",
+	}
 
-	data = await loop.run_in_executor(None, _extract)
-	if not data:
-		raise Exception(f"No data returned from Spotify extractor for URL: {url}")
-	if "entries" in data:
-		entries = [entry for entry in data.get("entries", []) if entry]
-		if entries:
-			data = entries[0]
-	query = _spotify_entry_to_query(data)
-	if not query:
-		raise Exception(
-			f"Could not build a search query from Spotify metadata (title={data.get('title')}, artist={data.get('artist')})."
-		)
-	return query
+	access_token = ""
+	async with aiohttp.ClientSession(headers=headers) as session:
+		async with session.get(
+			"https://open.spotify.com/get_access_token?reason=transport&productType=web_player",
+			headers={"app-platform": "WebPlayer"},
+		) as token_resp:
+			if token_resp.status == 200:
+				token_data = await token_resp.json()
+				access_token = token_data.get("accessToken") or ""
 
+		if not access_token:
+			client_id = (os.getenv("SPOTIFY_CLIENT_ID") or "").strip()
+			client_secret = (os.getenv("SPOTIFY_CLIENT_SECRET") or "").strip()
+			if client_id and client_secret:
+				async with session.post(
+					"https://accounts.spotify.com/api/token",
+					auth=aiohttp.BasicAuth(client_id, client_secret),
+					data={"grant_type": "client_credentials"},
+				) as cred_resp:
+					if cred_resp.status == 200:
+						cred_data = await cred_resp.json()
+						access_token = cred_data.get("access_token") or ""
+
+		if not access_token:
+			raise Exception("Could not obtain Spotify access token for track lookup.")
+
+		async with session.get(
+			f"https://api.spotify.com/v1/tracks/{track_id}",
+			headers={"Authorization": f"Bearer {access_token}"},
+		) as track_resp:
+			if track_resp.status != 200:
+				raise Exception(f"Spotify API returned {track_resp.status} for track {track_id}")
+			track_data = await track_resp.json()
+
+	title = (track_data.get("name") or "").strip()
+	artists = track_data.get("artists") or []
+	artist_names = [a.get("name", "").strip() for a in artists if isinstance(a, dict) and a.get("name")]
+	artist_str = ", ".join(artist_names)
+
+	query_text = f"{artist_str} - {title}" if artist_str and title else (title or artist_str)
+	if not query_text:
+		raise Exception(f"Could not build search query from Spotify track metadata (id={track_id})")
+
+	print(f"[SPOTIFY TRACK] Resolved '{query_text}' from track ID {track_id}")
+	return f"ytsearch1:{query_text}"
 
 async def _resolve_flat_entry(entry: dict, tier: str) -> dict | None:
 	url = entry.get("webpage_url") or entry.get("url")
