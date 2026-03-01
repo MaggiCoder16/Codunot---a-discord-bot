@@ -32,6 +32,10 @@ Open: `http://localhost:8080/index.html`
 - Optional fallback if Spotify blocks anonymous access in your region:
   - `SPOTIFY_ACCESS_TOKEN` (Bearer token), or
   - `SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET` (client credentials flow).
+- How to get Spotify credentials:
+  - Go to **https://developer.spotify.com/dashboard** and create an app.
+  - Copy **Client ID** and **Client Secret** into `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`.
+  - If you already have a valid short-lived bearer token, you can set `SPOTIFY_ACCESS_TOKEN` instead.
 - Manual requirements:
   - Use **public** Spotify track/playlist links.
   - Keep bot voice dependencies working (`ffmpeg`, `discord.py[voice]`, `yt_dlp`).
@@ -67,7 +71,7 @@ Set secrets in: **GitHub repo → Settings → Secrets and variables → Actions
 - `YTDL_COOKIES_CONTENT`  
   Use this exact secret name in GitHub Actions. The workflow writes it to `cookies.txt` and passes the path as `YTDL_COOKIES_TXT`.
 - `SPOTIFY_ACCESS_TOKEN` **or** (`SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET`)  
-  Optional Spotify fallback only if anonymous Spotify access fails.
+  Optional Spotify fallback only if anonymous Spotify access fails. Get these from Spotify Developer Dashboard: https://developer.spotify.com/dashboard
 
 ### Notes
 
