@@ -62,10 +62,10 @@ _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
 
 # ── Lavalink node ─────────────────────────────────────────────────────────────
-LAVALINK_HOST = "lavalink.nextgencoders.xyz"
-LAVALINK_PORT = 443
-LAVALINK_PASSWORD = "nextgencoderspvt"
-LAVALINK_SECURE = True
+LAVALINK_HOST = os.getenv("LAVALINK_HOST", "").strip()
+LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "443"))
+LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "")
+LAVALINK_SECURE = os.getenv("LAVALINK_SECURE", "true").strip().lower() in ("true", "1", "yes")
 
 # ── yt-dlp fallback ───────────────────────────────────────────────────────────
 
@@ -549,15 +549,23 @@ class Codunot(commands.Cog):
 	# ── Lavalink connect ──────────────────────────────────────────────────────
 
 	async def cog_load(self):
+		if not LAVALINK_HOST:
+			print("[LAVALINK] No LAVALINK_HOST configured — Lavalink disabled, using yt-dlp fallback")
+			return
 		node = wavelink.Node(
 			uri=f"{'https' if LAVALINK_SECURE else 'http'}://{LAVALINK_HOST}:{LAVALINK_PORT}",
 			password=LAVALINK_PASSWORD,
+			retries=3,
 		)
 		try:
 			await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
 			print(f"[LAVALINK] Connected to {LAVALINK_HOST}")
 		except Exception as e:
 			print(f"[LAVALINK] Failed to connect: {e} — will fall back to yt-dlp for non-Spotify")
+			try:
+				await wavelink.Pool.close()
+			except Exception:
+				pass
 
 	def _lavalink_available(self) -> bool:
 		try:

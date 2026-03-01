@@ -72,6 +72,14 @@ Set secrets in: **GitHub repo → Settings → Secrets and variables → Actions
   Use this exact secret name in GitHub Actions. The workflow writes it to `cookies.txt` and passes the path as `YTDL_COOKIES_TXT`.
 - `SPOTIFY_ACCESS_TOKEN` **or** (`SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET`)  
   Optional Spotify fallback only if anonymous Spotify access fails. Get these from Spotify Developer Dashboard: https://developer.spotify.com/dashboard
+- `LAVALINK_HOST`  
+  Hostname of a Lavalink server (e.g. `lavalink.example.com`). Leave empty or unset to disable Lavalink and use the yt-dlp fallback for all music playback.
+- `LAVALINK_PORT`  
+  Port for the Lavalink server. Defaults to `443`.
+- `LAVALINK_PASSWORD`  
+  Password for the Lavalink server.
+- `LAVALINK_SECURE`  
+  Set to `true` for HTTPS or `false` for HTTP. Defaults to `true`.
 
 ### Notes
 
