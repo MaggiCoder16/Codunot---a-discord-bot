@@ -63,7 +63,11 @@ _COOKIE_TEMP_PATH: str = ""
 
 # ── Lavalink node ─────────────────────────────────────────────────────────────
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "").strip()
-LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "443"))
+try:
+	LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "443"))
+except ValueError:
+	print("[LAVALINK] Invalid LAVALINK_PORT value, defaulting to 443")
+	LAVALINK_PORT = 443
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "")
 LAVALINK_SECURE = os.getenv("LAVALINK_SECURE", "true").strip().lower() in ("true", "1", "yes")
 
@@ -564,8 +568,8 @@ class Codunot(commands.Cog):
 			print(f"[LAVALINK] Failed to connect: {e} — will fall back to yt-dlp for non-Spotify")
 			try:
 				await wavelink.Pool.close()
-			except Exception:
-				pass
+			except Exception as close_err:
+				print(f"[LAVALINK] Pool cleanup error: {close_err}")
 
 	def _lavalink_available(self) -> bool:
 		try:
