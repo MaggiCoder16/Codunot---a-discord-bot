@@ -101,7 +101,7 @@ YTDL_OPTIONS = {
 	"nocheckcertificate": True,
 	"default_search": "ytsearch",
 	"source_address": "0.0.0.0",
-	"extractor_args": {"youtube": {"player_client": ["ios", "mweb"]}},
+	"extractor_args": {"youtube": {"player_client": ["mweb", "web"]}},
 }
 FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
@@ -574,7 +574,7 @@ class Codunot(commands.Cog):
 
 	async def cog_load(self):
 		if not LAVALINK_HOST:
-			print("[LAVALINK] No LAVALINK_HOST configured — Lavalink disabled, Spotify won't work")
+			print("[LAVALINK] No LAVALINK_HOST configured — Lavalink disabled, Spotify will use yt-dlp fallback")
 			return
 		# Build a custom session with relaxed SSL to work around
 		# TLSV1_UNRECOGNIZED_NAME errors on some Lavalink hosts.
@@ -596,7 +596,7 @@ class Codunot(commands.Cog):
 			await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
 			print(f"[LAVALINK] Connected to {LAVALINK_HOST}")
 		except Exception as e:
-			print(f"[LAVALINK] Failed to connect: {e} — Spotify won't work")
+			print(f"[LAVALINK] Failed to connect: {e} — Spotify will use yt-dlp fallback")
 			try:
 				await wavelink.Pool.close()
 			except Exception as close_err:
@@ -994,13 +994,7 @@ class Codunot(commands.Cog):
 		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
 
 		# ── Spotify → Lavalink ───────────────────────────────────────────────
-		if _is_spotify_url(song):
-			if not self._lavalink_available():
-				await interaction.edit_original_response(
-					content="❌ Spotify requires Lavalink which is currently unavailable. Try again in a moment."
-				)
-				return
-
+		if _is_spotify_url(song) and self._lavalink_available():
 			try:
 				player: wavelink.Player = interaction.guild.voice_client
 				if not player or not isinstance(player, wavelink.Player):
