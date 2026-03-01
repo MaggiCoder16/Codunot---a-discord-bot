@@ -62,19 +62,18 @@ Set secrets in: **GitHub repo → Settings → Secrets and variables → Actions
 | `TOPGG_TOKEN` | No | **top.gg** bot page (vote checks) |
 | `TOPGG_WEBHOOK_AUTH` | No | Same value configured in top.gg webhook settings |
 | `YTDL_COOKIES_CONTENT` | No | Netscape cookie-jar text (helps bypass age-gated content) |
-| `LAVALINK_HOST` | No | Hostname of a Lavalink server; leave empty to use yt-dlp fallback |
-| `LAVALINK_PORT` | No | Lavalink port (defaults to `443`) |
-| `LAVALINK_PASSWORD` | No | Lavalink password |
-| `LAVALINK_SECURE` | No | `true` for HTTPS, `false` for HTTP (defaults to `true`) |
+| `LAVALINK_HOST` | **No** | Hostname of a Lavalink server. **You do not need this** — leave empty and music plays via yt-dlp |
+| `LAVALINK_PORT` | **No** | Lavalink port (defaults to `443`). Only needed if you set `LAVALINK_HOST` |
+| `LAVALINK_PASSWORD` | **No** | Lavalink password. Only needed if you set `LAVALINK_HOST` |
+| `LAVALINK_SECURE` | **No** | `true` for HTTPS, `false` for HTTP (defaults to `true`). Only needed if you set `LAVALINK_HOST` |
 
 ### Running locally
 
-Copy `.env.example` to `.env`, fill in at least `DISCORD_TOKEN` and `GROQ_API_KEY`, and export the variables before running:
+Set at least `DISCORD_TOKEN` and `GROQ_API_KEY` as environment variables before running:
 
 ```bash
-cp .env.example .env
-# edit .env with your values
-export $(grep -v '^#' .env | xargs)
+export DISCORD_TOKEN="your-token-here"
+export GROQ_API_KEY="your-key-here"
 python groq_bot.py
 ```
 
