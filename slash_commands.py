@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import ssl
 import time
 import io
 import json
@@ -572,18 +573,28 @@ class Codunot(commands.Cog):
 
 	async def cog_load(self):
 		if not LAVALINK_HOST:
-			print("[LAVALINK] No LAVALINK_HOST configured — Lavalink disabled, using yt-dlp fallback")
+			print("[LAVALINK] No LAVALINK_HOST configured — Lavalink disabled, Spotify won't work")
 			return
+		# Build a custom session with relaxed SSL to work around
+		# TLSV1_UNRECOGNIZED_NAME errors on some Lavalink hosts.
+		session: aiohttp.ClientSession | None = None
+		if LAVALINK_SECURE:
+			ctx = ssl.create_default_context()
+			ctx.check_hostname = False
+			ctx.verify_mode = ssl.CERT_NONE
+			connector = aiohttp.TCPConnector(ssl=ctx)
+			session = aiohttp.ClientSession(connector=connector)
 		node = wavelink.Node(
 			uri=f"{'https' if LAVALINK_SECURE else 'http'}://{LAVALINK_HOST}:{LAVALINK_PORT}",
 			password=LAVALINK_PASSWORD,
+			session=session,
 			retries=3,
 		)
 		try:
 			await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
 			print(f"[LAVALINK] Connected to {LAVALINK_HOST}")
 		except Exception as e:
-			print(f"[LAVALINK] Failed to connect: {e} — will fall back to yt-dlp for non-Spotify")
+			print(f"[LAVALINK] Failed to connect: {e} — Spotify won't work")
 			try:
 				await wavelink.Pool.close()
 			except Exception as close_err:
@@ -972,7 +983,14 @@ class Codunot(commands.Cog):
 		tier = get_tier_from_message(interaction)
 		guild_last_text_channel[interaction.guild.id] = interaction.channel.id
 
-		if self._lavalink_available():
+		# ── Spotify → Lavalink ───────────────────────────────────────────────
+		if _is_spotify_url(song):
+			if not self._lavalink_available():
+				await interaction.edit_original_response(
+					content="❌ Spotify requires Lavalink which is currently unavailable. Try again in a moment."
+				)
+				return
+
 			try:
 				player: wavelink.Player = interaction.guild.voice_client
 				if not player or not isinstance(player, wavelink.Player):
@@ -984,14 +1002,13 @@ class Codunot(commands.Cog):
 					return
 				await player.set_volume(guild_volume.get(interaction.guild.id, 100))
 
-				await interaction.edit_original_response(content="🔍 Searching...")
+				await interaction.edit_original_response(content="🔍 Searching Spotify via Lavalink...")
 
 				tracks = await wavelink.Playable.search(song)
 				if not tracks:
 					raise Exception("No results found.")
 
 				if isinstance(tracks, wavelink.Playlist):
-					# Playlist
 					added = 0
 					first_track = None
 					for track in tracks.tracks:
@@ -1013,7 +1030,6 @@ class Codunot(commands.Cog):
 						"title": embed.description or "Unknown",
 					}
 				else:
-					# Single track
 					track = tracks[0] if isinstance(tracks, list) else tracks
 					if player.playing:
 						player.queue.put(track)
@@ -1025,7 +1041,6 @@ class Codunot(commands.Cog):
 						queue_messages.append({"channel_id": queued_msg.channel.id, "message_id": queued_msg.id})
 					else:
 						await player.play(track)
-						# Save to history
 						history = guild_history.setdefault(interaction.guild.id, [])
 						if len(history) > 25:
 							history.pop(0)
@@ -1040,9 +1055,13 @@ class Codunot(commands.Cog):
 				return
 
 			except Exception as e:
-				print(f"[LAVALINK] Play error: {e} — falling back to yt-dlp")
+				print(f"[LAVALINK] Spotify play error: {e}")
+				await interaction.edit_original_response(
+					content=f"❌ Lavalink failed to load this Spotify link: {e}"
+				)
+				return
 
-		# ── yt-dlp fallback ──────────────────────────────────────────────────
+		# ── Everything else → yt-dlp ─────────────────────────────────────────
 
 		voice_client = interaction.guild.voice_client
 		try:
@@ -1064,7 +1083,7 @@ class Codunot(commands.Cog):
 			await interaction.edit_original_response(content="❌ Couldn't connect to your voice channel.")
 			return
 
-		await interaction.edit_original_response(content="🔍 Searching (yt-dlp fallback)...")
+		await interaction.edit_original_response(content="🔍 Searching...")
 
 		# ── Playlist handling ────────────────────────────────────────────
 		if _is_playlist_url(song):

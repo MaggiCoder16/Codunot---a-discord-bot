@@ -27,11 +27,11 @@ Open: `http://localhost:8080/index.html`
 
 ## 🎵 Spotify support notes
 
-- You **do not need a Spotify API key** or **Lavalink** for `/play` with Spotify links.
-- Spotify tracks and playlists are handled by `yt-dlp` — no extra secrets needed.
-- Playlists auto-queue: the first track plays immediately, remaining tracks queue and auto-advance.
+- Spotify tracks and playlists are played via **Lavalink** — set `LAVALINK_HOST`, `LAVALINK_PORT`, `LAVALINK_PASSWORD`, and `LAVALINK_SECURE`.
+- YouTube and other sources are played via **yt-dlp** (no Lavalink needed).
+- If Lavalink is not configured, Spotify links will show an error — everything else still works.
 - Manual requirements:
-  - Use **public** Spotify track/playlist links.
+  - A running **Lavalink server** with a Spotify plugin (e.g. [LavaSrc](https://github.com/topi314/LavaSrc)).
   - Keep bot voice dependencies working (`ffmpeg`, `discord.py[voice]`, `yt_dlp`).
   - If source sites rate-limit/age-gate some tracks, provide cookies via `YTDL_COOKIE_CONTENT` (code env), or `YTDL_COOKIES_CONTENT` in GitHub Actions workflow (written to `YTDL_COOKIES_TXT` path).
 
@@ -56,9 +56,9 @@ Set secrets in: **GitHub repo → Settings → Secrets and variables → Actions
 | `TOPGG_TOKEN` | No | **top.gg** bot page (vote checks) |
 | `TOPGG_WEBHOOK_AUTH` | No | Same value configured in top.gg webhook settings |
 | `YTDL_COOKIES_CONTENT` | No | Netscape cookie-jar text (helps bypass age-gated content) |
-| `LAVALINK_HOST` | No | Hostname of a Lavalink server. Leave empty — music plays via yt-dlp without it |
+| `LAVALINK_HOST` | No | Hostname of a Lavalink server. **Required for Spotify** playback |
 | `LAVALINK_PORT` | No | Lavalink port (defaults to `443`). Only set if you use Lavalink |
-| `LAVALINK_PASSWORD` | No | Lavalink password. Only set if you use Lavalink |
+| `LAVALINK_PASSWORD` | No | Lavalink password. **Required for Spotify** playback |
 | `LAVALINK_SECURE` | No | `true` for HTTPS, `false` for HTTP (defaults to `true`). Only set if you use Lavalink |
 
 ### Running locally
