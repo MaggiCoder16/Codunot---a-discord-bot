@@ -1348,7 +1348,7 @@ class Codunot(commands.Cog):
 		except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
 			print(f"[SLASH IMAGE ERROR] {e}")
 			traceback.print_exc()
-			await interaction.followup.send(f"{interaction.user.mention} ⏱️ The image API timed out. The server may be busy — please try again in a moment.")
+			await interaction.followup.send(f"{interaction.user.mention} ⏱️ The image API timed out after multiple attempts. The server may be busy — please try again in a moment.")
 		except Exception as e:
 			print(f"[SLASH IMAGE ERROR] {e}")
 			traceback.print_exc()
