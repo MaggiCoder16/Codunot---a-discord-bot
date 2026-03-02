@@ -5,8 +5,8 @@ import time
 import requests
 
 BASE_URL = "https://imggen-api-production.up.railway.app"
-REQUEST_TIMEOUT = 120
-MAX_RETRIES = 2
+REQUEST_TIMEOUT = 180
+MAX_RETRIES = 3
 
 # Aspect ratio to (width, height) mapping for flux2max
 ASPECT_RATIO_DIMENSIONS = {
