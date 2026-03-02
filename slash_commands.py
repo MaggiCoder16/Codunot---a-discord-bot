@@ -1339,7 +1339,7 @@ class Codunot(commands.Cog):
 		await interaction.followup.send("🎨 **Cooking up your image... hang tight ✨**")
 		try:
 			boosted_prompt = await boost_image_prompt(prompt)
-			image_bytes, balance = await generate_image(boosted_prompt, aspect_ratio="16:9")
+			image_bytes, balance = await generate_image(boosted_prompt, aspect_ratio="1:1")
 			output_text = f"{interaction.user.mention} 🖼️ Generated: `{prompt[:150]}{'...' if len(prompt) > 150 else ''}`"
 			await self._deliver_paid_attachment(interaction, output_text, "generated_image.png", image_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
