@@ -72,7 +72,7 @@ def _generate_image_bytes(prompt, aspect_ratio="16:9"):
             if attempt < MAX_RETRIES:
                 time.sleep(2 ** attempt)
         except ImageAPIError as e:
-            if e.status_code >= 500:
+            if 500 <= e.status_code < 600:
                 last_exc = e
                 print(f"[IMGGEN] Attempt {attempt}/{MAX_RETRIES} server error: {e}")
                 if attempt < MAX_RETRIES:
