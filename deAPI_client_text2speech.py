@@ -19,7 +19,7 @@ async def text_to_speech(
     text: str,
     voice: str,
     lang: str,
-    model: str = "Qwen3_TTS_12Hz_1_7B_CustomVoice",
+    model: str = "Kokoro",
     speed: float = 1.0,
     format: str = "mp3",
     sample_rate: int = 24000,
@@ -49,7 +49,6 @@ async def text_to_speech(
     form.add_field("speed", str(speed))
     form.add_field("format", format)
     form.add_field("sample_rate", str(sample_rate))
-    form.add_field("mode", "custom_voice")
 
     async with aiohttp.ClientSession(headers=headers) as session:
         async with session.post(

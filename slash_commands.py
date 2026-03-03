@@ -47,12 +47,14 @@ VOTE_DURATION = 12 * 60 * 60
 BYPASS_IDS = {1220934047794987048, 1167443519070290051}
 BOT_NAME = "Codunot"
 TTS_VOICES = [
-	"Aiden", "Dylan", "Eric", "Ono_Anna", "Ryan",
-	"Serena", "Sohee", "Uncle_Fu", "Vivian",
+	"Adam", "Alloy", "Aoede", "Bella", "Echo",
+	"Eric", "Fenrir", "Heart", "Jessica", "Kore",
+	"Liam", "Michael", "Nicole", "Nova", "Onyx",
+	"Puck", "River", "Santa", "Sarah", "Sky",
 ]
 TTS_LANGUAGES = [
-	"Chinese", "English", "French", "German", "Italian",
-	"Japanese", "Korean", "Portuguese", "Russian", "Spanish",
+	"English (GB)", "English (US)", "France", "Hindi",
+	"Italian", "Portugal (BR)", "Spain",
 ]
 boost_image_prompt = None
 boost_video_prompt = None
@@ -1468,7 +1470,7 @@ class Codunot(commands.Cog):
 		try:
 			audio_url = await text_to_speech(
 				text=text,
-				model="Qwen3_TTS_12Hz_1_7B_CustomVoice",
+				model="Kokoro",
 				voice=voice.value,
 				lang=language.value,
 				speed=1,
