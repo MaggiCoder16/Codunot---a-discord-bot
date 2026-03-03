@@ -407,14 +407,6 @@ class MusicControls(discord.ui.View):
 	async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_next(interaction)
 
-	@discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary)
-	async def volume_down_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-		await self.cog._music_adjust_volume(interaction, -10)
-
-	@discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary)
-	async def volume_up_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-		await self.cog._music_adjust_volume(interaction, 10)
-
 	@discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
 	async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_stop(interaction)
@@ -756,7 +748,7 @@ class Codunot(commands.Cog):
 		embed.add_field(name="Duration", value=duration, inline=True)
 		embed.add_field(name="Requested By", value=requested_by, inline=True)
 		embed.add_field(name="Quality", value=quality, inline=True)
-		embed.set_footer(text="HD free • 320kbps for Premium/Gold • yt-dlp fallback")
+		embed.set_footer(text="HD free • 320kbps for Premium/Gold")
 		return embed
 
 	# ── Music control helpers ─────────────────────────────────────────────────
