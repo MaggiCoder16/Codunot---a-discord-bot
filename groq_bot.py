@@ -106,6 +106,11 @@ user_vote_unlocks = {}
 channel_last_images = {}
 channel_last_chess_result = {}
 
+# Promotional message tracking
+channel_message_counts = {}
+PROMO_MIN_MESSAGES = 10
+PROMO_MAX_MESSAGES = 25
+
 # ---------------- SETUP SLASH COMMANDS ----------------
 @bot.event
 async def setup_hook():
@@ -145,6 +150,65 @@ async def setup_hook():
 			)
 	except Exception as e:
 		print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
+
+# ---------------- PROMOTIONAL EMBED ----------------
+def build_support_promo_embed() -> discord.Embed:
+	"""Build the promotional support/upgrade embed"""
+	embed = discord.Embed(
+		title="🤖 Codunot - Help & Upgrades",
+		color=0xFFA500
+	)
+
+	help_text = (
+		"**Having issues using Codunot?**\n"
+		"Type `!codunot_help` in DMs, "
+		"`@Codunot AI !codunot_help` in servers, "
+		"or join the [support server](https://discord.gg/GVuFk5gxtW)"
+	)
+
+	upgrade_text = (
+		"**Upgrade to Premium or Gold**\n"
+		"I, a 13 year old, have done a lot of hard work to make this bot, "
+		"and I also spend some of my pocket money on this bot on APIs, "
+		"and a good cloud for hosting the bot.\n\n"
+		"Support me by upgrading to premium or gold, though this is totally your choice :)"
+	)
+
+	embed.description = f"{help_text}\n\n{upgrade_text}"
+
+	embed.set_footer(
+		text="💡 This message is sent randomly • Learn more: discord.gg/GVuFk5gxtW"
+	)
+
+	return embed
+
+async def maybe_send_promo_message(channel, chan_id: str):
+	"""
+	Randomly send promotional embed based on message count.
+	Appears at least once every 25 messages, at most once every 10 messages.
+	"""
+	current_count = channel_message_counts.get(chan_id, 0)
+	current_count += 1
+	channel_message_counts[chan_id] = current_count
+
+	if current_count < PROMO_MIN_MESSAGES:
+		return
+
+	if current_count >= PROMO_MAX_MESSAGES:
+		should_send = True
+	else:
+		progress = (current_count - PROMO_MIN_MESSAGES) / (PROMO_MAX_MESSAGES - PROMO_MIN_MESSAGES)
+		should_send = random.random() < (0.2 + progress * 0.3)
+
+	if should_send:
+		try:
+			embed = build_support_promo_embed()
+			await channel.send(embed=embed)
+			channel_message_counts[chan_id] = 0
+		except discord.errors.Forbidden:
+			print(f"[PROMO] Cannot send in channel {chan_id} - Missing Permissions")
+		except Exception as e:
+			print(f"[PROMO ERROR] {e}")
 
 # ---------------- COMMANDS ----------------
 @bot.command(name="codunot_help")
@@ -852,11 +916,6 @@ PERSONAS = {
 "Help: !codunot_help | Vote unlock 12h: top.gg link | Support: discord link\n"
 "Tiers: Basic 50/day, Premium 100/day ($10/2mo), Gold unlimited ($15/2mo)\n\n"
 
-"Helpfulness rules:\n"
-"If user seems confused (sends '?', 'what', 'how', unclear messages) → gently explain how to interact: in servers ping @Codunot AI + message, in DMs just type.\n"
-"If user asks 'how do I use this' or 'what can you do' → give a friendly summary of features and how to chat.\n"
-"If user tries to interact incorrectly → kindly correct them with an example.\n\n"
-
 "Rules:\n"
 "Check history; treat pasted logs/screenshots as context.\n"
 "If asked latest info → use web search.\n"
@@ -879,11 +938,6 @@ PERSONAS = {
 "Commands & features: same as Fun Mode.\n"
 "Help: !codunot_help | Support server | Tiers: Basic 50/day, Premium 100/day, Gold unlimited.\n\n"
 
-"Helpfulness rules:\n"
-"If user seems confused (sends '?', 'what', 'how', unclear messages) → clearly explain how to interact: in servers mention @Codunot AI + message, in DMs just type directly.\n"
-"If user asks 'how do I use this' or 'what can you do' → provide a structured list of features and usage instructions.\n"
-"If user tries to interact incorrectly → politely correct them with the proper format.\n\n"
-
 "Rules:\n"
 "Check history. Treat pasted logs as context.\n"
 "If asked model → contact owner.\n"
@@ -904,11 +958,6 @@ PERSONAS = {
 "Never uncensored swears; may censor lightly.\n\n"
 
 "Commands & features: same as Fun Mode.\n\n"
-
-"Helpfulness rules:\n"
-"If user seems confused (sends '?', 'what', 'how') → help them out (with a light roast): in servers ping @Codunot AI + message, in DMs just type.\n"
-"If user asks 'how do I use this' or 'what can you do' → explain features while roasting them for not knowing.\n"
-"If user tries to interact incorrectly → roast them gently and show the correct way.\n\n"
 
 "Rules:\n"
 "Check history.\n"
@@ -936,10 +985,6 @@ PERSONAS = {
 "Always leave room to reply. Lead convo. Specific > generic. Move forward. Timing matters.\n"
 "Short replies may mean testing/disinterest. Emoji balance matters. No double text <48h.\n\n"
 
-"Helpfulness rules:\n"
-"If user seems confused → explain: paste a convo screenshot or describe your situation, and I'll coach you through it.\n"
-"If user asks 'how do I use this' → explain: in servers ping @Codunot AI + your situation, in DMs just type.\n\n"
-
 "No swearing.\n"
 "If asked about server setup → mention /configure server and /configure channels.\n"
 "Max 2000 characters."
@@ -956,10 +1001,6 @@ PERSONAS = {
 "Principles:\n"
 "Confidence = posture + tone. Approach within 3s. No pickup lines. Read body language.\n"
 "Environment matters. Small talk is bridge. Exit gracefully. Number isn't goal — connection is.\n\n"
-
-"Helpfulness rules:\n"
-"If user seems confused → explain: describe the real-life situation and I'll give you a game plan.\n"
-"If user asks 'how do I use this' → explain: in servers ping @Codunot AI + your situation, in DMs just type.\n\n"
 
 "No swearing.\n"
 "If asked about server setup → mention /configure server and /configure channels.\n"
@@ -1075,6 +1116,7 @@ async def handle_roast_mode(chan_id, message, user_message):
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
+	await maybe_send_promo_message(message.channel, chan_id)
 
 async def handle_rizz_message(chan_id, message, mode):
 	guild_id = message.guild.id if message.guild else None
@@ -1108,6 +1150,7 @@ async def handle_rizz_message(chan_id, message, mode):
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
+	await maybe_send_promo_message(message.channel, chan_id)
 
 async def generate_and_reply(chan_id, message, content, mode):
 	guild_id = message.guild.id if message.guild else None
@@ -1157,6 +1200,9 @@ async def generate_and_reply(chan_id, message, content, mode):
 	channel_memory[chan_id].append(f"{BOT_NAME}: {reply}")
 	memory.add_message(chan_id, BOT_NAME, reply)
 	memory.persist()
+	
+	# ---------------- PROMOTIONAL MESSAGE ----------------
+	await maybe_send_promo_message(message.channel, chan_id)
 
 async def should_search_web(user_text: str) -> bool:
 	"""Ask the model if fresh web data is likely needed for this user query."""
@@ -2076,6 +2122,7 @@ async def on_message(message: Message):
 				channel_memory[chan_id].append(f"{BOT_NAME}: {image_reply}")
 				memory.add_message(chan_id, BOT_NAME, image_reply)
 				memory.persist()
+				await maybe_send_promo_message(message.channel, chan_id)
 				
 			return
 		
