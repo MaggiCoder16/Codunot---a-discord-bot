@@ -72,7 +72,7 @@ VOTE_DURATION = 12 * 60 * 60
 MAX_MEMORY = 20
 RATE_LIMIT = 30
 MAX_IMAGE_BYTES = 2_000_000  # 2 MB
-MAX_TTS_LENGTH = 150
+MAX_TTS_LENGTH = 150  # kept for reference only
 VOTE_FILE = "vote_unlocks.json"
 
 MERGE_KEYWORDS = [
@@ -250,7 +250,7 @@ async def help_command(ctx: commands.Context):
 			"• 🎨 Generate Image — `/generate_image`\n"
 			"• 🎬 Generate Video — `/generate_video`\n"
 			"• 📝 Video to Text (YT/Twitch/X/Kick, max 30 mins) — `/transcribe`\n"
-			"• 🔊 Text-to-Speech — `/generate_tts`\n"
+			"• 🔊 Text-to-Speech — `/generate_tts` (choose voice & language)\n"
 			"• 🎵 Play Music — `/play [song/URL]`\n"
 			"• 🖌️ Edit Images (send image + instruction)\n"
 			"• 🖼️ Merge Images (attach 2+ images + say 'merge')\n"
@@ -708,7 +708,7 @@ async def require_vote(message) -> None:
 		value=(
 			"🎨 Image Generation — `/generate_image`\n"
 			"🎬 Video Generation — `/generate_video`\n"
-			"🔊 Text-to-Speech — `/generate_tts`\n"
+			"🔊 Text-to-Speech — `/generate_tts` (choose voice & language)\n"
 			"🎵 Play Music — `/play [song/URL]`\n"
 			"🖌️ Edit Images (send image + instruction)\n"
 			"🖼️ Merge Images (attach 2+ images + say merge)\n"
@@ -908,7 +908,7 @@ PERSONAS = {
 "Commands:\n"
 "Modes: !funmode/!roastmode/!seriousmode/!teachmerizz/!chessmode (slash versions too)\n"
 "Owner: /configure server, /configure channels\n"
-"/generate_image /generate_video /generate_tts(≤150 chars) /transcribe(YouTube/Twitch/X/Kick ≤30min)\n"
+"/generate_image /generate_video /generate_tts(voice+language) /transcribe(YouTube/Twitch/X/Kick ≤30min)\n"
 "Image edit (attach+instruction, vote), merge (2+ images + merge/combine/blend/mix, vote), analysis (attach+ask)\n"
 "File read: .txt/.pdf/.docx (vote)\n"
 "/play (vote), /chessmode (e4, Nf3)\n"

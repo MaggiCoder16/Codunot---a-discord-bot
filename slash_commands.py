@@ -46,7 +46,14 @@ OWNER_IDS = set()
 VOTE_DURATION = 12 * 60 * 60
 BYPASS_IDS = {1220934047794987048, 1167443519070290051}
 BOT_NAME = "Codunot"
-MAX_TTS_LENGTH = 150
+TTS_VOICES = [
+	"Aiden", "Dylan", "Eric", "Ono_Anna", "Ryan",
+	"Serena", "Sohee", "Uncle_Fu", "Vivian",
+]
+TTS_LANGUAGES = [
+	"Chinese", "English", "French", "German", "Italian",
+	"Japanese", "Korean", "Portuguese", "Russian", "Spanish",
+]
 boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
@@ -429,7 +436,7 @@ def _build_vote_embed() -> discord.Embed:
 		"• 🖌️ **Edit Images** — send image + instruction\n"
 		"• 🖼️ **Merge Images** — attach 2+ images + say merge\n"
 		"• 🎬 **Generate Video** — `/generate_video`\n"
-		"• 🔊 **Text-to-Speech** — `/generate_tts`\n"
+		"• 🔊 **Text-to-Speech** — `/generate_tts` (choose voice & language)\n"
 		"• 🎵 **Play Music** — `/play [song/URL]` in voice channels"
 	), inline=False)
 	embed.add_field(name="📁 File Tools", value=(
@@ -1420,33 +1427,54 @@ class Codunot(commands.Cog):
 			traceback.print_exc()
 			await interaction.followup.send(f"{interaction.user.mention} 🤔 Couldn't generate video right now.")
 
-	@app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio")
-	@app_commands.describe(text="The text you want to convert to speech")
-	async def generate_tts_slash(self, interaction: discord.Interaction, text: str):
+	@app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio — pick a voice & language")
+	@app_commands.describe(
+		text="The text you want to convert to speech",
+		voice="Choose a voice for the speech",
+		language="Choose the language for the speech",
+	)
+	@app_commands.choices(
+		voice=[app_commands.Choice(name=v, value=v) for v in TTS_VOICES],
+		language=[app_commands.Choice(name=l, value=l) for l in TTS_LANGUAGES],
+	)
+	async def generate_tts_slash(
+		self,
+		interaction: discord.Interaction,
+		text: str,
+		voice: app_commands.Choice[str],
+		language: app_commands.Choice[str],
+	):
 		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
 		if not await require_vote_deferred(interaction):
 			return
 		await interaction.edit_original_response(content="✅ **Vote verified! You're good to go.**")
-		if len(text) > MAX_TTS_LENGTH:
-			await interaction.followup.send(f"🚫 Text too long! Max {MAX_TTS_LENGTH} chars. Yours: {len(text)}.")
-			return
 		if not check_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send("🚫 You've hit your **daily TTS generation limit**.")
 			return
 		if not check_total_limit(interaction, "attachments", usage_key=usage_key):
 			await interaction.followup.send("🚫 You've hit your **2 months' TTS generation limit**.")
 			return
-		await interaction.followup.send("🔊 **Generating your audio... almost there 🎙️**")
+		await interaction.followup.send(
+			f"🔊 **Generating your audio** (voice: **{voice.value}**, language: **{language.value}**)... almost there 🎙️"
+		)
 		try:
-			audio_url = await text_to_speech(text=text, voice="am_michael")
+			audio_url = await text_to_speech(
+				text=text,
+				model="Qwen3_TTS_12Hz_1_7B_CustomVoice",
+				voice=voice.value,
+				lang=language.value,
+				speed=1,
+				format="mp3",
+				sample_rate=24000,
+			)
 			async with aiohttp.ClientSession() as session:
 				async with session.get(audio_url) as resp:
 					if resp.status != 200:
 						raise Exception("Failed to download TTS audio")
 					audio_bytes = await resp.read()
-			output_text = f"{interaction.user.mention} 🔊 TTS: `{text[:150]}{'...' if len(text) > 150 else ''}`"
+			output_text = f"{interaction.user.mention} 🔊 TTS ({voice.value}/{language.value}): `{text[:200]}{'...' if len(text) > 200 else ''}`"
 			await self._deliver_paid_attachment(interaction, output_text, "speech.mp3", audio_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key)
