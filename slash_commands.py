@@ -979,7 +979,7 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
 		if not interaction.user.voice or not interaction.user.voice.channel:
-			await interaction.response.send_message("❌ Join a voice channel first!", ephemeral=True)
+			await interaction.response.send_message("🤔 Join a voice channel first, then use `/play [song name]` to start jamming! 🎵", ephemeral=True)
 			return
 
 		await interaction.response.defer()
@@ -1270,7 +1270,14 @@ class Codunot(commands.Cog):
 		channel_modes[chan_id] = "funny"
 		memory.save_channel_mode(chan_id, "funny")
 		channel_chess[chan_id] = False
-		await interaction.response.send_message("😎 Fun mode activated!", ephemeral=False)
+		await interaction.response.send_message(
+			"😎 **Fun mode activated!**\n"
+			"🎮 **How to chat:**\n"
+			"📍 In servers: `@Codunot AI your message`\n"
+			"💬 In DMs: Just talk normally!\n\n"
+			"I'll keep it fun, use emojis, and match your vibe. Try asking me anything! 💬✨",
+			ephemeral=False
+		)
 
 	@app_commands.command(name="seriousmode", description="🤓 Activate Serious Mode - clean, fact-based help")
 	async def seriousmode_slash(self, interaction: discord.Interaction):
@@ -1279,7 +1286,13 @@ class Codunot(commands.Cog):
 		channel_modes[chan_id] = "serious"
 		memory.save_channel_mode(chan_id, "serious")
 		channel_chess[chan_id] = False
-		await interaction.response.send_message("🤓 Serious mode ON", ephemeral=False)
+		await interaction.response.send_message(
+			"🤓 **Serious mode ON.**\n"
+			"📍 In servers: `@Codunot AI your question`\n"
+			"💬 In DMs: Just type your question directly.\n\n"
+			"I'll give clear, structured answers — great for homework, research, or coding help.",
+			ephemeral=False
+		)
 
 	@app_commands.command(name="roastmode", description="🔥 Activate Roast Mode - playful burns")
 	async def roastmode_slash(self, interaction: discord.Interaction):
@@ -1288,7 +1301,13 @@ class Codunot(commands.Cog):
 		channel_modes[chan_id] = "roast"
 		memory.save_channel_mode(chan_id, "roast")
 		channel_chess[chan_id] = False
-		await interaction.response.send_message("🔥 ROAST MODE ACTIVATED", ephemeral=False)
+		await interaction.response.send_message(
+			"🔥 **ROAST MODE ACTIVATED!**\n"
+			"📍 In servers: `@Codunot AI roast me` or `@Codunot AI roast @someone`\n"
+			"💬 In DMs: Just type who or what to roast!\n\n"
+			"Brace yourself — I don't hold back (much) 😈",
+			ephemeral=False
+		)
 
 	@app_commands.command(name="teachmerizz", description="💬 Activate Rizz Coach mode")
 	@app_commands.describe(mode="Choose online (texting/DMs) or irl (real life)")
@@ -1303,12 +1322,22 @@ class Codunot(commands.Cog):
 			channel_modes[chan_id] = "rizz_online"
 			memory.save_channel_mode(chan_id, "rizz_online")
 			channel_chess[chan_id] = False
-			await interaction.response.send_message("💬 **Rizz Coach (Online) activated!**\nSend your situation 👇")
+			await interaction.response.send_message(
+				"💬 **Rizz Coach (Online) activated!**\n"
+				"📍 In servers: `@Codunot AI` + your situation or screenshot\n"
+				"💬 In DMs: Just type or paste your convo directly!\n\n"
+				"Send a screenshot, paste a convo, or describe what's happening — I'll coach you through it 👇"
+			)
 		elif mode.value == "irl":
 			channel_modes[chan_id] = "rizz_irl"
 			memory.save_channel_mode(chan_id, "rizz_irl")
 			channel_chess[chan_id] = False
-			await interaction.response.send_message("🗣️ **Rizz Coach (IRL) activated!**\nDescribe your situation 👇")
+			await interaction.response.send_message(
+				"🗣️ **Rizz Coach (IRL) activated!**\n"
+				"📍 In servers: `@Codunot AI` + describe your situation\n"
+				"💬 In DMs: Just type what's going on!\n\n"
+				"Describe the situation, ask for tips, or tell me what happened — I got you 👇"
+			)
 
 	@app_commands.command(name="chessmode", description="♟️ Activate Chess Mode - play chess with Codunot")
 	async def chessmode_slash(self, interaction: discord.Interaction):
@@ -1317,7 +1346,19 @@ class Codunot(commands.Cog):
 		channel_chess[chan_id] = True
 		channel_modes[chan_id] = "funny"
 		chess_engine.new_board(chan_id)
-		await interaction.response.send_message("♟️ Chess mode ACTIVATED. You are white, start!", ephemeral=False)
+		await interaction.response.send_message(
+			"♟️ **Chess mode ACTIVATED!** You're playing white, I'm black.\n"
+			"📍 **In servers:** Ping me with your move: `@Codunot AI e4`\n"
+			"💬 **In DMs:** Just type your move directly: `e4`\n\n"
+			"🎯 **Try these opening moves:**\n"
+			"• `e4` — King's pawn\n"
+			"• `d4` — Queen's pawn\n"
+			"• `Nf3` — Knight to f3\n\n"
+			"💡 Move formats: `e4`, `Nf3`, `Bxc4`, `O-O` (castle kingside), `O-O-O` (queenside)\n"
+			"You can also ask for hints, resign, or chat about the position!\n"
+			"Your move! ♟️",
+			ephemeral=False
+		)
 
 	# ── AI generation commands ────────────────────────────────────────────────
 

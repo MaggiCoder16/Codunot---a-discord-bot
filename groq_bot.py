@@ -270,7 +270,13 @@ async def funmode(ctx: commands.Context):
 	memory.save_channel_mode(chan_id, "funny")
 	channel_chess[chan_id] = False
 
-	await ctx.send("😎 Fun mode activated!")
+	await ctx.send(
+		"😎 **Fun mode activated!**\n"
+		"🎮 **How to chat:**\n"
+		"📍 In servers: `@Codunot AI your message`\n"
+		"💬 In DMs: Just talk normally!\n\n"
+		"I'll keep it fun, use emojis, and match your vibe. Try asking me anything! 💬✨"
+	)
 
 
 @bot.command(name="seriousmode")
@@ -285,7 +291,12 @@ async def seriousmode(ctx: commands.Context):
 	memory.save_channel_mode(chan_id, "serious")
 	channel_chess[chan_id] = False
 
-	await ctx.send("🤓 Serious mode ON")
+	await ctx.send(
+		"🤓 **Serious mode ON.**\n"
+		"📍 In servers: `@Codunot AI your question`\n"
+		"💬 In DMs: Just type your question directly.\n\n"
+		"I'll give clear, structured answers — great for homework, research, or coding help."
+	)
 
 
 @bot.command(name="roastmode")
@@ -300,7 +311,12 @@ async def roastmode(ctx: commands.Context):
 	memory.save_channel_mode(chan_id, "roast")
 	channel_chess[chan_id] = False
 
-	await ctx.send("🔥 ROAST MODE ACTIVATED")
+	await ctx.send(
+		"🔥 **ROAST MODE ACTIVATED!**\n"
+		"📍 In servers: `@Codunot AI roast me` or `@Codunot AI roast @someone`\n"
+		"💬 In DMs: Just type who or what to roast!\n\n"
+		"Brace yourself — I don't hold back (much) 😈"
+	)
 
 @bot.command(name="teachmerizz")
 async def teachmerizz(ctx: commands.Context, submode: str = None):
@@ -326,7 +342,9 @@ async def teachmerizz(ctx: commands.Context, submode: str = None):
 		channel_chess[chan_id] = False
 		await ctx.send(
 			"💬 **Rizz Coach (Online) activated!**\n"
-			"Send your situation, paste a convo, or just ask anything 👇"
+			"📍 In servers: `@Codunot AI` + your situation or screenshot\n"
+			"💬 In DMs: Just type or paste your convo directly!\n\n"
+			"Send a screenshot, paste a convo, or describe what's happening — I'll coach you through it 👇"
 		)
 
 	elif submode == "irl":
@@ -335,7 +353,9 @@ async def teachmerizz(ctx: commands.Context, submode: str = None):
 		channel_chess[chan_id] = False
 		await ctx.send(
 			"🗣️ **Rizz Coach (IRL) activated!**\n"
-			"Describe your situation, ask for tips, or tell me what happened 👇"
+			"📍 In servers: `@Codunot AI` + describe your situation\n"
+			"💬 In DMs: Just type what's going on!\n\n"
+			"Describe the situation, ask for tips, or tell me what happened — I got you 👇"
 		)
 
 	else:
@@ -357,7 +377,18 @@ async def chessmode(ctx: commands.Context):
 	channel_modes[chan_id] = "funny"
 	chess_engine.new_board(chan_id)
 
-	await ctx.send("♟️ Chess mode ACTIVATED. You are white, start!")
+	await ctx.send(
+		"♟️ **Chess mode ACTIVATED!** You're playing white, I'm black.\n"
+		"📍 **In servers:** Ping me with your move: `@Codunot AI e4`\n"
+		"💬 **In DMs:** Just type your move directly: `e4`\n\n"
+		"🎯 **Try these opening moves:**\n"
+		"• `e4` — King's pawn\n"
+		"• `d4` — Queen's pawn\n"
+		"• `Nf3` — Knight to f3\n\n"
+		"💡 Move formats: `e4`, `Nf3`, `Bxc4`, `O-O` (castle kingside), `O-O-O` (queenside)\n"
+		"You can also ask for hints, resign, or chat about the position!\n"
+		"Your move! ♟️"
+	)
 
 @bot.command(name="replicate_test")
 async def replicate_test(ctx: commands.Context, *, message: str):
@@ -821,6 +852,11 @@ PERSONAS = {
 "Help: !codunot_help | Vote unlock 12h: top.gg link | Support: discord link\n"
 "Tiers: Basic 50/day, Premium 100/day ($10/2mo), Gold unlimited ($15/2mo)\n\n"
 
+"Helpfulness rules:\n"
+"If user seems confused (sends '?', 'what', 'how', unclear messages) → gently explain how to interact: in servers ping @Codunot AI + message, in DMs just type.\n"
+"If user asks 'how do I use this' or 'what can you do' → give a friendly summary of features and how to chat.\n"
+"If user tries to interact incorrectly → kindly correct them with an example.\n\n"
+
 "Rules:\n"
 "Check history; treat pasted logs/screenshots as context.\n"
 "If asked latest info → use web search.\n"
@@ -843,6 +879,11 @@ PERSONAS = {
 "Commands & features: same as Fun Mode.\n"
 "Help: !codunot_help | Support server | Tiers: Basic 50/day, Premium 100/day, Gold unlimited.\n\n"
 
+"Helpfulness rules:\n"
+"If user seems confused (sends '?', 'what', 'how', unclear messages) → clearly explain how to interact: in servers mention @Codunot AI + message, in DMs just type directly.\n"
+"If user asks 'how do I use this' or 'what can you do' → provide a structured list of features and usage instructions.\n"
+"If user tries to interact incorrectly → politely correct them with the proper format.\n\n"
+
 "Rules:\n"
 "Check history. Treat pasted logs as context.\n"
 "If asked model → contact owner.\n"
@@ -863,6 +904,11 @@ PERSONAS = {
 "Never uncensored swears; may censor lightly.\n\n"
 
 "Commands & features: same as Fun Mode.\n\n"
+
+"Helpfulness rules:\n"
+"If user seems confused (sends '?', 'what', 'how') → help them out (with a light roast): in servers ping @Codunot AI + message, in DMs just type.\n"
+"If user asks 'how do I use this' or 'what can you do' → explain features while roasting them for not knowing.\n"
+"If user tries to interact incorrectly → roast them gently and show the correct way.\n\n"
 
 "Rules:\n"
 "Check history.\n"
@@ -890,6 +936,10 @@ PERSONAS = {
 "Always leave room to reply. Lead convo. Specific > generic. Move forward. Timing matters.\n"
 "Short replies may mean testing/disinterest. Emoji balance matters. No double text <48h.\n\n"
 
+"Helpfulness rules:\n"
+"If user seems confused → explain: paste a convo screenshot or describe your situation, and I'll coach you through it.\n"
+"If user asks 'how do I use this' → explain: in servers ping @Codunot AI + your situation, in DMs just type.\n\n"
+
 "No swearing.\n"
 "If asked about server setup → mention /configure server and /configure channels.\n"
 "Max 2000 characters."
@@ -906,6 +956,10 @@ PERSONAS = {
 "Principles:\n"
 "Confidence = posture + tone. Approach within 3s. No pickup lines. Read body language.\n"
 "Environment matters. Small talk is bridge. Exit gracefully. Number isn't goal — connection is.\n\n"
+
+"Helpfulness rules:\n"
+"If user seems confused → explain: describe the real-life situation and I'll give you a game plan.\n"
+"If user asks 'how do I use this' → explain: in servers ping @Codunot AI + your situation, in DMs just type.\n\n"
 
 "No swearing.\n"
 "If asked about server setup → mention /configure server and /configure channels.\n"
@@ -2194,7 +2248,7 @@ async def on_message(message: Message):
 			if not move_san:
 				await send_human_reply(
 					message.channel,
-					"🤔 That doesn't look like a legal move. Try something like `e4` or `Bc4`."
+					"🤔 That doesn't look like a legal move. Try something like `e4`, `Nf3`, or `O-O` (castling). Type `hint` if you need help!"
 				)
 				return
 		
@@ -2203,7 +2257,7 @@ async def on_message(message: Message):
 			except:
 				await send_human_reply(
 					message.channel,
-					"⚠️ That move isn't legal in this position."
+					"⚠️ That move isn't legal in this position. Try a different piece or square. Type `hint` if you're stuck!"
 				)
 				return
 		
