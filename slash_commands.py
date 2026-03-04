@@ -46,16 +46,40 @@ OWNER_IDS = set()
 VOTE_DURATION = 12 * 60 * 60
 BYPASS_IDS = {1220934047794987048, 1167443519070290051}
 BOT_NAME = "Codunot"
-TTS_VOICES = [
-	"Adam", "Alloy", "Aoede", "Bella", "Echo",
-	"Eric", "Fenrir", "Heart", "Jessica", "Kore",
-	"Liam", "Michael", "Nicole", "Nova", "Onyx",
-	"Puck", "River", "Santa", "Sarah", "Sky",
-]
-TTS_LANGUAGES = [
-	"English (GB)", "English (US)", "France", "Hindi",
-	"Italian", "Portugal (BR)", "Spain",
-]
+TTS_LANG_VOICES: dict[str, tuple[str, dict[str, str]]] = {
+	"en-gb": ("English (GB)", {
+		"Alice": "bf_alice", "Daniel": "bm_daniel", "Emma": "bf_emma",
+		"Fable": "bm_fable", "George": "bm_george", "Isabella": "bf_isabella",
+		"Lewis": "bm_lewis", "Lily": "bf_lily",
+	}),
+	"en-us": ("English (US)", {
+		"Adam": "am_adam", "Alloy": "af_alloy", "Aoede": "af_aoede",
+		"Bella": "af_bella", "Echo": "am_echo", "Eric": "am_eric",
+		"Fenrir": "am_fenrir", "Heart": "af_heart", "Jessica": "af_jessica",
+		"Kore": "af_kore", "Liam": "am_liam", "Michael": "am_michael",
+		"Nicole": "af_nicole", "Nova": "af_nova", "Onyx": "am_onyx",
+		"Puck": "am_puck", "River": "af_river", "Santa": "am_santa",
+		"Sarah": "af_sarah", "Sky": "af_sky",
+	}),
+	"fr-fr": ("France", {"Siwis": "ff_siwis"}),
+	"hi": ("Hindi", {
+		"Alpha": "hf_alpha", "Beta": "hf_beta",
+		"Omega": "hm_omega", "Psi": "hm_psi",
+	}),
+	"it": ("Italian", {"Nicola": "im_nicola", "Sara": "if_sara"}),
+	"pt-br": ("Portugal (BR)", {
+		"Alex": "pm_alex", "Dora": "pf_dora", "Santa": "pm_santa",
+	}),
+	"es": ("Spain", {
+		"Alex": "em_alex", "Dora": "ef_dora", "Santa": "em_santa",
+	}),
+}
+TTS_ALL_VOICES: dict[str, str] = {
+	name: code
+	for _, voices in TTS_LANG_VOICES.values()
+	for name, code in voices.items()
+}
+TTS_VOICE_CODE_TO_NAME = {code: name for name, code in TTS_ALL_VOICES.items()}
 boost_image_prompt = None
 boost_video_prompt = None
 save_vote_unlocks = None
@@ -1432,19 +1456,21 @@ class Codunot(commands.Cog):
 	@app_commands.command(name="generate_tts", description="🔊 Generate text-to-speech audio — pick a voice & language")
 	@app_commands.describe(
 		text="The text you want to convert to speech (minimum 20 characters)",
-		voice="Choose a voice for the speech",
 		language="Choose the language for the speech",
+		voice="Choose a voice for the speech (pick language first)",
 	)
 	@app_commands.choices(
-		voice=[app_commands.Choice(name=v, value=v) for v in TTS_VOICES],
-		language=[app_commands.Choice(name=l, value=l) for l in TTS_LANGUAGES],
+		language=[
+			app_commands.Choice(name=display, value=code)
+			for code, (display, _) in TTS_LANG_VOICES.items()
+		],
 	)
 	async def generate_tts_slash(
 		self,
 		interaction: discord.Interaction,
 		text: str,
-		voice: app_commands.Choice[str],
 		language: app_commands.Choice[str],
+		voice: str,
 	):
 		if len(text) < 20:
 			await interaction.response.send_message(
@@ -1452,6 +1478,17 @@ class Codunot(commands.Cog):
 				ephemeral=True,
 			)
 			return
+		lang_code = language.value
+		lang_display, voices = TTS_LANG_VOICES[lang_code]
+		valid_codes = set(voices.values())
+		if voice not in valid_codes:
+			await interaction.response.send_message(
+				f"🚫 **{voice}** is not a valid voice for **{lang_display}**. "
+				f"Available voices: {', '.join(voices.keys())}",
+				ephemeral=True,
+			)
+			return
+		voice_display = TTS_VOICE_CODE_TO_NAME.get(voice, voice)
 		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
@@ -1465,14 +1502,14 @@ class Codunot(commands.Cog):
 			await interaction.followup.send("🚫 You've hit your **2 months' TTS generation limit**.")
 			return
 		await interaction.followup.send(
-			f"🔊 **Generating your audio** (voice: **{voice.value}**, language: **{language.value}**)... almost there 🎙️"
+			f"🔊 **Generating your audio** (voice: **{voice_display}**, language: **{lang_display}**)... almost there 🎙️"
 		)
 		try:
 			audio_url = await text_to_speech(
 				text=text,
 				model="Kokoro",
-				voice=voice.value,
-				lang=language.value,
+				voice=voice,
+				lang=lang_code,
 				speed=1,
 				format="mp3",
 				sample_rate=24000,
@@ -1482,7 +1519,7 @@ class Codunot(commands.Cog):
 					if resp.status != 200:
 						raise Exception("Failed to download TTS audio")
 					audio_bytes = await resp.read()
-			output_text = f"{interaction.user.mention} 🔊 TTS ({voice.value}/{language.value}): `{text[:200]}{'...' if len(text) > 200 else ''}`"
+			output_text = f"{interaction.user.mention} 🔊 TTS ({voice_display}/{lang_display}): `{text[:200]}{'...' if len(text) > 200 else ''}`"
 			await self._deliver_paid_attachment(interaction, output_text, "speech.mp3", audio_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key)
@@ -1490,6 +1527,23 @@ class Codunot(commands.Cog):
 		except Exception as e:
 			print(f"[SLASH TTS ERROR] {e}")
 			await interaction.followup.send(f"{interaction.user.mention} 🤔 Couldn't generate speech right now.")
+
+	@generate_tts_slash.autocomplete("voice")
+	async def _tts_voice_autocomplete(
+		self,
+		interaction: discord.Interaction,
+		current: str,
+	) -> list[app_commands.Choice[str]]:
+		lang_code = getattr(interaction.namespace, "language", None)
+		if lang_code and lang_code in TTS_LANG_VOICES:
+			_, voices = TTS_LANG_VOICES[lang_code]
+		else:
+			voices = TTS_ALL_VOICES
+		return [
+			app_commands.Choice(name=name, value=code)
+			for name, code in voices.items()
+			if current.lower() in name.lower()
+		][:25]
 
 	# ── Utility ───────────────────────────────────────────────────────────────
 
