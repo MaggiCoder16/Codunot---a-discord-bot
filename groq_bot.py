@@ -1166,9 +1166,22 @@ async def generate_and_reply(chan_id, message, content, mode):
 		if not search_context:
 			search_context = "[Web search attempted but returned no results - use your knowledge base]"
 
+	# ---------------- FETCH URL CONTENT IF USER SHARED A LINK ----------------
+	url_context = ""
+	url_match = re.search(r'https?://[^\s<>"\']+', content)
+	if url_match:
+		from slash_commands import fetch_url_content
+		try:
+			extracted = await fetch_url_content(url_match.group(0), max_chars=1500)
+			if extracted and not extracted.startswith("❌"):
+				url_context = extracted
+		except Exception as e:
+			print(f"[URL FETCH ERROR] {e}")
+
 	prompt = (
 		build_general_prompt(chan_id, mode, message, include_last_image=False)
 		+ (f"\n=== WEB SEARCH CONTEXT ===\n{search_context}\n=== END WEB SEARCH CONTEXT ===\n" if search_context else "")
+		+ (f"\n=== WEBPAGE CONTENT ===\n{url_context}\n=== END WEBPAGE CONTENT ===\n" if url_context else "")
 		+ reply_context
 		+ f"\nUser says:\n{content}\n\nReply:"
 	)

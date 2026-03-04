@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import ssl
+import subprocess
 import time
 import io
 import json
@@ -14,6 +15,9 @@ import tempfile
 import re
 from typing import Optional
 from urllib.parse import urlparse, quote_plus
+
+from bs4 import BeautifulSoup
+import trafilatura
 
 import wavelink
 import yt_dlp
@@ -604,6 +608,94 @@ class ConfigureGroup(app_commands.Group):
 			await interaction.followup.send(msg, ephemeral=True)
 		else:
 			await interaction.response.send_message(msg, ephemeral=True)
+
+
+# ── Code Runner ───────────────────────────────────────────────────────────────
+
+_CODE_TIMEOUT = 10  # seconds
+
+async def run_python_code(code: str) -> dict:
+	"""
+	Execute Python code in a subprocess with a timeout.
+	Returns dict with keys: success (bool), output (str), error (str).
+	"""
+	loop = asyncio.get_running_loop()
+
+	def _execute():
+		try:
+			result = subprocess.run(
+				["python3", "-c", code],
+				capture_output=True,
+				text=True,
+				timeout=_CODE_TIMEOUT,
+			)
+			stdout = result.stdout.strip()
+			stderr = result.stderr.strip()
+			if result.returncode == 0:
+				return {"success": True, "output": stdout or "(no output)", "error": ""}
+			return {"success": False, "output": stdout, "error": stderr or f"Exit code {result.returncode}"}
+		except subprocess.TimeoutExpired:
+			return {"success": False, "output": "", "error": "⏱️ Code timed out (10 s limit)."}
+		except Exception as e:
+			return {"success": False, "output": "", "error": str(e)}
+
+	return await loop.run_in_executor(None, _execute)
+
+
+# ── URL Browser / Web Scraper ─────────────────────────────────────────────────
+
+async def fetch_url_content(url: str, max_chars: int = 2000) -> str:
+	"""
+	Fetch a webpage and extract its main text content.
+	Uses trafilatura first; falls back to BeautifulSoup.
+	Returns extracted text truncated to *max_chars*.
+	"""
+	headers = {
+		"User-Agent": (
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+			"AppleWebKit/537.36 (KHTML, like Gecko) "
+			"Chrome/120.0.0.0 Safari/537.36"
+		)
+	}
+	try:
+		async with aiohttp.ClientSession() as session:
+			async with session.get(
+				url,
+				headers=headers,
+				timeout=aiohttp.ClientTimeout(total=15),
+				allow_redirects=True,
+			) as resp:
+				if resp.status != 200:
+					return f"❌ Could not fetch URL (HTTP {resp.status})."
+				html = await resp.text(errors="replace")
+	except asyncio.TimeoutError:
+		return "❌ URL request timed out."
+	except aiohttp.ClientError as e:
+		return f"❌ Network error: {e}"
+	except Exception as e:
+		return f"❌ Failed to fetch URL: {e}"
+
+	# Try trafilatura first (best for articles/news)
+	loop = asyncio.get_running_loop()
+	text = await loop.run_in_executor(
+		None, lambda: trafilatura.extract(html, include_links=False, include_comments=False) or ""
+	)
+
+	# Fallback to BeautifulSoup
+	if not text.strip():
+		def _bs_extract():
+			soup = BeautifulSoup(html, "html.parser")
+			for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+				tag.decompose()
+			return soup.get_text(separator="\n", strip=True)
+		text = await loop.run_in_executor(None, _bs_extract)
+
+	if not text.strip():
+		return "❌ Could not extract readable text from this page."
+
+	if len(text) > max_chars:
+		text = text[:max_chars - 3] + "..."
+	return text
 
 
 # ── Main Cog ──────────────────────────────────────────────────────────────────
@@ -1993,6 +2085,89 @@ class Codunot(commands.Cog):
 		embed = discord.Embed(title="😂 Random Meme", color=0x00BFFF)
 		embed.set_image(url=meme_url)
 		await interaction.followup.send(embed=embed)
+
+	# ── Code Runner ───────────────────────────────────────────────────────────
+
+	@app_commands.command(name="test_code", description="🧪 Paste Python code to test — runs it safely and reports results")
+	@app_commands.describe(code="The Python code you want to test")
+	async def test_code_slash(self, interaction: discord.Interaction, code: str):
+		await interaction.response.defer()
+		await interaction.edit_original_response(content="🧪 **Testing the code...**")
+
+		result = await run_python_code(code)
+
+		if result["success"]:
+			output_preview = result["output"][:500] or "(no output)"
+			embed = discord.Embed(title="✅ Code ran successfully!", color=0x00FF00)
+			embed.add_field(name="📋 Summary", value="Your code executed without errors.", inline=False)
+			embed.add_field(name="📤 Output", value=f"```\n{output_preview}\n```", inline=False)
+			await interaction.edit_original_response(content=None, embed=embed)
+		else:
+			error_preview = result["error"][:500] or "Unknown error"
+			embed = discord.Embed(title="❌ Code failed", color=0xFF0000)
+			embed.add_field(name="🐛 Error", value=f"```\n{error_preview}\n```", inline=False)
+
+			# Try AI fix
+			embed.add_field(name="🔧 Attempting AI fix...", value="Please wait...", inline=False)
+			await interaction.edit_original_response(content=None, embed=embed)
+
+			fix_prompt = (
+				"You are a Python code fixer. The following Python code produced an error.\n"
+				"Fix the code and return ONLY the corrected Python code, nothing else. "
+				"Do NOT include markdown fences or explanations.\n\n"
+				f"Original code:\n{code}\n\n"
+				f"Error:\n{result['error']}\n\n"
+				"Fixed code:"
+			)
+			try:
+				fixed_code = await call_google_ai_studio(prompt=fix_prompt, temperature=0.2)
+				fixed_code = (fixed_code or "").strip()
+				# Strip markdown fences if the model added them
+				if fixed_code.startswith("```"):
+					fixed_code = re.sub(r"^```(?:python)?\n?", "", fixed_code)
+					fixed_code = re.sub(r"\n?```$", "", fixed_code)
+
+				if fixed_code:
+					retest = await run_python_code(fixed_code)
+					if retest["success"]:
+						retest_output = retest["output"][:300] or "(no output)"
+						embed.set_field_at(1, name="🔧 AI-Fixed Code", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
+						embed.add_field(name="✅ Fixed code output", value=f"```\n{retest_output}\n```", inline=False)
+					else:
+						embed.set_field_at(1, name="🔧 AI Fix Attempted", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
+						embed.add_field(name="⚠️ Fix still has errors", value=f"```\n{retest['error'][:300]}\n```", inline=False)
+				else:
+					embed.set_field_at(1, name="🔧 AI Fix", value="Could not generate a fix.", inline=False)
+			except Exception as e:
+				print(f"[TEST_CODE AI FIX ERROR] {e}")
+				embed.set_field_at(1, name="🔧 AI Fix", value="AI fixer unavailable right now.", inline=False)
+
+			await interaction.edit_original_response(content=None, embed=embed)
+
+	# ── URL Browser ───────────────────────────────────────────────────────────
+
+	@app_commands.command(name="browse", description="🌐 Fetch and read the content of a webpage URL")
+	@app_commands.describe(url="The URL of the webpage you want to read")
+	async def browse_slash(self, interaction: discord.Interaction, url: str):
+		if not _looks_like_url(url):
+			await interaction.response.send_message("❌ That doesn't look like a valid URL. Please include `http://` or `https://`.", ephemeral=False)
+			return
+		await interaction.response.defer()
+		await interaction.edit_original_response(content="🌐 **Fetching page content...**")
+
+		text = await fetch_url_content(url, max_chars=3900)
+
+		if text.startswith("❌"):
+			await interaction.edit_original_response(content=text)
+			return
+
+		embed = discord.Embed(
+			title=f"🌐 Content from URL",
+			description=text[:4000],
+			color=0x00BFFF,
+		)
+		embed.set_footer(text=url[:200])
+		await interaction.edit_original_response(content=None, embed=embed)
 
 
 async def setup(bot: commands.Bot):
