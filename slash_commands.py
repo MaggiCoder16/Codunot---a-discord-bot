@@ -1485,7 +1485,8 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message(
 				f"🚫 **{voice}** is not a valid voice for **{lang_display}**. "
 				f"Available voices: {', '.join(voices.keys())}",
-				ephemeral=True,
+				f"Try again, with the new language, and you will see the correct voices available, for that language! :)",
+				ephemeral=False,
 			)
 			return
 		voice_display = TTS_VOICE_CODE_TO_NAME.get(voice, voice)
