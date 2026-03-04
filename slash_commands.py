@@ -94,6 +94,7 @@ guild_ytdl_queue: dict[int, list] = {}
 guild_last_text_channel: dict[int, int] = {}
 guild_volume: dict[int, int] = {}
 guild_filters: dict[int, str] = {}
+guild_now_playing_track: dict[int, dict] = {}
 guild_last_activity = {}
 _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
@@ -932,6 +933,7 @@ class Codunot(commands.Cog):
 				pass
 		guild_queue_messages.pop(interaction.guild.id, None)
 		guild_now_message.pop(interaction.guild.id, None)
+		guild_now_playing_track.pop(interaction.guild.id, None)
 		ended_embed = discord.Embed(title="⏹️ Ended", description="Playback stopped.", color=0x5C5C5C)
 		ended_embed.set_footer(text="Playback stopped • Queue cleared")
 		try:
@@ -1199,6 +1201,16 @@ class Codunot(commands.Cog):
 			)
 			voice_client.play(source, after=_after_playback)
 			guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
+			guild_now_playing_track[interaction.guild.id] = {
+				"title": first.get("title") or "Unknown",
+				"web_url": first.get("webpage_url") or first.get("url"),
+				"uploader": first.get("uploader") or first.get("channel") or "Unknown",
+				"duration": first.get("duration"),
+				"thumbnail": first.get("thumbnail"),
+				"stream_url": stream_url,
+				"requested_by": interaction.user.mention,
+				"tier": tier,
+			}
 
 			embed = self._build_now_playing_embed_from_ytdl(first, interaction.user.mention, tier)
 			view = MusicControls(self, interaction.guild.id)
@@ -1255,6 +1267,7 @@ class Codunot(commands.Cog):
 		)
 		voice_client.play(source, after=_after_playback)
 		guild_last_activity[interaction.guild.id] = asyncio.get_event_loop().time()
+		guild_now_playing_track[interaction.guild.id] = track_info
 
 		embed = self._build_now_playing_embed_from_ytdl(info, interaction.user.mention, tier)
 		view = MusicControls(self, interaction.guild.id)
@@ -1297,7 +1310,7 @@ class Codunot(commands.Cog):
 			)
 
 		try:
-			selected_filter = guild_filters.get(guild_id, "normal")
+			selected_filter = next_track.get("filter") or guild_filters.get(guild_id, "normal")
 			volume = guild_volume.get(guild_id, 100) / 100
 			source = discord.PCMVolumeTransformer(
 				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(selected_filter)),
@@ -1305,6 +1318,7 @@ class Codunot(commands.Cog):
 			)
 			voice_client.play(source, after=_after_playback)
 			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
+			guild_now_playing_track[guild_id] = next_track
 
 			info = {
 				"title": next_track.get("title"),
@@ -1324,7 +1338,7 @@ class Codunot(commands.Cog):
 
 	# ── Filter command ────────────────────────────────────────────────────────
 
-	@app_commands.command(name="filter", description="🎛️ Change audio filter for current playback")
+	@app_commands.command(name="filter", description="🎛️ Re-queue current song with an audio filter")
 	@app_commands.describe(filter="Audio filter to apply")
 	@app_commands.choices(filter=_FILTER_CHOICES)
 	async def filter_slash(self, interaction: discord.Interaction, filter: app_commands.Choice[str]):
@@ -1337,11 +1351,22 @@ class Codunot(commands.Cog):
 			await interaction.followup.send("❌ Nothing is playing right now.", ephemeral=False)
 			return
 
-		guild_filters[interaction.guild.id] = filter.value
+		current_track = guild_now_playing_track.get(interaction.guild.id)
+		if not current_track or not current_track.get("stream_url"):
+			await interaction.followup.send("❌ Can't identify the current track to re-queue.", ephemeral=False)
+			return
+
+		# Add a copy of the current track to the back of the queue with the filter
+		requeued = dict(current_track)
+		requeued["filter"] = filter.value
+		queue = guild_ytdl_queue.setdefault(interaction.guild.id, [])
+		queue.append(requeued)
+		position = len(queue)
 
 		await interaction.followup.send(
-			f"🎛️ Filter changed to **{filter.name}**!\n"
-			f"⏭️ Skip to the next track to apply the new filter.",
+			f"🎛️ **{current_track.get('title', 'Unknown')}** with **{filter.name}** filter "
+			f"has been added to the back of the queue (position #{position}).\n"
+			f"🎵 It will play with the filter when it reaches the front!",
 			ephemeral=False
 		)
 
