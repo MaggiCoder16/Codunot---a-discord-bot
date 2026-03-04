@@ -1030,7 +1030,7 @@ class Codunot(commands.Cog):
 	)
 	@app_commands.describe(song="Song name, URL, or playlist URL", filter="Audio filter to apply")
 	@app_commands.choices(filter=_FILTER_CHOICES)
-	async def play_slash(self, interaction: discord.Interaction, song: str, filter: app_commands.Choice[str] | None = None):
+	async def play_slash(self, interaction: discord.Interaction, song: str, filter: app_commands.Choice[str]):
 		if interaction.guild is None:
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
@@ -1045,8 +1045,7 @@ class Codunot(commands.Cog):
 			return
 
 		# Store filter preference for this guild
-		if filter is not None:
-			guild_filters[interaction.guild.id] = filter.value
+		guild_filters[interaction.guild.id] = filter.value
 
 		await interaction.edit_original_response(content="🎵 Joining voice channel...")
 
@@ -1183,6 +1182,7 @@ class Codunot(commands.Cog):
 						"stream_url": entry.get("url"),
 						"requested_by": interaction.user.mention,
 						"tier": tier,
+						"filter": filter.value,
 					})
 
 			def _after_playback(error):
@@ -1210,6 +1210,7 @@ class Codunot(commands.Cog):
 				"stream_url": stream_url,
 				"requested_by": interaction.user.mention,
 				"tier": tier,
+				"filter": filter.value,
 			}
 
 			embed = self._build_now_playing_embed_from_ytdl(first, interaction.user.mention, tier)
@@ -1249,6 +1250,7 @@ class Codunot(commands.Cog):
 			"stream_url": stream_url,
 			"requested_by": interaction.user.mention,
 			"tier": tier,
+			"filter": filter.value,
 		}
 
 		def _after_playback(error):
@@ -1335,40 +1337,6 @@ class Codunot(commands.Cog):
 		except Exception as e:
 			print(f"[YTDL] Auto-advance error: {e}")
 			asyncio.create_task(self._ytdl_auto_advance(guild_id))
-
-	# ── Filter command ────────────────────────────────────────────────────────
-
-	@app_commands.command(name="filter", description="🎛️ Re-queue current song with an audio filter")
-	@app_commands.describe(filter="Audio filter to apply")
-	@app_commands.choices(filter=_FILTER_CHOICES)
-	async def filter_slash(self, interaction: discord.Interaction, filter: app_commands.Choice[str]):
-		await interaction.response.defer()
-		if not await self._ensure_music_control(interaction):
-			return
-
-		voice_client = interaction.guild.voice_client
-		if not voice_client or not voice_client.is_playing():
-			await interaction.followup.send("❌ Nothing is playing right now.", ephemeral=False)
-			return
-
-		current_track = guild_now_playing_track.get(interaction.guild.id)
-		if not current_track or not current_track.get("stream_url"):
-			await interaction.followup.send("❌ Can't identify the current track to re-queue.", ephemeral=False)
-			return
-
-		# Add a copy of the current track to the back of the queue with the filter
-		requeued = dict(current_track)
-		requeued["filter"] = filter.value
-		queue = guild_ytdl_queue.setdefault(interaction.guild.id, [])
-		queue.append(requeued)
-		position = len(queue)
-
-		await interaction.followup.send(
-			f"🎛️ **{current_track.get('title', 'Unknown')}** with **{filter.name}** filter "
-			f"has been added to the back of the queue (position #{position}).\n"
-			f"🎵 It will play with the filter when it reaches the front!",
-			ephemeral=False
-		)
 
 	# ── Mode commands ─────────────────────────────────────────────────────────
 
