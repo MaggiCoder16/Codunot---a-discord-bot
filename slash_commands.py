@@ -760,56 +760,82 @@ class CodeTestModal(discord.ui.Modal, title="🧪 Test Your Python Code"):
 	async def on_submit(self, interaction: discord.Interaction):
 		await interaction.response.defer()
 
-		code = self.code_input.value
-		await interaction.edit_original_response(content="🧪 **Testing the code...**")
+		try:
+			code = self.code_input.value
+			await interaction.edit_original_response(content="🧪 **Testing the code...**")
 
-		result = await run_python_code(code)
+			result = await run_python_code(code)
 
-		if result["success"]:
-			output_preview = result["output"][:500] or "(no output)"
-			embed = discord.Embed(title="✅ Code ran successfully!", color=0x00FF00)
-			embed.add_field(name="📋 Summary", value="Your code executed without errors.", inline=False)
-			embed.add_field(name="📤 Output", value=f"```\n{output_preview}\n```", inline=False)
-			await interaction.edit_original_response(content=None, embed=embed)
-		else:
-			error_preview = result["error"][:500] or "Unknown error"
-			embed = discord.Embed(title="❌ Code failed", color=0xFF0000)
-			embed.add_field(name="🐛 Error", value=f"```\n{error_preview}\n```", inline=False)
+			if result["success"]:
+				output_preview = result["output"][:500] or "(no output)"
+				embed = discord.Embed(title="✅ Code ran successfully!", color=0x00FF00)
+				embed.add_field(name="📋 Summary", value="Your code executed without errors.", inline=False)
+				embed.add_field(name="📤 Output", value=f"```\n{output_preview}\n```", inline=False)
+				await interaction.edit_original_response(content=None, embed=embed)
+			else:
+				error_preview = result["error"][:500] or "Unknown error"
+				embed = discord.Embed(title="❌ Code failed", color=0xFF0000)
+				embed.add_field(name="🐛 Error", value=f"```\n{error_preview}\n```", inline=False)
 
-			embed.add_field(name="🔧 Attempting AI fix...", value="Please wait...", inline=False)
-			await interaction.edit_original_response(content=None, embed=embed)
+				embed.add_field(name="🔧 Attempting AI fix...", value="Please wait...", inline=False)
+				await interaction.edit_original_response(content=None, embed=embed)
 
-			fix_prompt = (
-				"You are a Python code fixer. The following Python code produced an error.\n"
-				"Fix the code and return ONLY the corrected Python code, nothing else. "
-				"Do NOT include markdown fences or explanations.\n\n"
-				f"Original code:\n{code}\n\n"
-				f"Error:\n{result['error']}\n\n"
-				"Fixed code:"
-			)
-			try:
-				fixed_code = await call_cerebras(prompt=fix_prompt, temperature=0.2)
-				fixed_code = (fixed_code or "").strip()
-				if fixed_code.startswith("```"):
-					fixed_code = re.sub(r"^```(?:python)?\n?", "", fixed_code)
-					fixed_code = re.sub(r"\n?```$", "", fixed_code)
+				fix_prompt = (
+					"You are a Python code fixer. The following Python code produced an error.\n"
+					"Fix the code and return ONLY the corrected Python code, nothing else. "
+					"Do NOT include markdown fences or explanations.\n\n"
+					f"Original code:\n{code}\n\n"
+					f"Error:\n{result['error']}\n\n"
+					"Fixed code:"
+				)
+				try:
+					fixed_code = await call_cerebras(prompt=fix_prompt, temperature=0.2)
+					fixed_code = (fixed_code or "").strip()
+					if fixed_code.startswith("```"):
+						fixed_code = re.sub(r"^```(?:python)?\n?", "", fixed_code)
+						fixed_code = re.sub(r"\n?```$", "", fixed_code)
 
-				if fixed_code:
-					retest = await run_python_code(fixed_code)
-					if retest["success"]:
-						retest_output = retest["output"][:300] or "(no output)"
-						embed.set_field_at(1, name="🔧 AI-Fixed Code", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
-						embed.add_field(name="✅ Fixed code output", value=f"```\n{retest_output}\n```", inline=False)
+					if fixed_code:
+						retest = await run_python_code(fixed_code)
+						if retest["success"]:
+							retest_output = retest["output"][:300] or "(no output)"
+							embed.set_field_at(1, name="🔧 AI-Fixed Code", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
+							embed.add_field(name="✅ Fixed code output", value=f"```\n{retest_output}\n```", inline=False)
+						else:
+							embed.set_field_at(1, name="🔧 AI Fix Attempted", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
+							embed.add_field(name="⚠️ Fix still has errors", value=f"```\n{retest['error'][:300]}\n```", inline=False)
 					else:
-						embed.set_field_at(1, name="🔧 AI Fix Attempted", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
-						embed.add_field(name="⚠️ Fix still has errors", value=f"```\n{retest['error'][:300]}\n```", inline=False)
-				else:
-					embed.set_field_at(1, name="🔧 AI Fix", value="Could not generate a fix.", inline=False)
-			except Exception as e:
-				print(f"[TEST_CODE AI FIX ERROR] {e}")
-				embed.set_field_at(1, name="🔧 AI Fix", value="AI fixer unavailable right now.", inline=False)
+						embed.set_field_at(1, name="🔧 AI Fix", value="Could not generate a fix.", inline=False)
+				except Exception as e:
+					print(f"[TEST_CODE AI FIX ERROR] {e}")
+					embed.set_field_at(1, name="🔧 AI Fix", value="AI fixer unavailable right now.", inline=False)
 
-			await interaction.edit_original_response(content=None, embed=embed)
+				await interaction.edit_original_response(content=None, embed=embed)
+		except Exception as e:
+			print(f"[TEST_CODE ERROR] {e}")
+			traceback.print_exc()
+			try:
+				await interaction.edit_original_response(
+					content="⚠️ Something went wrong while testing your code. Please try again."
+				)
+			except Exception as fallback_err:
+				print(f"[TEST_CODE ERROR] Could not send error response: {fallback_err}")
+
+	async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+		print(f"[TEST_CODE MODAL ERROR] {error}")
+		traceback.print_exc()
+		try:
+			if interaction.response.is_done():
+				await interaction.edit_original_response(
+					content="⚠️ Something went wrong while testing your code. Please try again."
+				)
+			else:
+				await interaction.response.send_message(
+					"⚠️ Something went wrong while testing your code. Please try again.",
+					ephemeral=True,
+				)
+		except Exception as fallback_err:
+			print(f"[TEST_CODE MODAL ERROR] Could not send error response: {fallback_err}")
 
 
 # ── Main Cog ──────────────────────────────────────────────────────────────────
