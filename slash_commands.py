@@ -1534,7 +1534,13 @@ class Codunot(commands.Cog):
 		interaction: discord.Interaction,
 		current: str,
 	) -> list[app_commands.Choice[str]]:
-		lang_code = getattr(interaction.namespace, "language", None)
+		lang_choice = getattr(interaction.namespace, "language", None)
+		if lang_choice and hasattr(lang_choice, "value"):
+			lang_code = lang_choice.value
+		elif isinstance(lang_choice, str):
+			lang_code = lang_choice
+		else:
+			lang_code = None
 		if lang_code and lang_code in TTS_LANG_VOICES:
 			_, voices = TTS_LANG_VOICES[lang_code]
 		else:
