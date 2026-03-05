@@ -3,81 +3,57 @@ import json
 import asyncio
 from datetime import date, datetime, timedelta
 
-# ======================================================
-# FILE PATHS
-# ======================================================
-
 USAGE_FILE = "daily_usage.json"
 TOTAL_FILE = "total_usage.json"
 
 PREMIUM_FILE = "tiers_premium.txt"
 GOLD_FILE = "tiers_gold.txt"
 
-# ======================================================
-# IN-MEMORY STORES
-# ======================================================
+channel_usage = {}
+attachment_history = {}
 
-channel_usage = {}          # daily usage
-attachment_history = {}     # rolling timestamps (per channel/guild)
-
-# ======================================================
-# OWNER BYPASS
-# ======================================================
-
-OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}  # Load from env
+OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
 
 def is_owner(message_or_interaction) -> bool:
-	"""Check if user is owner - works with Message or Interaction objects"""
 	if hasattr(message_or_interaction, 'author'):
-		# It's a Message object
 		return message_or_interaction.author.id in OWNER_IDS
 	elif hasattr(message_or_interaction, 'user'):
-		# It's an Interaction object
 		return message_or_interaction.user.id in OWNER_IDS
 	return False
 
-# ======================================================
-# LIMIT CONFIGS
-# ======================================================
-
 # daily limits
+
 LIMITS = {
 	"basic": {
 		"messages": 50,
 		"attachments": 7,
 	},
 	"premium": {
-		"messages": 100,
-		"attachments": 15,
-	},
-	"gold": {
 		"messages": float("inf"),
 		"attachments": 25,
 	},
+	"gold": {
+		"messages": float("inf"),
+		"attachments": float("inf"),
+	},
 }
 
-# per 2 months
+# 2 months
 TOTAL_LIMITS = {
 	"basic": 30,
-	"premium": 50,
-	"gold": 100,
+	"premium": 75,
+	"gold": 150,
 }
 
 ROLLING_WINDOW = timedelta(days=60)
 
-# ======================================================
-# TIER FILE LOADING
-# ======================================================
-
 def load_tier_file(path: str) -> set[str]:
-	"""Load server IDs from a tier file, ignoring comments and whitespace."""
 	ids = set()
 	if not os.path.exists(path):
 		return ids
 
 	with open(path, "r", encoding="utf-8") as f:
 		for line in f:
-			# Remove comments and whitespace
 			line = line.split("#", 1)[0].strip()
 			if line:
 				ids.add(line)
@@ -86,18 +62,11 @@ def load_tier_file(path: str) -> set[str]:
 PREMIUM_IDS = load_tier_file(PREMIUM_FILE)
 GOLD_IDS = load_tier_file(GOLD_FILE)
 
-# Debug prints to check what was loaded
 print(f"Loaded premium IDs: {sorted(PREMIUM_IDS)}")
 print(f"Loaded gold IDs: {sorted(GOLD_IDS)}")
 
-# ======================================================
-# TIER RESOLUTION
-# ======================================================
-
 def get_tier_key(message_or_interaction) -> str:
-	"""Returns the key to track usage: guild ID or channel ID - works with Message or Interaction"""
 	if hasattr(message_or_interaction, 'guild'):
-		# Both Message and Interaction have .guild
 		if message_or_interaction.guild is not None:
 			return str(message_or_interaction.guild.id)
 	
@@ -107,17 +76,12 @@ def get_tier_key(message_or_interaction) -> str:
 	return "unknown"
 
 def get_tier_from_message(message_or_interaction) -> str:
-	"""Return the tier of the channel/server - works with Message or Interaction"""
 	key = get_tier_key(message_or_interaction)
 	if key in GOLD_IDS:
 		return "gold"
 	if key in PREMIUM_IDS:
 		return "premium"
 	return "basic"
-
-# ======================================================
-# DAILY USAGE
-# ======================================================
 
 def get_usage(key: str) -> dict:
 	today = date.today().isoformat()
@@ -138,7 +102,7 @@ def get_usage(key: str) -> dict:
 
 def check_limit(message_or_interaction, kind: str, usage_key: str | None = None) -> bool:
 	if is_owner(message_or_interaction):
-		return True  # Owners bypass all limits
+		return True
 	
 	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
@@ -155,7 +119,7 @@ def check_limit(message_or_interaction, kind: str, usage_key: str | None = None)
 
 def consume(message_or_interaction, kind: str, usage_key: str | None = None):
 	if is_owner(message_or_interaction):
-		return  # Don't consume for owners
+		return
 	
 	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
@@ -179,12 +143,7 @@ def consume(message_or_interaction, kind: str, usage_key: str | None = None):
 		return
 
 	usage[kind] += 1
-	# Save immediately after consuming
 	save_usage()
-
-# ======================================================
-# ROLLING 2-MONTH TOTAL LIMITS
-# ======================================================
 
 def _prune(history: list[float]) -> list[float]:
 	now = datetime.utcnow().timestamp()
@@ -193,7 +152,7 @@ def _prune(history: list[float]) -> list[float]:
 
 def check_total_limit(message_or_interaction, kind: str, usage_key: str | None = None) -> bool:
 	if is_owner(message_or_interaction):
-		return True  # Owners bypass total limits
+		return True
 	
 	if kind != "attachments":
 		return True
@@ -217,7 +176,7 @@ def check_total_limit(message_or_interaction, kind: str, usage_key: str | None =
 
 def consume_total(message_or_interaction, kind: str, usage_key: str | None = None, money_left: float | None = None):
 	if is_owner(message_or_interaction):
-		return  # Don't consume for owners
+		return
 	
 	if kind != "attachments":
 		return
@@ -249,12 +208,7 @@ def consume_total(message_or_interaction, kind: str, usage_key: str | None = Non
 		"time=", datetime.utcfromtimestamp(ts).isoformat()
 	)
 	
-	# Save immediately after consuming total
 	save_usage()
-
-# ======================================================
-# DENY MESSAGE
-# ======================================================
 
 async def deny_limit(message_or_interaction, kind: str):
 	tier = get_tier_from_message(message_or_interaction)
@@ -264,21 +218,14 @@ async def deny_limit(message_or_interaction, kind: str):
 	)
 	
 	if hasattr(message_or_interaction, 'reply'):
-		# It's a Message object
 		await message_or_interaction.reply(msg)
 	elif hasattr(message_or_interaction, 'response'):
-		# It's an Interaction object
 		if message_or_interaction.response.is_done():
 			await message_or_interaction.followup.send(msg, ephemeral=False)
 		else:
 			await message_or_interaction.response.send_message(msg, ephemeral=False)
 
-# ======================================================
-# SAVE / LOAD
-# ======================================================
-
 def save_usage():
-	"""Save usage data to JSON files"""
 	try:
 		with open(USAGE_FILE, "w", encoding="utf-8") as f:
 			json.dump(channel_usage, f, indent=2)
@@ -294,7 +241,6 @@ def save_usage():
 		print("[SAVE TOTAL ERROR]", e)
 
 def load_usage():
-	"""Load usage data from JSON files"""
 	global channel_usage, attachment_history
 
 	if os.path.exists(USAGE_FILE):
@@ -314,12 +260,7 @@ def load_usage():
 		except Exception as e:
 			print(f"[LOAD TOTAL ERROR] {e}")
 
-# ======================================================
-# AUTOSAVE (periodic backup every 5 minutes)
-# ======================================================
-
 async def autosave_usage():
-	"""Periodically save usage data as a backup"""
 	while True:
-		await asyncio.sleep(300)  # 5 minutes
+		await asyncio.sleep(300)
 		save_usage()
