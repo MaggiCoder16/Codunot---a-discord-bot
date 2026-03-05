@@ -559,7 +559,7 @@ async def puter_imggen_test(ctx: commands.Context, *, prompt: str):
         await ctx.send("🚫 Owner only command.")
         return
 
-    await ctx.send("🎨 **Generating with Puter.js (GPT Image 1.5)...**")
+    await ctx.send("🎨 Generating with Puter...")
 
     try:
         from puter_client import puter_generate_image
@@ -568,12 +568,11 @@ async def puter_imggen_test(ctx: commands.Context, *, prompt: str):
 
         image_bytes = await puter_generate_image(
             prompt=boosted_prompt,
-            model="gpt-image-1.5",
-            quality="low"
+            model="gpt-image-1.5"
         )
 
         await ctx.send(
-            "✅ Generated via Puter.js (free & unlimited)",
+            "✅ Generated via Puter",
             file=discord.File(io.BytesIO(image_bytes), filename="puter_image.png")
         )
 
