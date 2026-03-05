@@ -26,11 +26,11 @@ from memory import MemoryManager
 from test_api import generate_image, ImageAPIError
 import requests
 from deAPI_client_text2vid import generate_video as text_to_video_512
-from deAPI_client_text2speech import text_to_speech
 from edge_tts_client import generate_tts_mp3
 from deAPI_client_video_to_text import transcribe_video, wait_for_transcription_text, VideoToTextError
 from google_ai_studio_client import call_google_ai_studio
 from cerebras_client import call_cerebras
+from tts_text_polisher import polish_text_for_tts
 
 from usage_manager import (
 	check_limit,
@@ -1769,20 +1769,14 @@ class Codunot(commands.Cog):
 	@app_commands.describe(
 		text="The text you want to convert to speech (minimum 20 characters)",
 		language="Choose the language for the speech",
-		voice="Choose a voice for the speech (pick language first)",
-	)
-	@app_commands.choices(
-		language=[
-			app_commands.Choice(name=display, value=code)
-			for code, (display, _) in TTS_LANG_VOICES.items()
-		],
+		voice="Choose a voice (pick language first for filtered list)",
 	)
 	async def generate_tts_slash(
 		self,
 		interaction: discord.Interaction,
 		text: str,
-		language: app_commands.Choice[str],
-		voice: str,
+		language: Optional[str] = None,
+		voice: Optional[str] = None,
 	):
 		if len(text) < 20:
 			await interaction.response.send_message(
@@ -1790,18 +1784,18 @@ class Codunot(commands.Cog):
 				ephemeral=True,
 			)
 			return
-		lang_code = language.value
-		lang_display, voices = TTS_LANG_VOICES[lang_code]
-		valid_codes = set(voices.values())
-		if voice not in valid_codes:
+
+		lang = language or "English (US)"
+		if lang not in EDGE_TTS_LANG_VOICES:
 			await interaction.response.send_message(
-				f"🚫 **{voice}** is not a valid voice for **{lang_display}**. "
-				f"Available voices: {', '.join(voices.keys())}\n\n"
-				f"Try again, with the new language, and you will see the correct voices available, for that language! :)",
-				ephemeral=False,
+				f"🚫 Unknown language **{lang}**. Use the autocomplete to pick a valid language.",
+				ephemeral=True,
 			)
 			return
-		voice_display = TTS_VOICE_CODE_TO_NAME.get(voice, voice)
+
+		voices = EDGE_TTS_LANG_VOICES[lang]
+		voice_code = voice if voice and voice in voices else voices[0]
+
 		usage_key = await self._resolve_paid_usage_key(interaction)
 		await interaction.response.defer()
 		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
@@ -1815,31 +1809,32 @@ class Codunot(commands.Cog):
 			await interaction.followup.send("🚫 You've hit your **2 months' attachments limit**. Either wait for the limits to renew, or contact my owner aarav_2022 on discord, for an upgrade!")
 			return
 		await interaction.followup.send(
-			f"🔊 **Generating your audio** (voice: **{voice_display}**, language: **{lang_display}**)... almost there 🎙️"
+			f"🔊 **Generating your audio** (voice: **{voice_code}**, language: **{lang}**)... almost there 🎙️"
 		)
 		try:
-			audio_url = await text_to_speech(
-				text=text,
-				model="Kokoro",
-				voice=voice,
-				lang=lang_code,
-				speed=1,
-				format="mp3",
-				sample_rate=24000,
-			)
-			async with aiohttp.ClientSession() as session:
-				async with session.get(audio_url) as resp:
-					if resp.status != 200:
-						raise Exception("Failed to download TTS audio")
-					audio_bytes = await resp.read()
-			output_text = f"{interaction.user.mention} 🔊 TTS ({voice_display}/{lang_display}): `{text[:200]}{'...' if len(text) > 200 else ''}`"
+			polished_text = await polish_text_for_tts(text)
+			audio_bytes = await generate_tts_mp3(polished_text, voice_code)
+			output_text = f"{interaction.user.mention} 🔊 TTS ({voice_code} / {lang}): `{text[:200]}{'...' if len(text) > 200 else ''}`"
 			await self._deliver_paid_attachment(interaction, output_text, "speech.mp3", audio_bytes)
 			consume(interaction, "attachments", usage_key=usage_key)
 			consume_total(interaction, "attachments", usage_key=usage_key)
 			save_usage()
 		except Exception as e:
 			print(f"[SLASH TTS ERROR] {e}")
+			traceback.print_exc()
 			await interaction.followup.send(f"{interaction.user.mention} 🤔 Couldn't generate speech right now.")
+
+	@generate_tts_slash.autocomplete("language")
+	async def _tts_language_autocomplete(
+		self,
+		interaction: discord.Interaction,
+		current: str,
+	) -> list[app_commands.Choice[str]]:
+		return [
+			app_commands.Choice(name=lang, value=lang)
+			for lang in EDGE_TTS_LANG_VOICES
+			if current.lower() in lang.lower()
+		][:25]
 
 	@generate_tts_slash.autocomplete("voice")
 	async def _tts_voice_autocomplete(
@@ -1848,20 +1843,20 @@ class Codunot(commands.Cog):
 		current: str,
 	) -> list[app_commands.Choice[str]]:
 		lang_choice = getattr(interaction.namespace, "language", None)
-		if lang_choice and hasattr(lang_choice, "value"):
-			lang_code = lang_choice.value
+		if isinstance(lang_choice, app_commands.Choice):
+			lang_name = lang_choice.value
 		elif isinstance(lang_choice, str):
-			lang_code = lang_choice
+			lang_name = lang_choice
 		else:
-			lang_code = None
-		if lang_code and lang_code in TTS_LANG_VOICES:
-			_, voices = TTS_LANG_VOICES[lang_code]
+			lang_name = None
+		if lang_name and lang_name in EDGE_TTS_LANG_VOICES:
+			voices = EDGE_TTS_LANG_VOICES[lang_name]
 		else:
-			voices = TTS_ALL_VOICES
+			voices = EDGE_TTS_ALL_VOICES
 		return [
-			app_commands.Choice(name=name, value=code)
-			for name, code in voices.items()
-			if current.lower() in name.lower()
+			app_commands.Choice(name=v, value=v)
+			for v in voices
+			if current.lower() in v.lower()
 		][:25]
 
 	# ── Edge TTS ──────────────────────────────────────────────────────────────
