@@ -19,4 +19,4 @@ beautifulsoup4>=4.12.0
 trafilatura>=1.12.0
 cerebras-cloud-sdk>=1.0.0
 puter-python-sdk
-putergenai aiohttp
+putergenai
