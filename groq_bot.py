@@ -682,7 +682,7 @@ async def puter_text_test(ctx: commands.Context, *, message: str):
 		# System message
 		system_msg = {
 			"role": "system",
-			"content": PERSONAS.get("funny", PERSONAS["funny"])
+			"content": PERSONAS["funny"]
 		}
 
 		# Build conversation
