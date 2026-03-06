@@ -1,8 +1,3 @@
-"""
-mod_commands.py — Full moderation system for Codunot
-Persistence: mod_data.json  (add to GitHub Actions persist step)
-"""
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -10,10 +5,6 @@ import json, os, asyncio, re
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 from typing import Optional
-
-# ──────────────────────────────────────────────────────────────────────────────
-# STORAGE
-# ──────────────────────────────────────────────────────────────────────────────
 
 MOD_DATA_FILE = "mod_data.json"
 
@@ -430,7 +421,7 @@ class Step2View(_WizardBase):
         super().__init__(sk)
         self._selected: list[int] = []
 
-    @discord.ui.channel_select(
+    @discord.ui.select(cls=discord.ui.ChannelSelect,
         placeholder="Pick log channel(s)…",
         min_values=0, max_values=10,
         channel_types=[discord.ChannelType.text],
@@ -470,7 +461,8 @@ class Step3View(_WizardBase):
         super().__init__(sk)
         self._selected: list[int] = []
 
-    @discord.ui.role_select(
+    @discord.ui.select(
+        cls=discord.ui.RoleSelect,
         placeholder="Pick mod role(s)…",
         min_values=0, max_values=10,
         row=0,
@@ -507,12 +499,12 @@ class Step4View(_WizardBase):
 
 
 class Step4bView(_WizardBase):
-    """Pick channels where links ARE allowed when links are blocked server-wide."""
     def __init__(self, sk: str):
         super().__init__(sk)
         self._selected: list[int] = []
 
-    @discord.ui.channel_select(
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
         placeholder="Channels where links ARE allowed…",
         min_values=0, max_values=25,
         channel_types=[discord.ChannelType.text],
@@ -529,12 +521,12 @@ class Step4bView(_WizardBase):
 
 
 class Step4cView(_WizardBase):
-    """Pick roles that bypass the link block."""
     def __init__(self, sk: str):
         super().__init__(sk)
         self._selected: list[int] = []
 
-    @discord.ui.role_select(
+    @discord.ui.select(
+        cls=discord.ui.RoleSelect,
         placeholder="Roles that can post links anywhere…",
         min_values=0, max_values=10,
         row=0,
