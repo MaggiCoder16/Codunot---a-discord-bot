@@ -1,0 +1,1534 @@
+"""
+mod_commands.py — Full moderation system for Codunot
+Persistence: mod_data.json  (add to GitHub Actions persist step)
+"""
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+import json, os, asyncio, re
+from datetime import datetime, timedelta, timezone
+from collections import defaultdict, deque
+from typing import Optional
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STORAGE
+# ──────────────────────────────────────────────────────────────────────────────
+
+MOD_DATA_FILE = "mod_data.json"
+
+def load_mod_data() -> dict:
+    default = {"guilds": {}, "warns": {}, "cases": {}, "notes": {}, "pending_unbans": {}}
+    if not os.path.exists(MOD_DATA_FILE):
+        return default
+    try:
+        with open(MOD_DATA_FILE) as f:
+            data = json.load(f)
+        for k, v in default.items():
+            data.setdefault(k, v)
+        return data
+    except Exception as e:
+        print(f"[MOD] Load error: {e}")
+        return default
+
+def save_mod_data(data: dict):
+    try:
+        with open(MOD_DATA_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"[MOD] Save error: {e}")
+
+def _guild_cfg(data: dict, guild_id: int) -> dict:
+    gid = str(guild_id)
+    if gid not in data["guilds"]:
+        data["guilds"][gid] = {
+            "setup_complete": False,
+            "automod_enabled": False,
+            "bad_words": [],
+            "log_channels": [],
+            "log_everywhere": False,
+            "mod_roles": [],
+            "links_allowed_server": True,
+            "link_allowed_channels": [],
+            "link_allowed_roles": [],
+            "anti_spam": False,
+            "spam_messages": 5,
+            "spam_seconds": 5,
+            "anti_raid": False,
+            "raid_joins": 10,
+            "raid_seconds": 10,
+        }
+    return data["guilds"][gid]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONSTANTS + HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+COLOR_ORANGE  = 0xFFA500
+COLOR_SUCCESS = 0x2ECC71
+COLOR_DANGER  = 0xE74C3C
+COLOR_INFO    = 0x5865F2
+COLOR_GOLD    = 0xFFD700
+COLOR_GREY    = 0x808080
+
+setup_sessions: dict[str, dict] = {}
+_spam_tracker: dict = defaultdict(lambda: defaultdict(lambda: deque(maxlen=25)))
+_raid_tracker: dict = defaultdict(lambda: deque(maxlen=40))
+
+def _parse_duration(s: str) -> Optional[timedelta]:
+    m = re.match(r"^(\d+)([mhd])$", s.strip().lower())
+    if not m:
+        return None
+    v, u = int(m.group(1)), m.group(2)
+    return {"m": timedelta(minutes=v), "h": timedelta(hours=v), "d": timedelta(days=v)}.get(u)
+
+def _progress_bar(step: int, total: int = 6) -> str:
+    return "█" * step + "░" * (total - step)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EMBED BUILDERS  (one per wizard step)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _wizard_embed(step: int, title: str, description: str, color=COLOR_ORANGE) -> discord.Embed:
+    e = discord.Embed(title=title, description=description, color=color,
+                      timestamp=datetime.now(timezone.utc))
+    e.set_footer(text=f"Moderation Setup  •  Step {step}/6  [{_progress_bar(step)}]")
+    return e
+
+def emb_step1() -> discord.Embed:
+    return _wizard_embed(1, "🛡️ Step 1 — AutoMod",
+        "**AutoMod** watches every message 24/7 — no moderator needs to be online.\n\n"
+        "**What it handles automatically:**\n"
+        "🤬  Deletes messages containing your blocked words\n"
+        "🚫  Timeouts spammers *(threshold set in Step 5)*\n"
+        "🚨  Locks the server if a raid is detected *(threshold set in Step 5)*\n\n"
+        "If you click **Yes**, you'll fill in your bad word list next.\n\n"
+        "❓ **Do you want to enable AutoMod?**"
+    )
+
+def emb_step2() -> discord.Embed:
+    return _wizard_embed(2, "📋 Step 2 — Mod Log Channel",
+        "Every mod action *(ban, kick, warn, auto-timeout, etc.)* is logged in detail.\n\n"
+        "**Your options:**\n"
+        "📌  **Specific channel(s)** — Pick one or more; all logs go there\n"
+        "🌐  **Log Everywhere** — Log appears in the same channel as the action\n"
+        "⏭️  **Skip** — No logging *(not recommended)*\n\n"
+        "Select channel(s) from the dropdown, then hit **✅ Confirm Channels**.\n"
+        "Or use the quick buttons below."
+    )
+
+def emb_step3() -> discord.Embed:
+    return _wizard_embed(3, "🎖️ Step 3 — Mod Roles",
+        "**Who can use moderation commands?**\n\n"
+        "The **server owner** and anyone with **Ban / Kick / Timeout** permissions always have access.\n\n"
+        "You can **also grant** specific roles access — great for Moderator or Helper roles "
+        "that don't have those base Discord permissions.\n\n"
+        "Select roles below, then click **✅ Confirm Roles**.\n"
+        "Or click **⏭️ Skip** to use default Discord permissions only."
+    )
+
+def emb_step4() -> discord.Embed:
+    return _wizard_embed(4, "🔗 Step 4 — Link Policy",
+        "**Should members be allowed to post links?**\n\n"
+        "✅  **Yes** — Links are allowed everywhere *(you pick nothing extra)*\n"
+        "🚫  **No** — Links are **blocked server-wide**. You'll then choose:\n"
+        "　　→ Which channels links **are** allowed in\n"
+        "　　→ Which roles can bypass the block"
+    )
+
+def emb_step4b() -> discord.Embed:
+    return _wizard_embed(4, "🔗 Step 4b — Allowed Channels",
+        "Links are **blocked server-wide** by default.\n\n"
+        "**Select channels where links ARE allowed:**\n"
+        "*(e.g. #links, #resources, #bots, #media)*\n\n"
+        "Leave empty and click **Continue →** to block links in every channel."
+    )
+
+def emb_step4c() -> discord.Embed:
+    return _wizard_embed(4, "🔗 Step 4c — Bypass Roles",
+        "**Select roles that can post links anywhere** *(bypass the server-wide block)*:\n"
+        "*(e.g. Admins, Moderators, VIP)*\n\n"
+        "Leave empty and click **Continue →** if no roles should bypass."
+    )
+
+def emb_step5() -> discord.Embed:
+    return _wizard_embed(5, "⚡ Step 5 — AntiSpam & AntiRaid",
+        "**AntiSpam 🚫**\n"
+        "Auto-timeout members who send too many messages too fast.\n"
+        "Default: **5 messages in 5 seconds** → 5-minute timeout\n\n"
+        "**AntiRaid 🚨**\n"
+        "Auto-lock all channels if too many members join at once.\n"
+        "Default: **10 joins in 10 seconds** → full lockdown\n\n"
+        "Click **Yes** to enable both with custom thresholds, or use the partial options."
+    )
+
+def emb_summary(s: dict) -> discord.Embed:
+    e = discord.Embed(
+        title="🛡️ Step 6 — Review & Confirm",
+        description=(
+            "Everything you configured is shown below.\n"
+            "Click **✅ Confirm & Save** to activate moderation, "
+            "or **🔄 Start Over** to go back to Step 1."
+        ),
+        color=COLOR_INFO,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    e.add_field(
+        name="🤖 AutoMod",
+        value=f"✅ Enabled — {len(s.get('bad_words',[]))} blocked word(s)" if s.get("automod") else "⛔ Disabled",
+        inline=True,
+    )
+
+    if s.get("log_everywhere"):
+        log_val = "🌐 Log Everywhere"
+    elif s.get("log_channels"):
+        chs = " ".join(f"<#{c}>" for c in s["log_channels"][:3])
+        extra = f" +{len(s['log_channels'])-3} more" if len(s["log_channels"]) > 3 else ""
+        log_val = chs + extra
+    else:
+        log_val = "⛔ No logging"
+    e.add_field(name="📋 Logging", value=log_val, inline=True)
+
+    roles = s.get("mod_roles", [])
+    e.add_field(
+        name="🎖️ Mod Roles",
+        value=(" ".join(f"<@&{r}>" for r in roles) if roles else "Default perms only"),
+        inline=False,
+    )
+
+    if s.get("links_allowed_server"):
+        link_val = "✅ Allowed everywhere"
+    else:
+        link_val = "🚫 Blocked server-wide"
+        ach = s.get("link_allowed_channels", [])
+        aro = s.get("link_allowed_roles", [])
+        if ach: link_val += f"\n✅ Allowed in {len(ach)} channel(s)"
+        if aro: link_val += f"\n✅ Bypass: {len(aro)} role(s)"
+    e.add_field(name="🔗 Links", value=link_val, inline=True)
+
+    spam_val = (f"✅ {s['spam_messages']} msgs / {s['spam_seconds']}s"
+                if s.get("anti_spam") else "⛔ Off")
+    raid_val = (f"✅ {s['raid_joins']} joins / {s['raid_seconds']}s"
+                if s.get("anti_raid") else "⛔ Off")
+    e.add_field(name="🚫 AntiSpam", value=spam_val, inline=True)
+    e.add_field(name="🚨 AntiRaid", value=raid_val, inline=True)
+
+    e.add_field(
+        name="📋 Commands Unlocked After Save",
+        value=(
+            "`/warn` `/warns` `/clearwarns` `/case`\n"
+            "`/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
+            "`/clear` `/slowmode` `/lock` `/unlock` `/userinfo`\n"
+            "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`"
+        ),
+        inline=False,
+    )
+    e.set_footer(text=f"Step 6/6  [{_progress_bar(6)}]  •  Moderation Setup")
+    return e
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODALS
+# ──────────────────────────────────────────────────────────────────────────────
+
+class BadWordsModal(discord.ui.Modal, title="🤬 Set Bad Word List"):
+    words = discord.ui.TextInput(
+        label="Bad words (comma-separated)",
+        style=discord.TextStyle.paragraph,
+        placeholder="badword1, another bad phrase, word3, ...",
+        required=True, max_length=2000,
+    )
+    def __init__(self, sk: str):
+        super().__init__()
+        self.sk = sk
+
+    async def on_submit(self, interaction: discord.Interaction):
+        session = setup_sessions.get(self.sk)
+        if not session:
+            await interaction.response.send_message("❌ Session expired.", ephemeral=True)
+            return
+        session["automod"] = True
+        session["bad_words"] = [w.strip().lower() for w in self.words.value.split(",") if w.strip()]
+        confirm = discord.Embed(
+            title="✅ AutoMod Enabled",
+            description=f"**{len(session['bad_words'])} word(s)** added. Moving to Step 2...",
+            color=COLOR_SUCCESS,
+        )
+        await interaction.response.defer()
+        msg = session["message"]
+        await msg.edit(embed=confirm, view=None)
+        await asyncio.sleep(1.5)
+        await msg.edit(embed=emb_step2(), view=Step2View(self.sk))
+
+
+class _ThresholdModalBase(discord.ui.Modal):
+    """Shared base for spam/raid threshold modals."""
+    def __init__(self, sk: str):
+        super().__init__()
+        self.sk = sk
+
+    async def _save_and_advance(self, interaction: discord.Interaction):
+        session = setup_sessions.get(self.sk)
+        if not session:
+            await interaction.response.send_message("❌ Session expired.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        await session["message"].edit(embed=emb_summary(session), view=SummaryView(self.sk))
+
+
+class SpamRaidModal(_ThresholdModalBase, title="⚡ AntiSpam & AntiRaid Settings"):
+    spam_msgs = discord.ui.TextInput(label="AntiSpam: max messages before timeout",  placeholder="5", default="5", max_length=3)
+    spam_secs = discord.ui.TextInput(label="AntiSpam: time window (seconds)",        placeholder="5", default="5", max_length=3)
+    raid_join = discord.ui.TextInput(label="AntiRaid: max joins before lockdown",    placeholder="10", default="10", max_length=3)
+    raid_secs = discord.ui.TextInput(label="AntiRaid: time window (seconds)",        placeholder="10", default="10", max_length=3)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        session = setup_sessions.get(self.sk)
+        if not session:
+            await interaction.response.send_message("❌ Session expired.", ephemeral=True)
+            return
+        try:
+            session.update({
+                "spam_messages": max(2, min(20,  int(self.spam_msgs.value))),
+                "spam_seconds":  max(2, min(60,  int(self.spam_secs.value))),
+                "raid_joins":    max(3, min(50,  int(self.raid_join.value))),
+                "raid_seconds":  max(3, min(60,  int(self.raid_secs.value))),
+                "anti_spam": True, "anti_raid": True,
+            })
+        except ValueError:
+            session.update({"spam_messages":5,"spam_seconds":5,"raid_joins":10,"raid_seconds":10,
+                            "anti_spam":True,"anti_raid":True})
+        await self._save_and_advance(interaction)
+
+
+class SpamOnlyModal(_ThresholdModalBase, title="🚫 AntiSpam Settings"):
+    spam_msgs = discord.ui.TextInput(label="Max messages before timeout",  placeholder="5", default="5", max_length=3)
+    spam_secs = discord.ui.TextInput(label="Time window (seconds)",        placeholder="5", default="5", max_length=3)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        session = setup_sessions.get(self.sk)
+        if not session: return
+        try:
+            session.update({"spam_messages": max(2, min(20, int(self.spam_msgs.value))),
+                            "spam_seconds":  max(2, min(60, int(self.spam_secs.value))),
+                            "anti_spam": True, "anti_raid": False})
+        except ValueError:
+            session.update({"spam_messages":5,"spam_seconds":5,"anti_spam":True,"anti_raid":False})
+        await self._save_and_advance(interaction)
+
+
+class RaidOnlyModal(_ThresholdModalBase, title="🚨 AntiRaid Settings"):
+    raid_join = discord.ui.TextInput(label="Max joins before lockdown", placeholder="10", default="10", max_length=3)
+    raid_secs = discord.ui.TextInput(label="Time window (seconds)",     placeholder="10", default="10", max_length=3)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        session = setup_sessions.get(self.sk)
+        if not session: return
+        try:
+            session.update({"raid_joins":   max(3, min(50, int(self.raid_join.value))),
+                            "raid_seconds": max(3, min(60, int(self.raid_secs.value))),
+                            "anti_spam": False, "anti_raid": True})
+        except ValueError:
+            session.update({"raid_joins":10,"raid_seconds":10,"anti_spam":False,"anti_raid":True})
+        await self._save_and_advance(interaction)
+
+
+class MassBanModal(discord.ui.Modal, title="🔨 Mass Ban Users"):
+    user_ids = discord.ui.TextInput(
+        label="User IDs (one per line or comma-separated)",
+        style=discord.TextStyle.paragraph,
+        placeholder="123456789012345678\n987654321098765432",
+        required=True, max_length=2000,
+    )
+    reason = discord.ui.TextInput(label="Reason", default="Mass ban", max_length=500, required=False)
+
+    def __init__(self, cog, guild: discord.Guild):
+        super().__init__()
+        self.cog   = cog
+        self.guild = guild
+
+    async def on_submit(self, interaction: discord.Interaction):
+        reason = self.reason.value or "Mass ban"
+        ids = [int(x) for x in re.split(r"[\s,]+", self.user_ids.value.strip()) if x.strip().isdigit()]
+        if not ids:
+            await interaction.response.send_message("❌ No valid user IDs found.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        success, failed = [], []
+        for uid in ids[:10]:
+            try:
+                user = await self.cog.bot.fetch_user(uid)
+                await self.guild.ban(user, reason=f"{interaction.user}: {reason}")
+                success.append(str(user))
+                self.cog._add_case(self.guild.id, "massban", uid, str(user),
+                                   interaction.user.id, str(interaction.user), reason)
+            except Exception:
+                failed.append(str(uid))
+        e = discord.Embed(title="🔨 Mass Ban Results",
+                          color=COLOR_SUCCESS if success else COLOR_DANGER,
+                          timestamp=datetime.now(timezone.utc))
+        if success: e.add_field(name=f"✅ Banned ({len(success)})", value="\n".join(success), inline=False)
+        if failed:  e.add_field(name=f"❌ Failed ({len(failed)})",  value="\n".join(failed),  inline=False)
+        e.add_field(name="Reason", value=reason)
+        await interaction.followup.send(embed=e)
+        await self.cog._log_guild(self.guild, e)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SETUP WIZARD VIEWS
+# ──────────────────────────────────────────────────────────────────────────────
+
+class _WizardBase(discord.ui.View):
+    """Base class for all setup wizard views — handles timeout + user guard."""
+
+    def __init__(self, sk: str, timeout: int = 300):
+        super().__init__(timeout=timeout)
+        self.sk = sk
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        session = setup_sessions.get(self.sk, {})
+        if interaction.user.id != session.get("user_id"):
+            await interaction.response.send_message(
+                "❌ Only the person who started `/setup-moderation` can interact with this.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    async def on_timeout(self):
+        session = setup_sessions.pop(self.sk, None)
+        if session:
+            msg = session.get("message")
+            if msg:
+                try:
+                    await msg.edit(
+                        embed=discord.Embed(
+                            title="⏰ Setup Timed Out",
+                            description="Run `/setup-moderation` to try again.",
+                            color=COLOR_DANGER,
+                        ),
+                        view=None,
+                    )
+                except Exception:
+                    pass
+
+
+class Step1View(_WizardBase):
+    @discord.ui.button(label="✅ Yes, enable AutoMod", style=discord.ButtonStyle.success, row=0)
+    async def yes_btn(self, interaction: discord.Interaction, _):
+        await interaction.response.send_modal(BadWordsModal(self.sk))
+
+    @discord.ui.button(label="❌ No, skip AutoMod", style=discord.ButtonStyle.secondary, row=0)
+    async def no_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions[self.sk]
+        s["automod"] = False
+        s["bad_words"] = []
+        await interaction.response.edit_message(embed=emb_step2(), view=Step2View(self.sk))
+
+
+class Step2View(_WizardBase):
+    def __init__(self, sk: str):
+        super().__init__(sk)
+        self._selected: list[int] = []
+
+    @discord.ui.channel_select(
+        placeholder="Pick log channel(s)…",
+        min_values=0, max_values=10,
+        channel_types=[discord.ChannelType.text],
+        row=0,
+    )
+    async def ch_select(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
+        self._selected = [c.id for c in select.values]
+        await interaction.response.defer()
+
+    @discord.ui.button(label="✅ Confirm Channels", style=discord.ButtonStyle.success, row=1)
+    async def confirm_btn(self, interaction: discord.Interaction, _):
+        if not self._selected:
+            await interaction.response.send_message("❌ Select at least one channel first.", ephemeral=True)
+            return
+        s = setup_sessions[self.sk]
+        s["log_channels"] = self._selected
+        s["log_everywhere"] = False
+        await interaction.response.edit_message(embed=emb_step3(), view=Step3View(self.sk))
+
+    @discord.ui.button(label="🌐 Log Everywhere", style=discord.ButtonStyle.primary, row=1)
+    async def everywhere_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions[self.sk]
+        s["log_channels"] = []
+        s["log_everywhere"] = True
+        await interaction.response.edit_message(embed=emb_step3(), view=Step3View(self.sk))
+
+    @discord.ui.button(label="⏭️ Skip (No Logging)", style=discord.ButtonStyle.secondary, row=1)
+    async def skip_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions[self.sk]
+        s["log_channels"] = []
+        s["log_everywhere"] = False
+        await interaction.response.edit_message(embed=emb_step3(), view=Step3View(self.sk))
+
+
+class Step3View(_WizardBase):
+    def __init__(self, sk: str):
+        super().__init__(sk)
+        self._selected: list[int] = []
+
+    @discord.ui.role_select(
+        placeholder="Pick mod role(s)…",
+        min_values=0, max_values=10,
+        row=0,
+    )
+    async def role_select(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
+        self._selected = [r.id for r in select.values]
+        await interaction.response.defer()
+
+    @discord.ui.button(label="✅ Confirm Roles", style=discord.ButtonStyle.success, row=1)
+    async def confirm_btn(self, interaction: discord.Interaction, _):
+        if not self._selected:
+            await interaction.response.send_message("❌ Select at least one role first.", ephemeral=True)
+            return
+        setup_sessions[self.sk]["mod_roles"] = self._selected
+        await interaction.response.edit_message(embed=emb_step4(), view=Step4View(self.sk))
+
+    @discord.ui.button(label="⏭️ Skip (Default Perms Only)", style=discord.ButtonStyle.secondary, row=1)
+    async def skip_btn(self, interaction: discord.Interaction, _):
+        setup_sessions[self.sk]["mod_roles"] = []
+        await interaction.response.edit_message(embed=emb_step4(), view=Step4View(self.sk))
+
+
+class Step4View(_WizardBase):
+    @discord.ui.button(label="✅ Yes, allow links", style=discord.ButtonStyle.success, row=0)
+    async def yes_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions[self.sk]
+        s.update({"links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": []})
+        await interaction.response.edit_message(embed=emb_step5(), view=Step5View(self.sk))
+
+    @discord.ui.button(label="🚫 No, block links server-wide", style=discord.ButtonStyle.danger, row=0)
+    async def no_btn(self, interaction: discord.Interaction, _):
+        setup_sessions[self.sk]["links_allowed_server"] = False
+        await interaction.response.edit_message(embed=emb_step4b(), view=Step4bView(self.sk))
+
+
+class Step4bView(_WizardBase):
+    """Pick channels where links ARE allowed when links are blocked server-wide."""
+    def __init__(self, sk: str):
+        super().__init__(sk)
+        self._selected: list[int] = []
+
+    @discord.ui.channel_select(
+        placeholder="Channels where links ARE allowed…",
+        min_values=0, max_values=25,
+        channel_types=[discord.ChannelType.text],
+        row=0,
+    )
+    async def ch_select(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
+        self._selected = [c.id for c in select.values]
+        await interaction.response.defer()
+
+    @discord.ui.button(label="Continue →", style=discord.ButtonStyle.primary, row=1)
+    async def cont_btn(self, interaction: discord.Interaction, _):
+        setup_sessions[self.sk]["link_allowed_channels"] = self._selected
+        await interaction.response.edit_message(embed=emb_step4c(), view=Step4cView(self.sk))
+
+
+class Step4cView(_WizardBase):
+    """Pick roles that bypass the link block."""
+    def __init__(self, sk: str):
+        super().__init__(sk)
+        self._selected: list[int] = []
+
+    @discord.ui.role_select(
+        placeholder="Roles that can post links anywhere…",
+        min_values=0, max_values=10,
+        row=0,
+    )
+    async def role_select(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
+        self._selected = [r.id for r in select.values]
+        await interaction.response.defer()
+
+    @discord.ui.button(label="Continue →", style=discord.ButtonStyle.primary, row=1)
+    async def cont_btn(self, interaction: discord.Interaction, _):
+        setup_sessions[self.sk]["link_allowed_roles"] = self._selected
+        await interaction.response.edit_message(embed=emb_step5(), view=Step5View(self.sk))
+
+
+class Step5View(_WizardBase):
+    @discord.ui.button(label="✅ Both (AntiSpam + AntiRaid)", style=discord.ButtonStyle.success, row=0)
+    async def both_btn(self, interaction: discord.Interaction, _):
+        await interaction.response.send_modal(SpamRaidModal(self.sk))
+
+    @discord.ui.button(label="🚫 AntiSpam Only", style=discord.ButtonStyle.primary, row=0)
+    async def spam_btn(self, interaction: discord.Interaction, _):
+        await interaction.response.send_modal(SpamOnlyModal(self.sk))
+
+    @discord.ui.button(label="🚨 AntiRaid Only", style=discord.ButtonStyle.primary, row=0)
+    async def raid_btn(self, interaction: discord.Interaction, _):
+        await interaction.response.send_modal(RaidOnlyModal(self.sk))
+
+    @discord.ui.button(label="❌ Skip Both", style=discord.ButtonStyle.secondary, row=1)
+    async def skip_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions[self.sk]
+        s.update({"anti_spam": False, "anti_raid": False})
+        await interaction.response.edit_message(embed=emb_summary(s), view=SummaryView(self.sk))
+
+
+class SummaryView(_WizardBase):
+    @discord.ui.button(label="✅ Confirm & Save", style=discord.ButtonStyle.success,
+                       emoji="🛡️", row=0)
+    async def confirm_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions.pop(self.sk, None)
+        if not s:
+            await interaction.response.send_message("❌ Session expired.", ephemeral=True)
+            return
+
+        # Write to mod_data via the cog — cog is available via bot
+        cog: ModerationCog = interaction.client.cogs.get("ModerationCog")
+        if cog is None:
+            await interaction.response.send_message("❌ Cog not found.", ephemeral=True)
+            return
+
+        cfg = _guild_cfg(cog.mod_data, interaction.guild.id)
+        cfg.update({
+            "setup_complete":       True,
+            "automod_enabled":      s.get("automod", False),
+            "bad_words":            s.get("bad_words", []),
+            "log_channels":         s.get("log_channels", []),
+            "log_everywhere":       s.get("log_everywhere", False),
+            "mod_roles":            s.get("mod_roles", []),
+            "links_allowed_server": s.get("links_allowed_server", True),
+            "link_allowed_channels":s.get("link_allowed_channels", []),
+            "link_allowed_roles":   s.get("link_allowed_roles", []),
+            "anti_spam":            s.get("anti_spam", False),
+            "spam_messages":        s.get("spam_messages", 5),
+            "spam_seconds":         s.get("spam_seconds", 5),
+            "anti_raid":            s.get("anti_raid", False),
+            "raid_joins":           s.get("raid_joins", 10),
+            "raid_seconds":         s.get("raid_seconds", 10),
+        })
+        cog._save()
+
+        done = discord.Embed(
+            title="🛡️ Moderation is now ACTIVE!",
+            description=(
+                "Your server is protected. All mod commands are unlocked.\n\n"
+                "**Quick reference:**\n"
+                "`/warn` `/ban` `/mute` `/clear` `/lock` `/userinfo`\n"
+                "`/case` — lookup any mod action by case number\n"
+                "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`\n\n"
+                "Use `/setup-moderation` any time to reconfigure."
+            ),
+            color=COLOR_SUCCESS,
+            timestamp=datetime.now(timezone.utc),
+        )
+        done.set_footer(text="Moderation Setup Complete")
+        await interaction.response.edit_message(embed=done, view=None)
+
+    @discord.ui.button(label="🔄 Start Over", style=discord.ButtonStyle.danger, row=0)
+    async def restart_btn(self, interaction: discord.Interaction, _):
+        msg = setup_sessions[self.sk].get("message")
+        uid = setup_sessions[self.sk].get("user_id")
+        gid = setup_sessions[self.sk].get("guild_id")
+        setup_sessions[self.sk] = {
+            "message": msg, "user_id": uid, "guild_id": gid,
+            "automod": False, "bad_words": [],
+            "log_channels": [], "log_everywhere": False,
+            "mod_roles": [],
+            "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
+            "anti_spam": False, "spam_messages": 5, "spam_seconds": 5,
+            "anti_raid": False, "raid_joins": 10, "raid_seconds": 10,
+        }
+        await interaction.response.edit_message(embed=emb_step1(), view=Step1View(self.sk))
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN COG
+# ──────────────────────────────────────────────────────────────────────────────
+
+class ModerationCog(commands.Cog, name="ModerationCog"):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.mod_data = load_mod_data()
+
+    async def cog_load(self):
+        asyncio.create_task(self._process_pending_unbans())
+
+    # ── persistence helpers ───────────────────────────────────────────────────
+
+    def _save(self):
+        save_mod_data(self.mod_data)
+
+    def _cfg(self, guild_id: int) -> dict:
+        return _guild_cfg(self.mod_data, guild_id)
+
+    def _is_setup(self, guild_id: int) -> bool:
+        return self._cfg(guild_id).get("setup_complete", False)
+
+    def _add_case(self, guild_id: int, ctype: str, user_id: int, user_str: str,
+                  mod_id: int, mod_str: str, reason: str, extra: dict = None) -> int:
+        gid = str(guild_id)
+        self.mod_data.setdefault("cases", {}).setdefault(gid, {"next_case": 1, "by_number": {}})
+        c = self.mod_data["cases"][gid]
+        n = c["next_case"]
+        c["by_number"][str(n)] = {
+            "type": ctype, "user_id": user_id, "user": user_str,
+            "moderator_id": mod_id, "moderator": mod_str, "reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "extra": extra or {},
+        }
+        c["next_case"] = n + 1
+        self._save()
+        return n
+
+    async def _log_guild(self, guild: discord.Guild, embed: discord.Embed,
+                         action_channel_id: int = None):
+        cfg = self._cfg(guild.id)
+        if cfg.get("log_everywhere") and action_channel_id:
+            ch = guild.get_channel(action_channel_id)
+            if ch:
+                try: await ch.send(embed=embed); return
+                except Exception: pass
+        for cid in cfg.get("log_channels", []):
+            ch = guild.get_channel(int(cid))
+            if ch:
+                try: await ch.send(embed=embed)
+                except Exception as e: print(f"[MOD LOG] {e}")
+
+    # ── permission gates ──────────────────────────────────────────────────────
+
+    def _has_base_perms(self, member: discord.Member) -> bool:
+        p = member.guild_permissions
+        return p.administrator or p.ban_members or p.kick_members or p.moderate_members
+
+    async def _gate(self, interaction: discord.Interaction) -> bool:
+        """Gate: setup must be done AND user must have perms. Returns False and sends error if not."""
+        if not interaction.guild:
+            await interaction.response.send_message("❌ Server only.", ephemeral=True)
+            return False
+        if not self._is_setup(interaction.guild.id):
+            embed = discord.Embed(
+                title="⚠️ Moderation Not Configured",
+                description=(
+                    "This server hasn't set up moderation yet.\n\n"
+                    "The **server owner** or a member with **Ban / Kick / Timeout** permissions "
+                    "must run `/setup-moderation` first."
+                ),
+                color=COLOR_DANGER,
+            )
+            embed.add_field(name="Who can run it?",
+                            value="Server owner, or anyone with Ban Members / Kick Members / Moderate Members permissions")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return False
+        return await self._check_perms(interaction)
+
+    async def _check_perms(self, interaction: discord.Interaction) -> bool:
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            await interaction.response.send_message("❌ Server only.", ephemeral=True)
+            return False
+        if interaction.guild.owner_id == member.id or self._has_base_perms(member):
+            return True
+        mod_roles = self._cfg(interaction.guild.id).get("mod_roles", [])
+        if any(r.id in mod_roles for r in member.roles):
+            return True
+        embed = discord.Embed(
+            title="❌ No Mod Permission",
+            description=(
+                "You need one of:\n"
+                "• **Ban Members** permission\n"
+                "• **Kick Members** permission\n"
+                "• **Moderate Members** (Timeout) permission\n"
+                "• A configured **Mod Role**\n\n"
+                "Ask a server admin if you believe this is wrong."
+            ),
+            color=COLOR_DANGER,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return False
+
+    async def _check_premium(self, interaction: discord.Interaction) -> bool:
+        try:
+            from usage_manager import get_tier_from_message
+            tier = get_tier_from_message(interaction)
+        except Exception:
+            tier = "free"
+        if tier in ("premium", "gold"):
+            return True
+        embed = discord.Embed(
+            title="🌟 Premium / Gold Required",
+            description=(
+                "This command is available for **Premium** and **Gold** subscribers.\n\n"
+                "🔵 **Premium** — $10 / 2 months\n"
+                "🟡 **Gold 👑** — $15 / 2 months\n\n"
+                "Contact `@aarav_2022` on Discord to upgrade!"
+            ),
+            color=COLOR_GOLD,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return False
+
+    # ── auto-mod: on_message ─────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot or not message.guild:
+            return
+        cfg = self._cfg(message.guild.id)
+        if not cfg.get("setup_complete") or not cfg.get("automod_enabled"):
+            return
+
+        content     = message.content
+        guild_id    = message.guild.id
+        user_id     = message.author.id
+        now_ts      = datetime.now(timezone.utc).timestamp()
+
+        # ── bad word filter ───────────────────────────────────────────────────
+        cl = content.lower()
+        for word in cfg.get("bad_words", []):
+            if word.lower() in cl:
+                try:
+                    await message.delete()
+                    await message.channel.send(
+                        f"⚠️ {message.author.mention} that message was removed.", delete_after=6
+                    )
+                    e = discord.Embed(title="🤬 Bad Word Removed", color=COLOR_DANGER,
+                                     timestamp=datetime.now(timezone.utc))
+                    e.add_field(name="User",    value=f"{message.author} (`{user_id}`)")
+                    e.add_field(name="Channel", value=message.channel.mention)
+                    e.add_field(name="Trigger", value=f"||{word}||")
+                    await self._log_guild(message.guild, e, message.channel.id)
+                except Exception as ex:
+                    print(f"[AUTOMOD BAD WORD] {ex}")
+                return
+
+        # ── link filter ───────────────────────────────────────────────────────
+        if not cfg.get("links_allowed_server", True):
+            if re.search(r"https?://\S+|www\.\S+|discord\.gg/\S+", content, re.IGNORECASE):
+                allowed_chs   = [str(c) for c in cfg.get("link_allowed_channels", [])]
+                allowed_roles = cfg.get("link_allowed_roles", [])
+                in_allowed_ch = str(message.channel.id) in allowed_chs
+                has_bypass    = isinstance(message.author, discord.Member) and \
+                                any(r.id in allowed_roles for r in message.author.roles)
+                if not in_allowed_ch and not has_bypass:
+                    try:
+                        await message.delete()
+                        await message.channel.send(
+                            f"🔗 {message.author.mention} links are not allowed here.", delete_after=6
+                        )
+                        e = discord.Embed(title="🔗 Link Blocked", color=0xFFA500,
+                                         timestamp=datetime.now(timezone.utc))
+                        e.add_field(name="User",    value=f"{message.author} (`{user_id}`)")
+                        e.add_field(name="Channel", value=message.channel.mention)
+                        await self._log_guild(message.guild, e, message.channel.id)
+                    except Exception as ex:
+                        print(f"[AUTOMOD LINK] {ex}")
+                    return
+
+        # ── anti-spam ─────────────────────────────────────────────────────────
+        if cfg.get("anti_spam"):
+            bucket = _spam_tracker[guild_id][user_id]
+            bucket.append(now_ts)
+            window  = cfg.get("spam_seconds", 5)
+            limit   = cfg.get("spam_messages", 5)
+            recent  = [t for t in bucket if now_ts - t <= window]
+            if len(recent) >= limit:
+                member = message.guild.get_member(user_id)
+                if member and not member.guild_permissions.administrator:
+                    try:
+                        await member.timeout(timedelta(minutes=5), reason="AutoMod: spam")
+                        try:
+                            await message.channel.purge(
+                                limit=15, check=lambda m: m.author.id == user_id
+                            )
+                        except Exception:
+                            pass
+                        await message.channel.send(
+                            f"🚫 {member.mention} timed out **5 min** — slow down!", delete_after=10
+                        )
+                        e = discord.Embed(title="🚫 AutoMod: Spam Timeout", color=COLOR_DANGER,
+                                         timestamp=datetime.now(timezone.utc))
+                        e.add_field(name="User",    value=f"{member} (`{user_id}`)")
+                        e.add_field(name="Channel", value=message.channel.mention)
+                        e.add_field(name="Trigger", value=f"{len(recent)} msgs in {window}s")
+                        await self._log_guild(message.guild, e, message.channel.id)
+                        _spam_tracker[guild_id][user_id].clear()
+                    except discord.Forbidden:
+                        pass
+                    except Exception as ex:
+                        print(f"[AUTOMOD SPAM] {ex}")
+
+    # ── auto-mod: anti-raid ───────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        cfg = self._cfg(member.guild.id)
+        if not cfg.get("setup_complete") or not cfg.get("anti_raid"):
+            return
+        now_ts = datetime.now(timezone.utc).timestamp()
+        bucket = _raid_tracker[member.guild.id]
+        bucket.append(now_ts)
+        window = cfg.get("raid_seconds", 10)
+        limit  = cfg.get("raid_joins",   10)
+        recent = [t for t in bucket if now_ts - t <= window]
+        if len(recent) >= limit:
+            locked = 0
+            for ch in member.guild.text_channels:
+                try:
+                    await ch.set_permissions(member.guild.default_role,
+                                             send_messages=False, reason="AutoMod: raid")
+                    locked += 1
+                except Exception:
+                    pass
+            e = discord.Embed(
+                title="🚨 RAID DETECTED — Server Locked",
+                description=(
+                    f"**{len(recent)} members** joined in **{window}s**.\n"
+                    f"**{locked} channels** locked.\n\n"
+                    "Use `/unlock` to restore channels once the raid is over."
+                ),
+                color=COLOR_DANGER,
+                timestamp=datetime.now(timezone.utc),
+            )
+            await self._log_guild(member.guild, e)
+            _raid_tracker[member.guild.id].clear()
+
+    # ── temp-ban unban scheduler ──────────────────────────────────────────────
+
+    async def _process_pending_unbans(self):
+        await self.bot.wait_until_ready()
+        now = datetime.now(timezone.utc)
+        for gid_str, entries in self.mod_data.get("pending_unbans", {}).items():
+            guild = self.bot.get_guild(int(gid_str))
+            if not guild:
+                continue
+            remaining = []
+            for entry in entries:
+                unban_at = datetime.fromisoformat(entry["unban_at"])
+                delay = (unban_at - now).total_seconds()
+                if delay <= 0:
+                    try:
+                        user = await self.bot.fetch_user(entry["user_id"])
+                        await guild.unban(user, reason="Temp ban expired")
+                        print(f"[TEMPBAN] Unbanned {user} from {guild}")
+                    except Exception as ex:
+                        print(f"[TEMPBAN] {ex}")
+                else:
+                    remaining.append(entry)
+                    asyncio.create_task(self._schedule_unban(int(gid_str), entry["user_id"], delay))
+            self.mod_data["pending_unbans"][gid_str] = remaining
+        self._save()
+
+    async def _schedule_unban(self, guild_id: int, user_id: int, delay: float):
+        await asyncio.sleep(delay)
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            return
+        try:
+            user = await self.bot.fetch_user(user_id)
+            await guild.unban(user, reason="Temp ban expired")
+            gid_str = str(guild_id)
+            if gid_str in self.mod_data.get("pending_unbans", {}):
+                self.mod_data["pending_unbans"][gid_str] = [
+                    e for e in self.mod_data["pending_unbans"][gid_str]
+                    if e["user_id"] != user_id
+                ]
+                self._save()
+        except Exception as ex:
+            print(f"[TEMPBAN SCHEDULE] {ex}")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # /setup-moderation
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="setup-moderation",
+                          description="🛡️ Set up or reconfigure moderation for this server")
+    async def setup_moderation(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("❌ Server only.", ephemeral=True)
+            return
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            return
+        is_owner = interaction.guild.owner_id == member.id
+        if not is_owner and not self._has_base_perms(member):
+            embed = discord.Embed(
+                title="❌ Permission Required",
+                description=(
+                    "Only the **server owner** or members with "
+                    "**Ban / Kick / Timeout** permissions can run this command."
+                ),
+                color=COLOR_DANGER,
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        sk = f"{interaction.guild.id}_{interaction.user.id}"
+        await interaction.response.send_message(embed=emb_step1(), view=Step1View(sk))
+        msg = await interaction.original_response()
+        setup_sessions[sk] = {
+            "message": msg,
+            "guild_id": interaction.guild.id,
+            "user_id": interaction.user.id,
+            "automod": False, "bad_words": [],
+            "log_channels": [], "log_everywhere": False,
+            "mod_roles": [],
+            "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
+            "anti_spam": False, "spam_messages": 5, "spam_seconds": 5,
+            "anti_raid": False, "raid_joins": 10, "raid_seconds": 10,
+        }
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # /automod  (quick post-setup toggle)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="automod", description="🛡️ Toggle auto-moderation on or off")
+    @app_commands.describe(action="Enable or disable automod")
+    @app_commands.choices(action=[
+        app_commands.Choice(name="enable",  value="enable"),
+        app_commands.Choice(name="disable", value="disable"),
+    ])
+    async def automod_slash(self, interaction: discord.Interaction, action: app_commands.Choice[str]):
+        if not await self._gate(interaction):
+            return
+        self._cfg(interaction.guild.id)["automod_enabled"] = (action.value == "enable")
+        self._save()
+        if action.value == "enable":
+            await interaction.response.send_message(
+                "✅ **AutoMod enabled.** Watching for bad words, spam, raids, and link violations."
+            )
+        else:
+            await interaction.response.send_message("⛔ **AutoMod disabled.**")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # WARN SYSTEM
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="warn", description="⚠️ Warn a member and log the reason")
+    @app_commands.describe(user="Member to warn", reason="Reason for the warning")
+    async def warn_slash(self, interaction: discord.Interaction,
+                         user: discord.Member, reason: str = "No reason provided"):
+        if not await self._gate(interaction):
+            return
+        if user.bot:
+            await interaction.response.send_message("❌ Can't warn a bot.", ephemeral=True)
+            return
+        gid, uid = str(interaction.guild.id), str(user.id)
+        self.mod_data.setdefault("warns", {}).setdefault(gid, {}).setdefault(uid, [])
+        self.mod_data["warns"][gid][uid].append({
+            "reason": reason, "moderator": str(interaction.user),
+            "moderator_id": interaction.user.id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        count = len(self.mod_data["warns"][gid][uid])
+        case_n = self._add_case(interaction.guild.id, "warn", user.id, str(user),
+                                interaction.user.id, str(interaction.user), reason)
+        self._save()
+        try:
+            await user.send(
+                f"⚠️ You were **warned** in **{interaction.guild.name}**.\n"
+                f"**Reason:** {reason}  |  **Total warns:** {count}"
+            )
+        except Exception:
+            pass
+        e = discord.Embed(title="⚠️ Member Warned", color=COLOR_GOLD,
+                          timestamp=datetime.now(timezone.utc))
+        e.add_field(name="User",       value=f"{user.mention} (`{user.id}`)")
+        e.add_field(name="Reason",     value=reason)
+        e.add_field(name="Warn #",     value=count)
+        e.add_field(name="Case #",     value=f"#{case_n}")
+        e.add_field(name="Moderator",  value=interaction.user.mention)
+        await interaction.response.send_message(embed=e)
+        await self._log_guild(interaction.guild, e, interaction.channel.id)
+        if count >= 3:
+            try:
+                await user.timeout(timedelta(minutes=10), reason="Auto: 3 warnings reached")
+                await interaction.followup.send(
+                    f"🚫 {user.mention} auto-timed out **10 min** — 3 warnings reached."
+                )
+            except Exception:
+                pass
+
+    @app_commands.command(name="warns", description="📋 View all warnings for a member")
+    @app_commands.describe(user="Member to check")
+    async def warns_slash(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        gid, uid = str(interaction.guild.id), str(user.id)
+        warns = self.mod_data.get("warns", {}).get(gid, {}).get(uid, [])
+        if not warns:
+            await interaction.response.send_message(f"✅ {user.mention} has no warnings.")
+            return
+        e = discord.Embed(title=f"⚠️ Warnings — {user}", color=COLOR_GOLD)
+        for i, w in enumerate(warns[-10:], 1):
+            e.add_field(
+                name=f"#{i} — {w['timestamp'][:10]}",
+                value=f"**Reason:** {w['reason']}\n**By:** {w['moderator']}",
+                inline=False,
+            )
+        e.set_footer(text=f"Total: {len(warns)} warning(s)")
+        await interaction.response.send_message(embed=e)
+
+    @app_commands.command(name="clearwarns", description="🗑️ Clear all warnings for a member")
+    @app_commands.describe(user="Member to clear")
+    async def clearwarns_slash(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        gid, uid = str(interaction.guild.id), str(user.id)
+        self.mod_data.setdefault("warns", {}).setdefault(gid, {})[uid] = []
+        self._save()
+        await interaction.response.send_message(f"✅ All warnings cleared for {user.mention}.")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # BAN / UNBAN / KICK
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="ban", description="🔨 Ban a member from the server")
+    @app_commands.describe(user="Member to ban", reason="Reason", delete_days="Days of messages to delete (0–7)")
+    async def ban_slash(self, interaction: discord.Interaction,
+                        user: discord.Member, reason: str = "No reason provided",
+                        delete_days: int = 0):
+        if not await self._gate(interaction):
+            return
+        if user.top_role >= interaction.user.top_role and interaction.guild.owner_id != interaction.user.id:
+            await interaction.response.send_message("❌ Can't ban someone with equal or higher role.", ephemeral=True)
+            return
+        try: await user.send(f"🔨 You were **banned** from **{interaction.guild.name}**.\n**Reason:** {reason}")
+        except Exception: pass
+        try:
+            await user.ban(reason=f"{interaction.user}: {reason}",
+                           delete_message_days=max(0, min(7, delete_days)))
+            case_n = self._add_case(interaction.guild.id, "ban", user.id, str(user),
+                                    interaction.user.id, str(interaction.user), reason)
+            e = discord.Embed(title="🔨 Member Banned", color=COLOR_DANGER,
+                              timestamp=datetime.now(timezone.utc))
+            e.add_field(name="User",      value=f"{user} (`{user.id}`)")
+            e.add_field(name="Reason",    value=reason)
+            e.add_field(name="Case #",    value=f"#{case_n}")
+            e.add_field(name="Moderator", value=interaction.user.mention)
+            await interaction.response.send_message(embed=e)
+            await self._log_guild(interaction.guild, e, interaction.channel.id)
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ I don't have permission to ban this user.", ephemeral=True)
+
+    @app_commands.command(name="unban", description="🔓 Unban a user by their Discord ID")
+    @app_commands.describe(user_id="The Discord user ID to unban", reason="Reason")
+    async def unban_slash(self, interaction: discord.Interaction,
+                          user_id: str, reason: str = "No reason provided"):
+        if not await self._gate(interaction):
+            return
+        if not user_id.isdigit():
+            await interaction.response.send_message("❌ User ID must be a number.", ephemeral=True)
+            return
+        try:
+            user = await self.bot.fetch_user(int(user_id))
+            await interaction.guild.unban(user, reason=reason)
+            e = discord.Embed(title="🔓 Member Unbanned", color=COLOR_SUCCESS,
+                              timestamp=datetime.now(timezone.utc))
+            e.add_field(name="User",      value=f"{user} (`{user.id}`)")
+            e.add_field(name="Reason",    value=reason)
+            e.add_field(name="Moderator", value=interaction.user.mention)
+            await interaction.response.send_message(embed=e)
+            await self._log_guild(interaction.guild, e, interaction.channel.id)
+        except discord.NotFound:
+            await interaction.response.send_message("❌ That user isn't banned.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ No permission to unban.", ephemeral=True)
+
+    @app_commands.command(name="modkick", description="👢 Kick a member from the server")
+    @app_commands.describe(user="Member to kick", reason="Reason")
+    async def modkick_slash(self, interaction: discord.Interaction,
+                            user: discord.Member, reason: str = "No reason provided"):
+        if not await self._gate(interaction):
+            return
+        if user.top_role >= interaction.user.top_role and interaction.guild.owner_id != interaction.user.id:
+            await interaction.response.send_message("❌ Can't kick someone with equal or higher role.", ephemeral=True)
+            return
+        try: await user.send(f"👢 You were **kicked** from **{interaction.guild.name}**.\n**Reason:** {reason}")
+        except Exception: pass
+        try:
+            await user.kick(reason=f"{interaction.user}: {reason}")
+            case_n = self._add_case(interaction.guild.id, "kick", user.id, str(user),
+                                    interaction.user.id, str(interaction.user), reason)
+            e = discord.Embed(title="👢 Member Kicked", color=0xFF4500,
+                              timestamp=datetime.now(timezone.utc))
+            e.add_field(name="User",      value=f"{user} (`{user.id}`)")
+            e.add_field(name="Reason",    value=reason)
+            e.add_field(name="Case #",    value=f"#{case_n}")
+            e.add_field(name="Moderator", value=interaction.user.mention)
+            await interaction.response.send_message(embed=e)
+            await self._log_guild(interaction.guild, e, interaction.channel.id)
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ No permission to kick.", ephemeral=True)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # MUTE / UNMUTE
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="mute", description="🔇 Timeout (mute) a member for a set duration")
+    @app_commands.describe(user="Member to mute", minutes="Duration in minutes (1–40320)", reason="Reason")
+    async def mute_slash(self, interaction: discord.Interaction,
+                         user: discord.Member, minutes: int = 10,
+                         reason: str = "No reason provided"):
+        if not await self._gate(interaction):
+            return
+        if user.top_role >= interaction.user.top_role and interaction.guild.owner_id != interaction.user.id:
+            await interaction.response.send_message("❌ Can't mute someone with equal or higher role.", ephemeral=True)
+            return
+        dur = max(1, min(40320, minutes))
+        try:
+            await user.timeout(timedelta(minutes=dur), reason=reason)
+            case_n = self._add_case(interaction.guild.id, "mute", user.id, str(user),
+                                    interaction.user.id, str(interaction.user), reason,
+                                    {"minutes": dur})
+            try:
+                await user.send(
+                    f"🔇 Muted in **{interaction.guild.name}** for **{dur} min**.\n**Reason:** {reason}"
+                )
+            except Exception: pass
+            e = discord.Embed(title="🔇 Member Muted", color=0xFF8C00,
+                              timestamp=datetime.now(timezone.utc))
+            e.add_field(name="User",      value=f"{user.mention} (`{user.id}`)")
+            e.add_field(name="Duration",  value=f"{dur} minutes")
+            e.add_field(name="Reason",    value=reason)
+            e.add_field(name="Case #",    value=f"#{case_n}")
+            e.add_field(name="Moderator", value=interaction.user.mention)
+            await interaction.response.send_message(embed=e)
+            await self._log_guild(interaction.guild, e, interaction.channel.id)
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ No permission to timeout.", ephemeral=True)
+
+    @app_commands.command(name="unmute", description="🔊 Remove a timeout from a member")
+    @app_commands.describe(user="Member to unmute", reason="Reason")
+    async def unmute_slash(self, interaction: discord.Interaction,
+                           user: discord.Member, reason: str = "No reason provided"):
+        if not await self._gate(interaction):
+            return
+        try:
+            await user.timeout(None, reason=reason)
+            e = discord.Embed(title="🔊 Member Unmuted", color=COLOR_SUCCESS,
+                              timestamp=datetime.now(timezone.utc))
+            e.add_field(name="User",      value=f"{user.mention} (`{user.id}`)")
+            e.add_field(name="Moderator", value=interaction.user.mention)
+            await interaction.response.send_message(embed=e)
+            await self._log_guild(interaction.guild, e, interaction.channel.id)
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ No permission to unmute.", ephemeral=True)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # CHANNEL MANAGEMENT
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="clear", description="🗑️ Bulk-delete messages in this channel")
+    @app_commands.describe(amount="Number to delete (1–100)")
+    async def clear_slash(self, interaction: discord.Interaction, amount: int = 10):
+        if not await self._gate(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        deleted = await interaction.channel.purge(limit=max(1, min(100, amount)))
+        await interaction.followup.send(f"🗑️ Deleted **{len(deleted)}** messages.", ephemeral=True)
+        e = discord.Embed(title="🗑️ Messages Cleared", color=COLOR_GREY,
+                          timestamp=datetime.now(timezone.utc))
+        e.add_field(name="Channel",   value=interaction.channel.mention)
+        e.add_field(name="Count",     value=len(deleted))
+        e.add_field(name="Moderator", value=interaction.user.mention)
+        await self._log_guild(interaction.guild, e, interaction.channel.id)
+
+    @app_commands.command(name="slowmode", description="🐌 Set slowmode for this channel")
+    @app_commands.describe(seconds="Delay in seconds (0 = disable, max 21600)")
+    async def slowmode_slash(self, interaction: discord.Interaction, seconds: int = 0):
+        if not await self._gate(interaction):
+            return
+        delay = max(0, min(21600, seconds))
+        await interaction.channel.edit(slowmode_delay=delay)
+        msg = "✅ Slowmode **disabled**." if delay == 0 else f"🐌 Slowmode set to **{delay}s**."
+        await interaction.response.send_message(msg)
+
+    @app_commands.command(name="lock", description="🔒 Prevent @everyone from sending messages")
+    @app_commands.describe(channel="Channel to lock (default: current)", reason="Reason")
+    async def lock_slash(self, interaction: discord.Interaction,
+                         channel: Optional[discord.TextChannel] = None,
+                         reason: str = "No reason provided"):
+        if not await self._gate(interaction):
+            return
+        target = channel or interaction.channel
+        await target.set_permissions(interaction.guild.default_role, send_messages=False, reason=reason)
+        e = discord.Embed(title="🔒 Channel Locked", color=COLOR_DANGER,
+                          timestamp=datetime.now(timezone.utc))
+        e.add_field(name="Channel",   value=target.mention)
+        e.add_field(name="Reason",    value=reason)
+        e.add_field(name="Moderator", value=interaction.user.mention)
+        await interaction.response.send_message(embed=e)
+        await self._log_guild(interaction.guild, e, target.id)
+
+    @app_commands.command(name="unlock", description="🔓 Restore @everyone's ability to send messages")
+    @app_commands.describe(channel="Channel to unlock (default: current)", reason="Reason")
+    async def unlock_slash(self, interaction: discord.Interaction,
+                           channel: Optional[discord.TextChannel] = None,
+                           reason: str = "No reason provided"):
+        if not await self._gate(interaction):
+            return
+        target = channel or interaction.channel
+        await target.set_permissions(interaction.guild.default_role, send_messages=None, reason=reason)
+        e = discord.Embed(title="🔓 Channel Unlocked", color=COLOR_SUCCESS,
+                          timestamp=datetime.now(timezone.utc))
+        e.add_field(name="Channel",   value=target.mention)
+        e.add_field(name="Moderator", value=interaction.user.mention)
+        await interaction.response.send_message(embed=e)
+        await self._log_guild(interaction.guild, e, target.id)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # USER INFO + CASE LOOKUP
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="userinfo", description="ℹ️ Detailed info about a server member")
+    @app_commands.describe(user="Member to inspect (default: yourself)")
+    async def userinfo_slash(self, interaction: discord.Interaction,
+                             user: Optional[discord.Member] = None):
+        if not await self._gate(interaction):
+            return
+        target = user or interaction.user
+        if not isinstance(target, discord.Member):
+            await interaction.response.send_message("❌ Server members only.", ephemeral=True)
+            return
+        gid, uid     = str(interaction.guild.id), str(target.id)
+        warn_count   = len(self.mod_data.get("warns",{}).get(gid,{}).get(uid,[]))
+        cases_data   = self.mod_data.get("cases",{}).get(gid,{}).get("by_number",{})
+        user_cases   = [c for c in cases_data.values() if str(c.get("user_id")) == uid]
+        roles        = [r.mention for r in reversed(target.roles[1:])]
+        e = discord.Embed(title=f"ℹ️ {target}", color=target.color if target.color.value else COLOR_INFO,
+                          timestamp=datetime.now(timezone.utc))
+        e.set_thumbnail(url=target.display_avatar.url)
+        e.add_field(name="ID",             value=target.id,                              inline=True)
+        e.add_field(name="Display Name",   value=target.display_name,                   inline=True)
+        e.add_field(name="Bot",            value="🤖 Yes" if target.bot else "No",       inline=True)
+        e.add_field(name="Account Created",value=target.created_at.strftime("%Y-%m-%d"), inline=True)
+        e.add_field(name="Joined Server",  value=(target.joined_at.strftime("%Y-%m-%d")
+                                                   if target.joined_at else "Unknown"),  inline=True)
+        e.add_field(name="Timed Out",      value="Yes ⏰" if target.timed_out_until else "No", inline=True)
+        e.add_field(name="⚠️ Warns",       value=warn_count,                             inline=True)
+        e.add_field(name="📋 Cases",       value=len(user_cases),                        inline=True)
+        e.add_field(name=f"Roles ({len(roles)})", value=", ".join(roles[:10]) or "None", inline=False)
+        await interaction.response.send_message(embed=e)
+
+    @app_commands.command(name="case", description="📋 Look up a mod action by case number")
+    @app_commands.describe(number="The case number to look up")
+    async def case_slash(self, interaction: discord.Interaction, number: int):
+        if not await self._gate(interaction):
+            return
+        gid    = str(interaction.guild.id)
+        cases  = self.mod_data.get("cases", {}).get(gid, {}).get("by_number", {})
+        case   = cases.get(str(number))
+        if not case:
+            await interaction.response.send_message(
+                f"❌ Case #{number} not found. Cases go from #1 to "
+                f"#{self.mod_data.get('cases',{}).get(gid,{}).get('next_case',1)-1}.",
+                ephemeral=True,
+            )
+            return
+        type_icons = {"ban":"🔨","kick":"👢","warn":"⚠️","mute":"🔇","tempban":"⏱️",
+                      "massban":"🔨","unban":"🔓","note":"📝"}
+        icon = type_icons.get(case["type"], "📋")
+        e = discord.Embed(
+            title=f"{icon} Case #{number} — {case['type'].upper()}",
+            color=COLOR_INFO,
+            timestamp=datetime.fromisoformat(case["timestamp"]),
+        )
+        e.add_field(name="User",      value=f"{case['user']} (`{case['user_id']}`)")
+        e.add_field(name="Moderator", value=f"{case['moderator']} (`{case['moderator_id']}`)")
+        e.add_field(name="Reason",    value=case["reason"], inline=False)
+        if case.get("extra"):
+            for k, v in case["extra"].items():
+                e.add_field(name=k.title(), value=str(v), inline=True)
+        e.set_footer(text=f"Case #{number}  •  {case['timestamp'][:10]}")
+        await interaction.response.send_message(embed=e)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 🌟 PREMIUM COMMANDS
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="tempban",
+        description="⏱️ [Premium] Temporarily ban a member — they're auto-unbanned after the duration")
+    @app_commands.describe(user="Member to temp-ban", duration="Duration: e.g. 30m, 6h, 7d",
+                           reason="Reason")
+    async def tempban_slash(self, interaction: discord.Interaction,
+                            user: discord.Member, duration: str,
+                            reason: str = "Temporary ban"):
+        if not await self._gate(interaction):
+            return
+        if not await self._check_premium(interaction):
+            return
+        td = _parse_duration(duration)
+        if not td:
+            await interaction.response.send_message(
+                "❌ Invalid duration. Use `30m`, `6h`, `2d` etc.", ephemeral=True
+            )
+            return
+        if user.top_role >= interaction.user.top_role and interaction.guild.owner_id != interaction.user.id:
+            await interaction.response.send_message("❌ Can't ban someone with equal or higher role.", ephemeral=True)
+            return
+        unban_at = (datetime.now(timezone.utc) + td).isoformat()
+        try:
+            await user.send(
+                f"⏱️ You were **temp-banned** from **{interaction.guild.name}**.\n"
+                f"**Duration:** {duration}  |  **Reason:** {reason}\n"
+                f"You will be automatically unbanned."
+            )
+        except Exception: pass
+        try:
+            await user.ban(reason=f"{interaction.user}: [TEMPBAN {duration}] {reason}")
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ No permission to ban.", ephemeral=True)
+            return
+        # Store unban
+        gid_str = str(interaction.guild.id)
+        self.mod_data.setdefault("pending_unbans", {}).setdefault(gid_str, []).append(
+            {"user_id": user.id, "unban_at": unban_at}
+        )
+        case_n = self._add_case(interaction.guild.id, "tempban", user.id, str(user),
+                                interaction.user.id, str(interaction.user), reason,
+                                {"duration": duration, "unban_at": unban_at})
+        self._save()
+        asyncio.create_task(self._schedule_unban(interaction.guild.id, user.id, td.total_seconds()))
+        e = discord.Embed(title="⏱️ Member Temp-Banned", color=COLOR_DANGER,
+                          timestamp=datetime.now(timezone.utc))
+        e.add_field(name="User",      value=f"{user} (`{user.id}`)")
+        e.add_field(name="Duration",  value=duration)
+        e.add_field(name="Unban At",  value=unban_at[:16].replace("T", " ") + " UTC")
+        e.add_field(name="Reason",    value=reason)
+        e.add_field(name="Case #",    value=f"#{case_n}")
+        e.add_field(name="Moderator", value=interaction.user.mention)
+        await interaction.response.send_message(embed=e)
+        await self._log_guild(interaction.guild, e, interaction.channel.id)
+
+    @app_commands.command(name="massban",
+        description="🔨 [Premium] Ban up to 10 users at once via a modal (ID list)")
+    async def massban_slash(self, interaction: discord.Interaction):
+        if not await self._gate(interaction):
+            return
+        if not await self._check_premium(interaction):
+            return
+        await interaction.response.send_modal(MassBanModal(self, interaction.guild))
+
+    @app_commands.command(name="modstats",
+        description="📊 [Premium] Detailed moderation statistics for this server")
+    async def modstats_slash(self, interaction: discord.Interaction):
+        if not await self._gate(interaction):
+            return
+        if not await self._check_premium(interaction):
+            return
+        await interaction.response.defer()
+        gid       = str(interaction.guild.id)
+        warns_db  = self.mod_data.get("warns", {}).get(gid, {})
+        cases_db  = self.mod_data.get("cases", {}).get(gid, {}).get("by_number", {})
+        now       = datetime.now(timezone.utc)
+        month_ago = (now - timedelta(days=30)).isoformat()
+
+        # Count cases by type
+        type_counts: dict = defaultdict(int)
+        mod_counts:  dict = defaultdict(int)
+        month_counts: dict = defaultdict(int)
+        for c in cases_db.values():
+            type_counts[c["type"]] += 1
+            mod_counts[c["moderator"]] += 1
+            if c["timestamp"] >= month_ago:
+                month_counts[c["type"]] += 1
+
+        # Top warned users
+        top_warned = sorted(warns_db.items(), key=lambda x: len(x[1]), reverse=True)[:5]
+        top_mods   = sorted(mod_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        e = discord.Embed(title=f"📊 Moderation Stats — {interaction.guild.name}",
+                          color=COLOR_INFO, timestamp=now)
+
+        action_lines = []
+        for t, icon in [("ban","🔨"),("kick","👢"),("warn","⚠️"),("mute","🔇"),
+                        ("tempban","⏱️"),("massban","🔨")]:
+            total = type_counts.get(t, 0)
+            month = month_counts.get(t, 0)
+            if total > 0:
+                action_lines.append(f"{icon} **{t.title()}s:** {total} total, {month} this month")
+        e.add_field(name="📋 Action Counts",
+                    value="\n".join(action_lines) or "No actions yet.", inline=False)
+
+        if top_warned:
+            lines = []
+            for uid, wlist in top_warned:
+                try:
+                    user = interaction.guild.get_member(int(uid)) or await self.bot.fetch_user(int(uid))
+                    lines.append(f"{user} — **{len(wlist)}** warns")
+                except Exception:
+                    lines.append(f"`{uid}` — **{len(wlist)}** warns")
+            e.add_field(name="🏆 Most Warned Members", value="\n".join(lines), inline=False)
+
+        if top_mods:
+            e.add_field(
+                name="👮 Most Active Moderators",
+                value="\n".join(f"{m} — **{n}** actions" for m, n in top_mods),
+                inline=False,
+            )
+
+        total_warns = sum(len(v) for v in warns_db.values())
+        total_cases = len(cases_db)
+        e.add_field(name="📈 Totals",
+                    value=f"**{total_warns}** total warns  •  **{total_cases}** total cases", inline=False)
+        await interaction.followup.send(embed=e)
+
+    note_group = app_commands.Group(
+        name="note",
+        description="📝 [Premium] Private moderator notes on server members",
+    )
+
+    @note_group.command(name="add", description="📝 Add a private mod note to a member")
+    @app_commands.describe(user="Member to note", text="The note content")
+    async def note_add(self, interaction: discord.Interaction,
+                       user: discord.Member, text: str):
+        if not await self._gate(interaction):
+            return
+        if not await self._check_premium(interaction):
+            return
+        gid, uid = str(interaction.guild.id), str(user.id)
+        self.mod_data.setdefault("notes", {}).setdefault(gid, {}).setdefault(uid, [])
+        self.mod_data["notes"][gid][uid].append({
+            "text": text, "author": str(interaction.user),
+            "author_id": interaction.user.id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        self._save()
+        await interaction.response.send_message(
+            f"📝 Note added for {user.mention}. Only moderators can see these.", ephemeral=True
+        )
+
+    @note_group.command(name="view", description="📋 View all notes for a member")
+    @app_commands.describe(user="Member to view notes for")
+    async def note_view(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        if not await self._check_premium(interaction):
+            return
+        gid, uid = str(interaction.guild.id), str(user.id)
+        notes = self.mod_data.get("notes", {}).get(gid, {}).get(uid, [])
+        if not notes:
+            await interaction.response.send_message(f"📋 No notes for {user.mention}.", ephemeral=True)
+            return
+        e = discord.Embed(title=f"📝 Mod Notes — {user}", color=COLOR_INFO)
+        for i, n in enumerate(notes[-10:], 1):
+            e.add_field(
+                name=f"Note {i} — {n['timestamp'][:10]} by {n['author']}",
+                value=n["text"][:500],
+                inline=False,
+            )
+        e.set_footer(text=f"Total: {len(notes)} note(s)  •  Visible to mods only")
+        await interaction.response.send_message(embed=e, ephemeral=True)
+
+    @note_group.command(name="clear", description="🗑️ Delete all notes for a member")
+    @app_commands.describe(user="Member to clear notes for")
+    async def note_clear(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        if not await self._check_premium(interaction):
+            return
+        gid, uid = str(interaction.guild.id), str(user.id)
+        self.mod_data.setdefault("notes", {}).setdefault(gid, {})[uid] = []
+        self._save()
+        await interaction.response.send_message(f"✅ Notes cleared for {user.mention}.", ephemeral=True)
+
+async def setup(bot: commands.Bot):
+    cog = ModerationCog(bot)
+    await bot.add_cog(cog)
+    bot.tree.add_command(cog.note_group)
+    print("[COG] Loaded ModerationCog")
