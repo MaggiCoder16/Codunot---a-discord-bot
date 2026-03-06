@@ -132,6 +132,9 @@ async def setup_hook():
 	
 	await slash_commands.setup(bot)
 
+	import mod_commands
+	await mod_commands.setup(bot)
+
 	try:
 		synced = await bot.tree.sync()
 		synced_names = sorted(cmd.name for cmd in synced)
@@ -147,9 +150,6 @@ async def setup_hook():
 			)
 	except Exception as e:
 		print(f"[SLASH COMMANDS] Failed to sync global commands: {e}")
-
-	import mod_commands
-	await mod_commands.setup(bot)
 
 # ---------------- PROMOTIONAL EMBED ----------------
 def build_support_promo_embed() -> discord.Embed:
