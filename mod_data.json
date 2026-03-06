@@ -16,10 +16,210 @@
       "anti_raid": false,
       "raid_joins": 10,
       "raid_seconds": 10
+    },
+    "1470038794274209815": {
+      "setup_complete": true,
+      "automod_enabled": true,
+      "bad_words": [
+        "fuck you",
+        "bitch"
+      ],
+      "log_channels": [
+        1474751212061589690
+      ],
+      "log_everywhere": false,
+      "mod_roles": [
+        1474257034374283348,
+        1471136989804892170,
+        1471136789417820374
+      ],
+      "links_allowed_server": false,
+      "link_allowed_channels": [
+        1474340639297765376,
+        1471087800936960091,
+        1471087656686456888,
+        1470038795712991255
+      ],
+      "link_allowed_roles": [
+        1474257034374283348,
+        1471136989804892170,
+        1471136789417820374
+      ],
+      "anti_spam": true,
+      "spam_messages": 10,
+      "spam_seconds": 7,
+      "anti_raid": true,
+      "raid_joins": 10,
+      "raid_seconds": 3
+    },
+    "1458902762363289797": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1435926772972519446": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "763037807869427712": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1466332331894767843": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1477612335345701049": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1368573339542622288": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1431954056753971202": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1394707222772060281": {
+      "setup_complete": true,
+      "automod_enabled": true,
+      "bad_words": [
+        "boobs",
+        "tits",
+        "penis",
+        "vagina"
+      ],
+      "log_channels": [
+        1479413135864627301
+      ],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
     }
   },
-  "warns": {},
-  "cases": {},
+  "warns": {
+    "1470038794274209815": {
+      "1405510052424716381": []
+    }
+  },
+  "cases": {
+    "1470038794274209815": {
+      "next_case": 2,
+      "by_number": {
+        "1": {
+          "type": "mute",
+          "user_id": 1405510052424716381,
+          "user": "i_am_mister_smooth_talker",
+          "moderator_id": 1220934047794987048,
+          "moderator": "aarav_2022",
+          "reason": "testing",
+          "timestamp": "2026-03-06T07:54:58.674601+00:00",
+          "extra": {
+            "minutes": 5
+          }
+        }
+      }
+    }
+  },
   "notes": {},
   "pending_unbans": {}
 }
