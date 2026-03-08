@@ -279,6 +279,23 @@
       "anti_raid": false,
       "raid_joins": 10,
       "raid_seconds": 10
+    },
+    "1474939300364816397": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
     }
   },
   "warns": {
