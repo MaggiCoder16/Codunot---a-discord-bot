@@ -21,8 +21,72 @@
       "setup_complete": true,
       "automod_enabled": true,
       "bad_words": [
+        "fuck",
+        "fucking",
+        "fucker",
+        "fuckers",
+        "fuckface",
+        "fuckhead",
+        "fuckwit",
+        "fucktard",
+        "fuckoff",
+        "fuckyou",
         "fuck you",
-        "bitch"
+        "fuck off",
+        "go fuck yourself",
+        "motherfucker",
+        "motherfuckers",
+        "shit",
+        "shitty",
+        "shithead",
+        "shitface",
+        "shitass",
+        "shitbag",
+        "shitstain",
+        "bullshit",
+        "ass",
+        "asses",
+        "asshole",
+        "assholes",
+        "asshat",
+        "asswipe",
+        "assclown",
+        "assface",
+        "bitch",
+        "bitches",
+        "son of a bitch",
+        "bastard",
+        "bastards",
+        "dick",
+        "dicks",
+        "dickhead",
+        "dickface",
+        "cock",
+        "cocks",
+        "cockhead",
+        "cocksucker",
+        "pussy",
+        "pussies",
+        "slut",
+        "sluts",
+        "whore",
+        "whores",
+        "cunt",
+        "cunts",
+        "twat",
+        "twats",
+        "wanker",
+        "prick",
+        "skank",
+        "skanks",
+        "hoe",
+        "hoes",
+        "retard",
+        "retarded",
+        "dumbass",
+        "jackass",
+        "nigga",
+        "nigger"
       ],
       "log_channels": [
         1474751212061589690
@@ -36,6 +100,7 @@
       "links_allowed_server": false,
       "link_allowed_channels": [
         1474340639297765376,
+        1472229849631555594,
         1471087800936960091,
         1471087656686456888,
         1470038795712991255
@@ -364,16 +429,92 @@
       "anti_raid": false,
       "raid_joins": 10,
       "raid_seconds": 10
+    },
+    "1456691217185374486": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1335629396916306096": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1263574235599867946": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1443732974481707193": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
     }
   },
   "warns": {
     "1470038794274209815": {
-      "1405510052424716381": []
+      "1405510052424716381": [],
+      "1479804646515015802": [
+        {
+          "reason": "Stop posting the content you are (bad stuff) in this server. Please. And if you want to advertise, do it in <#1474340639297765376> only.",
+          "moderator": "aarav_2022",
+          "moderator_id": 1220934047794987048,
+          "timestamp": "2026-03-09T13:31:41.359257+00:00"
+        }
+      ]
     }
   },
   "cases": {
     "1470038794274209815": {
-      "next_case": 2,
+      "next_case": 3,
       "by_number": {
         "1": {
           "type": "mute",
@@ -386,6 +527,16 @@
           "extra": {
             "minutes": 5
           }
+        },
+        "2": {
+          "type": "warn",
+          "user_id": 1479804646515015802,
+          "user": "anna65335",
+          "moderator_id": 1220934047794987048,
+          "moderator": "aarav_2022",
+          "reason": "Stop posting the content you are (bad stuff) in this server. Please. And if you want to advertise, do it in <#1474340639297765376> only.",
+          "timestamp": "2026-03-09T13:31:41.359279+00:00",
+          "extra": {}
         }
       }
     }
