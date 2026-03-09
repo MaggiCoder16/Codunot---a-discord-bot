@@ -77,6 +77,72 @@ def _progress_bar(step: int, total: int = 6) -> str:
     return "█" * step + "░" * (total - step)
 
 # ──────────────────────────────────────────────────────────────────────────────
+# PERMISSIONS CHECKER
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _check_bot_permissions(guild: discord.Guild) -> tuple[list[str], list[str]]:
+    """
+    Returns (have, missing) permission name lists.
+    Checks all permissions needed for full mod functionality.
+    """
+    me = guild.me
+    p  = me.guild_permissions
+
+    required = {
+        "Ban Members":       p.ban_members,
+        "Kick Members":      p.kick_members,
+        "Moderate Members":  p.moderate_members,
+        "Manage Messages":   p.manage_messages,
+        "Manage Channels":   p.manage_channels,
+        "View Audit Log":    p.view_audit_log,
+    }
+
+    have    = [name for name, ok in required.items() if ok]
+    missing = [name for name, ok in required.items() if not ok]
+    return have, missing
+
+def _perms_embed(guild: discord.Guild) -> discord.Embed | None:
+    """
+    Returns a warning embed if the bot is missing permissions, or None if all good.
+    """
+    _, missing = _check_bot_permissions(guild)
+    if not missing:
+        return None
+
+    embed = discord.Embed(
+        title="⚠️ Missing Permissions — Mod Features Will Be Limited",
+        description=(
+            "Codunot is missing some permissions in this server.\n"
+            "**Mod commands that require these permissions will show `❌ No permission` errors.**\n\n"
+            "To fix this, go to **Server Settings → Roles → Codunot** and enable the missing permissions below."
+        ),
+        color=COLOR_ORANGE,
+    )
+    embed.add_field(
+        name="❌ Missing",
+        value="\n".join(f"• `{p}`" for p in missing),
+        inline=True,
+    )
+    embed.add_field(
+        name="✅ Already Granted",
+        value="\n".join(f"• `{p}`" for p in _check_bot_permissions(guild)[0]) or "None",
+        inline=True,
+    )
+    embed.add_field(
+        name="🔧 How to Fix",
+        value=(
+            "1. Open **Server Settings**\n"
+            "2. Go to **Roles**\n"
+            "3. Find and click the **Codunot** role\n"
+            "4. Enable the missing permissions above\n"
+            "5. Save changes — done! ✅"
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="You can still run /setup-moderation — just fix perms when you can.")
+    return embed
+
+# ──────────────────────────────────────────────────────────────────────────────
 # EMBED BUILDERS  (one per wizard step)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -570,7 +636,6 @@ class SummaryView(_WizardBase):
             await interaction.response.send_message("❌ Session expired.", ephemeral=True)
             return
 
-        # Write to mod_data via the cog — cog is available via bot
         cog: ModerationCog = interaction.client.cogs.get("ModerationCog")
         if cog is None:
             await interaction.response.send_message("❌ Cog not found.", ephemeral=True)
@@ -610,7 +675,12 @@ class SummaryView(_WizardBase):
             timestamp=datetime.now(timezone.utc),
         )
         done.set_footer(text="Moderation Setup Complete")
+
+        # Send done embed, then send perms warning as a follow-up if needed
         await interaction.response.edit_message(embed=done, view=None)
+        perms_warn = _perms_embed(interaction.guild)
+        if perms_warn:
+            await interaction.followup.send(embed=perms_warn, ephemeral=True)
 
     @discord.ui.button(label="🔄 Start Over", style=discord.ButtonStyle.danger, row=0)
     async def restart_btn(self, interaction: discord.Interaction, _):
@@ -639,8 +709,6 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
 
     async def cog_load(self):
         asyncio.create_task(self._process_pending_unbans())
-
-    # ── persistence helpers ───────────────────────────────────────────────────
 
     def _save(self):
         save_mod_data(self.mod_data)
@@ -681,14 +749,11 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                 try: await ch.send(embed=embed)
                 except Exception as e: print(f"[MOD LOG] {e}")
 
-    # ── permission gates ──────────────────────────────────────────────────────
-
     def _has_base_perms(self, member: discord.Member) -> bool:
         p = member.guild_permissions
         return p.administrator or p.ban_members or p.kick_members or p.moderate_members
 
     async def _gate(self, interaction: discord.Interaction) -> bool:
-        """Gate: setup must be done AND user must have perms. Returns False and sends error if not."""
         if not interaction.guild:
             await interaction.response.send_message("❌ Server only.", ephemeral=True)
             return False
@@ -764,12 +829,11 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         if not cfg.get("setup_complete") or not cfg.get("automod_enabled"):
             return
 
-        content     = message.content
-        guild_id    = message.guild.id
-        user_id     = message.author.id
-        now_ts      = datetime.now(timezone.utc).timestamp()
+        content  = message.content
+        guild_id = message.guild.id
+        user_id  = message.author.id
+        now_ts   = datetime.now(timezone.utc).timestamp()
 
-        # ── bad word filter ───────────────────────────────────────────────────
         cl = content.lower()
         for word in cfg.get("bad_words", []):
             if word.lower() in cl:
@@ -788,7 +852,6 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                     print(f"[AUTOMOD BAD WORD] {ex}")
                 return
 
-        # ── link filter ───────────────────────────────────────────────────────
         if not cfg.get("links_allowed_server", True):
             if re.search(r"https?://\S+|www\.\S+|discord\.gg/\S+", content, re.IGNORECASE):
                 allowed_chs   = [str(c) for c in cfg.get("link_allowed_channels", [])]
@@ -811,13 +874,12 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                         print(f"[AUTOMOD LINK] {ex}")
                     return
 
-        # ── anti-spam ─────────────────────────────────────────────────────────
         if cfg.get("anti_spam"):
             bucket = _spam_tracker[guild_id][user_id]
             bucket.append(now_ts)
-            window  = cfg.get("spam_seconds", 5)
-            limit   = cfg.get("spam_messages", 5)
-            recent  = [t for t in bucket if now_ts - t <= window]
+            window = cfg.get("spam_seconds", 5)
+            limit  = cfg.get("spam_messages", 5)
+            recent = [t for t in bucket if now_ts - t <= window]
             if len(recent) >= limit:
                 member = message.guild.get_member(user_id)
                 if member and not member.guild_permissions.administrator:
@@ -843,8 +905,6 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                         pass
                     except Exception as ex:
                         print(f"[AUTOMOD SPAM] {ex}")
-
-    # ── auto-mod: anti-raid ───────────────────────────────────────────────────
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -878,8 +938,6 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             )
             await self._log_guild(member.guild, e)
             _raid_tracker[member.guild.id].clear()
-
-    # ── temp-ban unban scheduler ──────────────────────────────────────────────
 
     async def _process_pending_unbans(self):
         await self.bot.wait_until_ready()
@@ -949,11 +1007,33 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
+        # ── Show permissions warning BEFORE the wizard starts ────────────────
+        perms_warn = _perms_embed(interaction.guild)
+        if perms_warn:
+            await interaction.response.send_message(embed=perms_warn, ephemeral=True)
+            # Small delay so the admin reads it, then send the wizard as a follow-up
+            await asyncio.sleep(0.5)
+            await interaction.followup.send(embed=emb_step1(), view=Step1View(
+                f"{interaction.guild.id}_{interaction.user.id}"
+            ))
+            msg = await interaction.followup.send("_ _", wait=True)
+            # Re-fetch the actual wizard message
+            # (we send a dummy then get the real one)
+            # Actually just get original_response for the wizard
+            sk = f"{interaction.guild.id}_{interaction.user.id}"
+            # Get the followup wizard message
+            wiz_msg = await interaction.channel.fetch_message(
+                (await interaction.original_response()).id
+            )
+        else:
+            await interaction.response.send_message(embed=emb_step1(), view=Step1View(
+                f"{interaction.guild.id}_{interaction.user.id}"
+            ))
+            wiz_msg = await interaction.original_response()
+
         sk = f"{interaction.guild.id}_{interaction.user.id}"
-        await interaction.response.send_message(embed=emb_step1(), view=Step1View(sk))
-        msg = await interaction.original_response()
         setup_sessions[sk] = {
-            "message": msg,
+            "message": wiz_msg,
             "guild_id": interaction.guild.id,
             "user_id": interaction.user.id,
             "automod": False, "bad_words": [],
@@ -965,7 +1045,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         }
 
     # ──────────────────────────────────────────────────────────────────────────
-    # /automod  (quick post-setup toggle)
+    # /automod
     # ──────────────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="automod", description="🛡️ Toggle auto-moderation on or off")
@@ -1277,11 +1357,11 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         if not isinstance(target, discord.Member):
             await interaction.response.send_message("❌ Server members only.", ephemeral=True)
             return
-        gid, uid     = str(interaction.guild.id), str(target.id)
-        warn_count   = len(self.mod_data.get("warns",{}).get(gid,{}).get(uid,[]))
-        cases_data   = self.mod_data.get("cases",{}).get(gid,{}).get("by_number",{})
-        user_cases   = [c for c in cases_data.values() if str(c.get("user_id")) == uid]
-        roles        = [r.mention for r in reversed(target.roles[1:])]
+        gid, uid   = str(interaction.guild.id), str(target.id)
+        warn_count = len(self.mod_data.get("warns",{}).get(gid,{}).get(uid,[]))
+        cases_data = self.mod_data.get("cases",{}).get(gid,{}).get("by_number",{})
+        user_cases = [c for c in cases_data.values() if str(c.get("user_id")) == uid]
+        roles      = [r.mention for r in reversed(target.roles[1:])]
         e = discord.Embed(title=f"ℹ️ {target}", color=target.color if target.color.value else COLOR_INFO,
                           timestamp=datetime.now(timezone.utc))
         e.set_thumbnail(url=target.display_avatar.url)
@@ -1302,9 +1382,9 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
     async def case_slash(self, interaction: discord.Interaction, number: int):
         if not await self._gate(interaction):
             return
-        gid    = str(interaction.guild.id)
-        cases  = self.mod_data.get("cases", {}).get(gid, {}).get("by_number", {})
-        case   = cases.get(str(number))
+        gid   = str(interaction.guild.id)
+        cases = self.mod_data.get("cases", {}).get(gid, {}).get("by_number", {})
+        case  = cases.get(str(number))
         if not case:
             await interaction.response.send_message(
                 f"❌ Case #{number} not found. Cases go from #1 to "
@@ -1335,8 +1415,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
 
     @app_commands.command(name="tempban",
         description="⏱️ [Premium] Temporarily ban a member — they're auto-unbanned after the duration")
-    @app_commands.describe(user="Member to temp-ban", duration="Duration: e.g. 30m, 6h, 7d",
-                           reason="Reason")
+    @app_commands.describe(user="Member to temp-ban", duration="Duration: e.g. 30m, 6h, 7d", reason="Reason")
     async def tempban_slash(self, interaction: discord.Interaction,
                             user: discord.Member, duration: str,
                             reason: str = "Temporary ban"):
@@ -1366,7 +1445,6 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         except discord.Forbidden:
             await interaction.response.send_message("❌ No permission to ban.", ephemeral=True)
             return
-        # Store unban
         gid_str = str(interaction.guild.id)
         self.mod_data.setdefault("pending_unbans", {}).setdefault(gid_str, []).append(
             {"user_id": user.id, "unban_at": unban_at}
@@ -1410,9 +1488,8 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         now       = datetime.now(timezone.utc)
         month_ago = (now - timedelta(days=30)).isoformat()
 
-        # Count cases by type
-        type_counts: dict = defaultdict(int)
-        mod_counts:  dict = defaultdict(int)
+        type_counts:  dict = defaultdict(int)
+        mod_counts:   dict = defaultdict(int)
         month_counts: dict = defaultdict(int)
         for c in cases_db.values():
             type_counts[c["type"]] += 1
@@ -1420,13 +1497,11 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             if c["timestamp"] >= month_ago:
                 month_counts[c["type"]] += 1
 
-        # Top warned users
         top_warned = sorted(warns_db.items(), key=lambda x: len(x[1]), reverse=True)[:5]
         top_mods   = sorted(mod_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
         e = discord.Embed(title=f"📊 Moderation Stats — {interaction.guild.name}",
                           color=COLOR_INFO, timestamp=now)
-
         action_lines = []
         for t, icon in [("ban","🔨"),("kick","👢"),("warn","⚠️"),("mute","🔇"),
                         ("tempban","⏱️"),("massban","🔨")]:
@@ -1436,7 +1511,6 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                 action_lines.append(f"{icon} **{t.title()}s:** {total} total, {month} this month")
         e.add_field(name="📋 Action Counts",
                     value="\n".join(action_lines) or "No actions yet.", inline=False)
-
         if top_warned:
             lines = []
             for uid, wlist in top_warned:
@@ -1446,14 +1520,12 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                 except Exception:
                     lines.append(f"`{uid}` — **{len(wlist)}** warns")
             e.add_field(name="🏆 Most Warned Members", value="\n".join(lines), inline=False)
-
         if top_mods:
             e.add_field(
                 name="👮 Most Active Moderators",
                 value="\n".join(f"{m} — **{n}** actions" for m, n in top_mods),
                 inline=False,
             )
-
         total_warns = sum(len(v) for v in warns_db.values())
         total_cases = len(cases_db)
         e.add_field(name="📈 Totals",
@@ -1518,6 +1590,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         self.mod_data.setdefault("notes", {}).setdefault(gid, {})[uid] = []
         self._save()
         await interaction.response.send_message(f"✅ Notes cleared for {user.mention}.", ephemeral=True)
+
 
 async def setup(bot: commands.Bot):
     cog = ModerationCog(bot)
