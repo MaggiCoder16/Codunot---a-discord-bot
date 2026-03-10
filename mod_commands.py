@@ -1042,10 +1042,6 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
     async def _handle_nl_mod(self, message: discord.Message) -> bool:
         if not message.guild or not isinstance(message.author, discord.Member):
             return False
-        if not self._is_setup(message.guild.id):
-            return False
-        if not self._member_can_mod_by_role(message.author):
-            return False
 
         parsed = await self._parse_nl_mod_intent(message)
         if not parsed:
@@ -1053,6 +1049,17 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
 
         actor = message.author
         channel = message.channel
+
+        if not self._is_setup(message.guild.id):
+            await channel.send(
+                "❌ This server hasn't set up moderation yet. Ask an admin to run `/setup-moderation` first.",
+                delete_after=8,
+            )
+            return True
+
+        if not self._member_can_mod_by_role(message.author):
+            await channel.send("❌ You don't have permission to use moderation commands.", delete_after=8)
+            return True
 
         if parsed.missing_scopes:
             scope_help = {

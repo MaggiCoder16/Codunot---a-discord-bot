@@ -266,6 +266,7 @@ async def help_command(ctx: commands.Context):
 			"Slash-first moderation with setup + AutoMod:\n"
 			"• `/setup-moderation` (6-step wizard, 5 min timeout, starter-only controls)\n"
 			"• AutoMod: bad words, link policy, antispam timeout+purge, antiraid channel lock\n"
+			"• Text moderation also works by mention: `@Codunot AI mute @user 10m spamming` (same style for warn/ban/unmute/etc.)\n"
 			"• Core: `/warn` `/warns` `/clearwarns` `/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
 			"• Channel tools: `/clear` `/slowmode` `/lock` `/unlock`\n"
 			"• Lookup: `/userinfo` `/case`\n"
@@ -2110,6 +2111,15 @@ async def on_message(message: Message):
 			await bot.process_commands(message)
 			message.content = original_content
 			return
+
+		# ---------- TEXT MODERATION HANDOFF ----------
+		# If this looks like a natural-language moderation command, don't route it to LLM chat.
+		if not is_dm:
+			mod_cog = bot.get_cog("ModerationCog")
+			if mod_cog and hasattr(mod_cog, "_parse_nl_mod_intent"):
+				parsed_mod = await mod_cog._parse_nl_mod_intent(message)
+				if parsed_mod:
+					return
 		
 		# ---------- LOAD MODE ----------
 		saved_mode = memory.get_channel_mode(chan_id)
