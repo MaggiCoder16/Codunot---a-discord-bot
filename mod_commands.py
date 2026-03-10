@@ -5,6 +5,7 @@ import json, os, asyncio, re
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 from typing import Literal, Optional
+from dataclasses import dataclass, field
 
 MOD_DATA_FILE = "mod_data.json"
 
@@ -75,6 +76,24 @@ def _parse_duration(s: str) -> Optional[timedelta]:
 
 def _progress_bar(step: int, total: int = 6) -> str:
     return "█" * step + "░" * (total - step)
+
+
+@dataclass
+class ParsedModIntent:
+    action: str
+    target_member: Optional[discord.Member] = None
+    target_user_id: Optional[int] = None
+    target_user_ids: list[int] = field(default_factory=list)
+    target_channel: Optional[discord.TextChannel] = None
+    minutes: Optional[int] = None
+    duration_text: Optional[str] = None
+    amount: Optional[int] = None
+    case_number: Optional[int] = None
+    note_action: Optional[str] = None
+    note_text: Optional[str] = None
+    reason: str = "No reason provided"
+    missing_scopes: list[str] = field(default_factory=list)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PERMISSIONS CHECKER
@@ -703,6 +722,39 @@ class SummaryView(_WizardBase):
 # ──────────────────────────────────────────────────────────────────────────────
 
 class ModerationCog(commands.Cog, name="ModerationCog"):
+    ACTION_PATTERNS = {
+        "mute": (
+            "timeout", "time out", "mute", "silence", "quiet", "shut up", "jail",
+            "put in timeout", "timeout for", "mute for",
+        ),
+        "unmute": (
+            "unmute", "untimeout", "remove timeout", "remove time out",
+            "release from timeout", "let them talk", "unsilence",
+        ),
+        "ban": (
+            "ban", "banish", "blacklist", "remove permanently", "perm ban", "perma ban",
+        ),
+        "unban": (
+            "unban", "pardon", "revoke ban", "lift ban", "remove ban",
+        ),
+        "kick": (
+            "kick", "boot", "remove from server", "kick out", "throw out", "modkick",
+        ),
+        "warn": (
+            "warn", "warning", "strike", "give a strike", "issue warning", "caution",
+        ),
+        "clear": ("clear", "purge", "delete messages", "wipe messages", "clean chat"),
+        "clearwarns": ("clearwarns", "clear warns", "wipe warns", "reset warnings"),
+        "case": ("case", "show case", "case number", "lookup case"),
+        "lock": ("lock", "lockdown", "lock channel", "close channel"),
+        "unlock": ("unlock", "unlock channel", "open channel", "remove lockdown"),
+        "slowmode": ("slowmode", "slow mode", "set slowmode", "disable slowmode"),
+        "tempban": ("tempban", "temp ban", "temporary ban"),
+        "massban": ("massban", "mass ban", "bulk ban"),
+        "userinfo": ("userinfo", "user info", "member info", "check user", "inspect user"),
+        "note": ("note", "notes", "noteadd", "noteclear", "note view", "note add", "note clear"),
+    }
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.mod_data = load_mod_data()
@@ -786,16 +838,490 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         embed = discord.Embed(
             title="❌ No Mod Permission",
             description=(
-                "You need one of:\n"
-                "• **Ban Members** permission\n"
-                "• **Kick Members** permission\n"
-                "• **Moderate Members** (Timeout) permission\n"
-                "• A configured **Mod Role**\n\n"
+                "You need one of:\\n"
+                "• **Ban Members** permission\\n"
+                "• **Kick Members** permission\\n"
+                "• **Moderate Members** (Timeout) permission\\n"
+                "• A configured **Mod Role**\\n\\n"
                 "Ask a server admin if you believe this is wrong."
             ),
             color=COLOR_DANGER,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        return False
+
+
+    def _member_can_mod_by_role(self, member: discord.Member) -> bool:
+        if member.guild.owner_id == member.id or self._has_base_perms(member):
+            return True
+        mod_roles = self._cfg(member.guild.id).get("mod_roles", [])
+        return any(r.id in mod_roles for r in member.roles)
+
+    def _normalize_nlp_text(self, text: str) -> str:
+        low = text.lower()
+        low = re.sub(r"[^a-z0-9@#:_\-\s]", " ", low)
+        low = re.sub(r"\s+", " ", low).strip()
+        return low
+
+    def _tokenize_nlp(self, text: str) -> list[str]:
+        tokens = [t for t in text.split(" ") if t]
+        normalized: list[str] = []
+        for t in tokens:
+            if len(t) > 5 and t.endswith("ing"):
+                t = t[:-3]
+            elif len(t) > 4 and t.endswith("ed"):
+                t = t[:-2]
+            elif len(t) > 4 and t.endswith("es"):
+                t = t[:-2]
+            elif len(t) > 3 and t.endswith("s"):
+                t = t[:-1]
+            normalized.append(t)
+        return normalized
+
+    def _extract_reason(self, text: str) -> str:
+        m = re.search(
+            r"(?:for\s+reason\s*(?:being)?|reason\s*[:=-]?|because|for)\s+(.+)$",
+            text,
+            re.IGNORECASE,
+        )
+        if not m:
+            return "No reason provided"
+        reason = m.group(1).strip(" .,")
+        reason = re.sub(r"^(?:\d+\s*(?:s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)\b)\s*", "", reason, flags=re.IGNORECASE)
+        reason = re.sub(r"^for\s+", "", reason, flags=re.IGNORECASE).strip()
+        return reason[:500] if reason else "No reason provided"
+
+    def _extract_minutes(self, text: str) -> Optional[int]:
+        patterns = [
+            r"(?:for\s+)?(\d{1,5})\s*(?:m|min|mins|minute|minutes)\b",
+            r"(?:for\s+)?(\d{1,4})\s*(?:h|hr|hrs|hour|hours)\b",
+            r"(?:for\s+)?(\d{1,3})\s*(?:d|day|days)\b",
+        ]
+        m = re.search(patterns[0], text, re.IGNORECASE)
+        if m:
+            return max(1, min(40320, int(m.group(1))))
+        m = re.search(patterns[1], text, re.IGNORECASE)
+        if m:
+            return max(1, min(40320, int(m.group(1)) * 60))
+        m = re.search(patterns[2], text, re.IGNORECASE)
+        if m:
+            return max(1, min(40320, int(m.group(1)) * 1440))
+        return None
+
+    def _extract_seconds(self, text: str) -> Optional[int]:
+        m = re.search(r"(\d{1,5})\s*(?:s|sec|secs|second|seconds)\b", text, re.IGNORECASE)
+        if m:
+            return max(0, min(21600, int(m.group(1))))
+        m = re.search(r"(\d{1,4})\s*(?:m|min|mins|minute|minutes)\b", text, re.IGNORECASE)
+        if m:
+            return max(0, min(21600, int(m.group(1)) * 60))
+        return None
+
+    def _extract_count(self, text: str, max_value: int) -> Optional[int]:
+        m = re.search(r"\b(\d{1,4})\b", text)
+        if not m:
+            return None
+        return max(1, min(max_value, int(m.group(1))))
+
+    def _detect_action(self, text: str) -> Optional[str]:
+        low = self._normalize_nlp_text(text)
+        tokens = self._tokenize_nlp(low)
+        token_set = set(tokens)
+
+        scored: list[tuple[int, int, str]] = []
+        priority = {
+            "unban": 20, "unmute": 19, "clearwarns": 18, "unlock": 17,
+            "tempban": 16, "massban": 15, "slowmode": 14, "note": 13,
+            "case": 12, "userinfo": 11, "clear": 10, "lock": 9,
+            "ban": 8, "mute": 7, "kick": 6, "warn": 5,
+        }
+
+        for action, variants in self.ACTION_PATTERNS.items():
+            score = 0
+            for phrase in variants:
+                p = phrase.lower().strip()
+                if re.search(rf"\b{re.escape(p)}\b", low):
+                    score += 8 + min(len(p), 12)
+                    continue
+                p_tokens = self._tokenize_nlp(self._normalize_nlp_text(p))
+                if p_tokens and all(pt in token_set for pt in p_tokens):
+                    score += 4 + len(p_tokens)
+            if score:
+                scored.append((score, priority.get(action, 0), action))
+
+        if not scored:
+            return None
+        scored.sort(reverse=True)
+        return scored[0][2]
+
+    def _detect_note_action(self, text: str) -> str:
+        low = text.lower()
+        if any(k in low for k in ("note clear", "noteclear", "clear note", "clear notes")):
+            return "clear"
+        if any(k in low for k in ("note view", "view note", "show notes", "notes for")):
+            return "view"
+        return "add"
+
+    async def _parse_nl_mod_intent(self, message: discord.Message) -> Optional[ParsedModIntent]:
+        if not self.bot.user or self.bot.user not in message.mentions:
+            return None
+
+        text = re.sub(rf"<@!?{self.bot.user.id}>", "", message.content).strip()
+        if not text:
+            return None
+
+        action = self._detect_action(text)
+        if not action:
+            return None
+
+        target_member = next((m for m in message.mentions if m.id != self.bot.user.id and m.id != message.author.id), None)
+        target_user_id: Optional[int] = None
+        target_user_ids = [int(x) for x in re.findall(r"\b(\d{15,22})\b", text)]
+        if target_member and target_member.id not in target_user_ids:
+            target_user_ids.append(target_member.id)
+
+        channel_match = re.search(r"<#(\d+)>", message.content)
+        target_channel = None
+        if channel_match and message.guild:
+            target_channel = message.guild.get_channel(int(channel_match.group(1)))
+            if target_channel and not isinstance(target_channel, discord.TextChannel):
+                target_channel = None
+
+        minutes = self._extract_minutes(text)
+        duration_match = re.search(r"\b\d+\s*[mhd]\b", text, re.IGNORECASE)
+        duration_text = duration_match.group(0).replace(" ", "") if duration_match else None
+        amount = self._extract_count(text, 100)
+        case_match = re.search(r"(?:case\s*#?|#)(\d+)", text, re.IGNORECASE)
+        case_number = int(case_match.group(1)) if case_match else None
+        note_action = self._detect_note_action(text) if action == "note" else None
+        note_text = None
+        if action == "note" and note_action == "add":
+            m = re.search(r"(?:note\s+add|noteadd|add\s+note)\s+.+?\s+(?:that|:)?\s*(.+)$", text, re.IGNORECASE)
+            if m:
+                note_text = m.group(1).strip()
+
+        missing_scopes: list[str] = []
+        if action in {"mute", "ban", "kick", "warn", "unmute", "clearwarns", "tempban", "userinfo", "note"} and not target_member:
+            missing_scopes.append("user")
+        if action == "unban" and not target_user_ids:
+            missing_scopes.append("user_id")
+        if action == "mute" and minutes is None:
+            missing_scopes.append("minutes")
+        if action == "clear" and amount is None:
+            missing_scopes.append("amount")
+        if action == "slowmode" and self._extract_seconds(text) is None and "disable" not in text.lower() and "off" not in text.lower():
+            missing_scopes.append("seconds")
+        if action == "case" and case_number is None:
+            missing_scopes.append("case_number")
+        if action == "tempban" and not duration_text:
+            missing_scopes.append("duration")
+        if action == "massban" and not target_user_ids:
+            missing_scopes.append("user_ids")
+        if action == "note" and note_action == "add" and not note_text:
+            missing_scopes.append("note_text")
+
+        if action == "unban" and target_user_ids:
+            target_user_id = target_user_ids[0]
+
+        return ParsedModIntent(
+            action=action,
+            target_member=target_member,
+            target_user_id=target_user_id,
+            target_user_ids=target_user_ids,
+            target_channel=target_channel,
+            minutes=minutes,
+            duration_text=duration_text,
+            amount=amount,
+            case_number=case_number,
+            note_action=note_action,
+            note_text=note_text,
+            reason=self._extract_reason(text),
+            missing_scopes=missing_scopes,
+        )
+
+    async def _handle_nl_mod(self, message: discord.Message) -> bool:
+        if not message.guild or not isinstance(message.author, discord.Member):
+            return False
+        if not self._is_setup(message.guild.id):
+            return False
+        if not self._member_can_mod_by_role(message.author):
+            return False
+
+        parsed = await self._parse_nl_mod_intent(message)
+        if not parsed:
+            return False
+
+        actor = message.author
+        channel = message.channel
+
+        if parsed.missing_scopes:
+            scope_help = {
+                "user": "mention a target user (`@user`)",
+                "user_id": "provide the user ID",
+                "minutes": "provide timeout minutes (e.g. `5m` or `10 minutes`)",
+                "amount": "provide message count (1-100)",
+                "seconds": "provide slowmode seconds (e.g. `10s`)",
+                "case_number": "provide the case number (e.g. `case #12`)",
+                "duration": "provide tempban duration (e.g. `30m`, `6h`, `2d`)",
+                "user_ids": "provide one or more user IDs",
+                "note_text": "provide note text",
+            }
+            missing = "\n".join(f"• {scope_help.get(s, s)}" for s in parsed.missing_scopes)
+            await channel.send(
+                "❌ Missing required info for that moderation action. Please include:\n"
+                f"{missing}\n\n"
+                "Example: `@Codunot timeout @user 5m for spam`"
+            )
+            return True
+
+        user = parsed.target_member
+        reason = parsed.reason
+
+        try:
+            if parsed.action == "mute":
+                if user.top_role >= actor.top_role and message.guild.owner_id != actor.id:
+                    await channel.send("❌ Can't timeout someone with equal or higher role.", delete_after=8)
+                    return True
+                dur = parsed.minutes or 10
+                await user.timeout(timedelta(minutes=dur), reason=reason)
+                case_n = self._add_case(message.guild.id, "mute", user.id, str(user), actor.id, str(actor), reason, {"minutes": dur})
+                e = discord.Embed(title="🔇 Member Muted", color=0xFF8C00, timestamp=datetime.now(timezone.utc))
+                e.add_field(name="User", value=f"{user.mention} (`{user.id}`)")
+                e.add_field(name="Duration", value=f"{dur} minutes")
+                e.add_field(name="Reason", value=reason)
+                e.add_field(name="Case #", value=f"#{case_n}")
+                e.add_field(name="Moderator", value=actor.mention)
+                await channel.send(embed=e)
+                await self._log_guild(message.guild, e, channel.id)
+                return True
+
+            if parsed.action == "unmute":
+                await user.timeout(None, reason=reason)
+                e = discord.Embed(title="🔊 Member Unmuted", color=COLOR_SUCCESS, timestamp=datetime.now(timezone.utc))
+                e.add_field(name="User", value=f"{user.mention} (`{user.id}`)")
+                e.add_field(name="Moderator", value=actor.mention)
+                await channel.send(embed=e)
+                await self._log_guild(message.guild, e, channel.id)
+                return True
+
+            if parsed.action == "warn":
+                gid, uid = str(message.guild.id), str(user.id)
+                self.mod_data.setdefault("warns", {}).setdefault(gid, {}).setdefault(uid, [])
+                self.mod_data["warns"][gid][uid].append({
+                    "reason": reason, "moderator": str(actor), "moderator_id": actor.id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                count = len(self.mod_data["warns"][gid][uid])
+                case_n = self._add_case(message.guild.id, "warn", user.id, str(user), actor.id, str(actor), reason)
+                self._save()
+                e = discord.Embed(title="⚠️ Member Warned", color=COLOR_GOLD, timestamp=datetime.now(timezone.utc))
+                e.add_field(name="User", value=f"{user.mention} (`{user.id}`)")
+                e.add_field(name="Reason", value=reason)
+                e.add_field(name="Warn #", value=count)
+                e.add_field(name="Case #", value=f"#{case_n}")
+                e.add_field(name="Moderator", value=actor.mention)
+                await channel.send(embed=e)
+                await self._log_guild(message.guild, e, channel.id)
+                return True
+
+            if parsed.action == "clearwarns":
+                gid, uid = str(message.guild.id), str(user.id)
+                self.mod_data.setdefault("warns", {}).setdefault(gid, {})[uid] = []
+                self._save()
+                await channel.send(f"✅ All warnings cleared for {user.mention}.")
+                return True
+
+            if parsed.action == "kick":
+                if user.top_role >= actor.top_role and message.guild.owner_id != actor.id:
+                    await channel.send("❌ Can't kick someone with equal or higher role.", delete_after=8)
+                    return True
+                await user.kick(reason=f"{actor}: {reason}")
+                case_n = self._add_case(message.guild.id, "kick", user.id, str(user), actor.id, str(actor), reason)
+                e = discord.Embed(title="👢 Member Kicked", color=0xFF4500, timestamp=datetime.now(timezone.utc))
+                e.add_field(name="User", value=f"{user} (`{user.id}`)")
+                e.add_field(name="Reason", value=reason)
+                e.add_field(name="Case #", value=f"#{case_n}")
+                e.add_field(name="Moderator", value=actor.mention)
+                await channel.send(embed=e)
+                await self._log_guild(message.guild, e, channel.id)
+                return True
+
+            if parsed.action == "ban":
+                if user.top_role >= actor.top_role and message.guild.owner_id != actor.id:
+                    await channel.send("❌ Can't ban someone with equal or higher role.", delete_after=8)
+                    return True
+                await user.ban(reason=f"{actor}: {reason}", delete_message_days=0)
+                case_n = self._add_case(message.guild.id, "ban", user.id, str(user), actor.id, str(actor), reason)
+                e = discord.Embed(title="🔨 Member Banned", color=COLOR_DANGER, timestamp=datetime.now(timezone.utc))
+                e.add_field(name="User", value=f"{user} (`{user.id}`)")
+                e.add_field(name="Reason", value=reason)
+                e.add_field(name="Case #", value=f"#{case_n}")
+                e.add_field(name="Moderator", value=actor.mention)
+                await channel.send(embed=e)
+                await self._log_guild(message.guild, e, channel.id)
+                return True
+
+            if parsed.action == "tempban":
+                td = _parse_duration((parsed.duration_text or "").lower())
+                if not td:
+                    await channel.send("❌ Invalid duration. Use like `30m`, `6h`, or `2d`.")
+                    return True
+                unban_at = (datetime.now(timezone.utc) + td).isoformat()
+                await user.ban(reason=f"{actor}: [TEMPBAN {parsed.duration_text}] {reason}")
+                gid_str = str(message.guild.id)
+                self.mod_data.setdefault("pending_unbans", {}).setdefault(gid_str, []).append({"user_id": user.id, "unban_at": unban_at})
+                case_n = self._add_case(message.guild.id, "tempban", user.id, str(user), actor.id, str(actor), reason, {"duration": parsed.duration_text, "unban_at": unban_at})
+                self._save()
+                asyncio.create_task(self._schedule_unban(message.guild.id, user.id, td.total_seconds()))
+                e = discord.Embed(title="⏱️ Member Temp-Banned", color=COLOR_DANGER, timestamp=datetime.now(timezone.utc))
+                e.add_field(name="User", value=f"{user} (`{user.id}`)")
+                e.add_field(name="Duration", value=parsed.duration_text)
+                e.add_field(name="Reason", value=reason)
+                e.add_field(name="Case #", value=f"#{case_n}")
+                await channel.send(embed=e)
+                await self._log_guild(message.guild, e, channel.id)
+                return True
+
+            if parsed.action == "unban" and parsed.target_user_id:
+                target_user = await self.bot.fetch_user(parsed.target_user_id)
+                await message.guild.unban(target_user, reason=reason)
+                e = discord.Embed(title="🔓 Member Unbanned", color=COLOR_SUCCESS, timestamp=datetime.now(timezone.utc))
+                e.add_field(name="User", value=f"{target_user} (`{target_user.id}`)")
+                e.add_field(name="Reason", value=reason)
+                e.add_field(name="Moderator", value=actor.mention)
+                await channel.send(embed=e)
+                await self._log_guild(message.guild, e, channel.id)
+                return True
+
+            if parsed.action == "clear":
+                deleted = await channel.purge(limit=max(1, min(100, parsed.amount or 10)))
+                await channel.send(f"🗑️ Deleted **{len(deleted)}** messages.", delete_after=6)
+                return True
+
+            if parsed.action == "slowmode":
+                low = message.content.lower()
+                if "disable" in low or "off" in low:
+                    await channel.edit(slowmode_delay=0)
+                    await channel.send("✅ Slowmode disabled.")
+                else:
+                    secs = self._extract_seconds(message.content) or 0
+                    await channel.edit(slowmode_delay=max(1, min(21600, secs)))
+                    await channel.send(f"🐌 Slowmode set to **{max(1, min(21600, secs))}s**.")
+                return True
+
+            if parsed.action in {"lock", "unlock"}:
+                target = parsed.target_channel or channel
+                send_messages = False if parsed.action == "lock" else None
+                await target.set_permissions(message.guild.default_role, send_messages=send_messages, reason=reason)
+                title = "🔒 Channel Locked" if parsed.action == "lock" else "🔓 Channel Unlocked"
+                await channel.send(f"{title} — {target.mention}")
+                return True
+
+            if parsed.action == "case" and parsed.case_number is not None:
+                gid = str(message.guild.id)
+                c = self.mod_data.get("cases", {}).get(gid, {}).get("by_number", {}).get(str(parsed.case_number))
+                if not c:
+                    await channel.send("❌ Case not found.")
+                    return True
+                e = discord.Embed(title=f"📋 Case #{parsed.case_number}", color=COLOR_INFO)
+                e.add_field(name="Type", value=c.get("type", "unknown"))
+                e.add_field(name="User", value=c.get("user", "unknown"))
+                e.add_field(name="Moderator", value=c.get("moderator", "unknown"))
+                e.add_field(name="Reason", value=c.get("reason", "No reason"), inline=False)
+                e.add_field(name="Timestamp", value=c.get("timestamp", "unknown"), inline=False)
+                await channel.send(embed=e)
+                return True
+
+            if parsed.action == "userinfo":
+                target = user or actor
+                gid = str(message.guild.id)
+                uid = str(target.id)
+                warn_count = len(self.mod_data.get("warns", {}).get(gid, {}).get(uid, []))
+                cases_db = self.mod_data.get("cases", {}).get(gid, {}).get("by_number", {})
+                case_count = sum(1 for v in cases_db.values() if str(v.get("user_id")) == uid)
+                roles = [r.mention for r in target.roles[-10:] if r != message.guild.default_role]
+                e = discord.Embed(title=f"ℹ️ User Info — {target}", color=COLOR_INFO)
+                e.add_field(name="ID", value=str(target.id))
+                e.add_field(name="Display", value=target.display_name)
+                e.add_field(name="Created", value=target.created_at.strftime('%Y-%m-%d'))
+                e.add_field(name="Joined", value=target.joined_at.strftime('%Y-%m-%d') if target.joined_at else "Unknown")
+                e.add_field(name="Timeout", value="Yes" if target.is_timed_out() else "No")
+                e.add_field(name="Warns", value=str(warn_count))
+                e.add_field(name="Cases", value=str(case_count))
+                e.add_field(name="Roles", value=" ".join(roles) if roles else "None", inline=False)
+                await channel.send(embed=e)
+                return True
+
+            if parsed.action == "massban":
+                ids = parsed.target_user_ids[:10]
+                ok, fail = 0, 0
+                for uid in ids:
+                    try:
+                        user_obj = await self.bot.fetch_user(uid)
+                        await message.guild.ban(user_obj, reason=f"{actor}: {reason}")
+                        self._add_case(message.guild.id, "massban", uid, str(user_obj), actor.id, str(actor), reason)
+                        ok += 1
+                    except Exception:
+                        fail += 1
+                self._save()
+                await channel.send(f"🔨 Massban finished — ✅ {ok} succeeded, ❌ {fail} failed.")
+                return True
+
+            if parsed.action == "note":
+                if not await self._check_premium_from_message(channel, message.guild, actor):
+                    return True
+                gid, uid = str(message.guild.id), str(user.id)
+                if parsed.note_action == "view":
+                    notes = self.mod_data.get("notes", {}).get(gid, {}).get(uid, [])
+                    if not notes:
+                        await channel.send(f"📋 No notes for {user.mention}.")
+                        return True
+                    e = discord.Embed(title=f"📝 Mod Notes — {user}", color=COLOR_INFO)
+                    for i, n in enumerate(notes[-10:], 1):
+                        e.add_field(name=f"Note {i} — {n['timestamp'][:10]} by {n['author']}", value=n['text'][:500], inline=False)
+                    await channel.send(embed=e)
+                    return True
+                if parsed.note_action == "clear":
+                    self.mod_data.setdefault("notes", {}).setdefault(gid, {})[uid] = []
+                    self._save()
+                    await channel.send(f"✅ Notes cleared for {user.mention}.")
+                    return True
+                self.mod_data.setdefault("notes", {}).setdefault(gid, {}).setdefault(uid, []).append({
+                    "text": parsed.note_text or reason,
+                    "author": str(actor),
+                    "author_id": actor.id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                self._save()
+                await channel.send(f"📝 Note added for {user.mention}.")
+                return True
+
+        except discord.NotFound:
+            await channel.send("❌ That user isn't banned.", delete_after=8)
+            return True
+        except discord.Forbidden:
+            await channel.send("❌ I don't have permission for that moderation action.", delete_after=8)
+            return True
+        except Exception as ex:
+            print(f"[NLP MOD] {ex}")
+            await channel.send("❌ Couldn't run that moderation action.", delete_after=8)
+            return True
+
+        return False
+
+    async def _check_premium_from_message(self, channel: discord.abc.Messageable, guild: discord.Guild, actor: discord.Member) -> bool:
+        try:
+            from usage_manager import get_tier_from_message
+            class _Pseudo:
+                def __init__(self, guild, user):
+                    self.guild = guild
+                    self.user = user
+            tier = get_tier_from_message(_Pseudo(guild, actor))
+        except Exception:
+            tier = "free"
+        if tier in ("premium", "gold"):
+            return True
+        await channel.send("🌟 This action requires Premium/Gold.")
         return False
 
     async def _check_premium(self, interaction: discord.Interaction) -> bool:
@@ -825,6 +1351,10 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
+
+        if await self._handle_nl_mod(message):
+            return
+
         cfg = self._cfg(message.guild.id)
         if not cfg.get("setup_complete") or not cfg.get("automod_enabled"):
             return

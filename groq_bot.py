@@ -261,6 +261,20 @@ async def help_command(ctx: commands.Context):
 	)
 
 	embed.add_field(
+		name="🛡️ Moderation System",
+		value=(
+			"Slash-first moderation with setup + AutoMod:\n"
+			"• `/setup-moderation` (6-step wizard, 5 min timeout, starter-only controls)\n"
+			"• AutoMod: bad words, link policy, antispam timeout+purge, antiraid channel lock\n"
+			"• Core: `/warn` `/warns` `/clearwarns` `/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
+			"• Channel tools: `/clear` `/slowmode` `/lock` `/unlock`\n"
+			"• Lookup: `/userinfo` `/case`\n"
+			"• Premium/Gold: `/tempban` `/massban` `/modstats` `/note`"
+		),
+		inline=False
+	)
+
+	embed.add_field(
 		name="💬 Free Action Commands (No Vote Needed)",
 		value=(
 			"Make chats fun and chaotic — no vote required!\n"
@@ -897,6 +911,15 @@ def wants_merge(content: str) -> bool:
 
 # ---------------- PERSONAS ----------------
 
+BOT_CAPABILITIES_PROMPT = (
+	"Codunot features (compact): modes(fun/serious/roast/rizz/chess), chat in DMs or @mention in servers, "
+	"/configure server|channels, /generate_image /generate_video /generate_tts /transcribe, image edit+merge+analysis, "
+	"file read (.txt/.pdf/.docx), /play music, /bet /meme /hug /kiss /kick /slap /wish_goodmorning, "
+	"moderation: /setup-moderation(6-step), AutoMod(bad words/links/antispam/antiraid), "
+	"/warn /warns /clearwarns /ban /unban /modkick /mute /unmute /clear /slowmode /lock /unlock /userinfo /case, "
+	"premium moderation: /tempban /massban /modstats /note, help: !codunot_help."
+)
+
 PERSONAS = {
 
 "funny": (
@@ -1134,6 +1157,7 @@ def build_general_prompt(chan_id, mode, message, include_last_image=False):
 	
 	return (
 		f"{persona_text}\n\n"
+		f"{BOT_CAPABILITIES_PROMPT}\n\n"
 		f"=== CONVERSATION HISTORY ===\n"
 		f"{history_text}\n"
 		f"=== END HISTORY ===\n"
@@ -1149,6 +1173,7 @@ def build_roast_prompt(chan_id, user_message, reply_context=""):
 	
 	return (
 		PERSONAS["roast"] + "\n\n"
+		+ BOT_CAPABILITIES_PROMPT + "\n\n"
 		f"=== CONVERSATION HISTORY ===\n"
 		f"{history_text}\n"
 		f"=== END HISTORY ===\n\n"
@@ -1191,6 +1216,7 @@ async def handle_rizz_message(chan_id, message, mode):
 
 	prompt = (
 		f"{persona}\n\n"
+		f"{BOT_CAPABILITIES_PROMPT}\n\n"
 		f"=== CONVERSATION HISTORY ===\n"
 		f"{history_text}\n"
 		f"=== END HISTORY ===\n\n"
