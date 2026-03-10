@@ -548,7 +548,7 @@
   },
   "cases": {
     "1470038794274209815": {
-      "next_case": 3,
+      "next_case": 4,
       "by_number": {
         "1": {
           "type": "mute",
@@ -571,6 +571,18 @@
           "reason": "Stop posting the content you are (bad stuff) in this server. Please. And if you want to advertise, do it in <#1474340639297765376> only.",
           "timestamp": "2026-03-09T13:31:41.359279+00:00",
           "extra": {}
+        },
+        "3": {
+          "type": "mute",
+          "user_id": 1167443519070290051,
+          "user": "cursedbishopx",
+          "moderator_id": 1220934047794987048,
+          "moderator": "aarav_2022",
+          "reason": "test",
+          "timestamp": "2026-03-10T09:39:39.241888+00:00",
+          "extra": {
+            "minutes": 2
+          }
         }
       }
     }
