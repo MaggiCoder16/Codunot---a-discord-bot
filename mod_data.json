@@ -97,25 +97,20 @@
         1471136989804892170,
         1471136789417820374
       ],
-      "links_allowed_server": false,
-      "link_allowed_channels": [
-        1474340639297765376,
-        1472229849631555594,
-        1471087800936960091,
-        1471087656686456888,
-        1470038795712991255
-      ],
-      "link_allowed_roles": [
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": true,
+      "spam_messages": 10,
+      "spam_seconds": 5,
+      "anti_raid": true,
+      "raid_joins": 10,
+      "raid_seconds": 3,
+      "automod_exempt_roles": [
         1474257034374283348,
         1471136989804892170,
         1471136789417820374
-      ],
-      "anti_spam": true,
-      "spam_messages": 10,
-      "spam_seconds": 7,
-      "anti_raid": true,
-      "raid_joins": 10,
-      "raid_seconds": 3
+      ]
     },
     "1458902762363289797": {
       "setup_complete": false,
