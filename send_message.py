@@ -7,71 +7,78 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 def build_announce_embed(guild: discord.Guild) -> discord.Embed:
-    me = guild.me
-    p  = me.guild_permissions
-
-    required = {
-        "Ban Members":      p.ban_members,
-        "Kick Members":     p.kick_members,
-        "Moderate Members": p.moderate_members,
-        "Manage Messages":  p.manage_messages,
-        "Manage Channels":  p.manage_channels,
-    }
-
-    missing = [name for name, ok in required.items() if not ok]
-    all_good = len(missing) == 0
-
     embed = discord.Embed(
-        title="🛡️ Codunot now does Moderation!",
+        title="🚀 Big Codunot Update — New Models, More Voices, Better Music & More!",
         description=(
-            "Hey! Big update — **Codunot is no longer just a chatbot**.\n\n"
-            "It now includes a **full server moderation system** — completely free to set up! (some features are in premium and gold)\n\n"
-            "**Run `/setup-moderation` to get started.** It's a 6-step wizard that takes ~2 minutes."
+            "Hey everyone! We just dropped a major feature update to make Codunot "
+            "way more customizable, expressive, and fun to use 🎉"
         ),
         color=0xFFA500,
     )
 
     embed.add_field(
-        name="🛡️ What's included",
+        name="🧠 1) Model Switching is Live (`/model`)",
         value=(
-            "• **AutoMod** — auto-deletes bad words, blocks links, times out spammers, locks during raids\n"
-            "• `/warn` `/warns` `/clearwarns` — full warning system (auto-timeout at 3 warns)\n"
-            "• `/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
-            "• `/clear` `/slowmode` `/lock` `/unlock`\n"
-            "• `/userinfo` `/case` — member info & case lookup\n"
-            "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`"
+            "You can now switch chat models per channel/DM using `/model`\n\n"
+            "**Available models:**\n"
+            "• GPT-OSS-120B *(default)*\n"
+            "• `moonshotai/kimi-k2-instruct`\n"
+            "• `allam-2-7b`\n"
+            "• `qwen/qwen3-32b`\n"
+            "• `llama-3.3-70b-versatile`\n"
+            "• `meta-llama/llama-4-scout-17b-16e-instruct`\n"
+            "• `llama-3.1-8b-instant`\n\n"
+            "When you switch, Codunot confirms the old/new model and resets memory for a fresh conversation context."
         ),
         inline=False,
     )
 
-    if all_good:
-        embed.add_field(
-            name="✅ Permissions",
-            value="Codunot already has all the permissions it needs in this server. You're good to go!",
-            inline=False,
-        )
-    else:
-        embed.add_field(
-            name="⚠️ Action Required — Missing Permissions",
-            value=(
-                "Codunot is **missing some permissions** needed for mod commands to work.\n\n"
-                "**Missing:**\n" + "\n".join(f"• `{p}`" for p in missing) + "\n\n"
-                "**How to fix:**\n"
-                "1. Go to **Server Settings → Roles**\n"
-                "2. Find and click the **role you have given to me**\n"
-                "3. Enable the permissions listed above\n"
-                "4. Save — done! ✅\n\n"
-                "*(Mod commands will show `❌ No permission` errors until this is fixed)*"
-            ),
-            inline=False,
-        )
-
     embed.add_field(
-        name="🚀 Get started",
-        value="Run `/setup-moderation` in this server — server owner or admins only.",
+        name="🌍 2) Massive Edge TTS Language + Voice Expansion",
+        value=(
+            "Text-to-speech got a huge upgrade:\n"
+            "• Tons of new voices added across many regions/languages\n"
+            "• Better language grouping\n"
+            "• Cleaner language experience\n\n"
+            "✅ Users now see language names (like **English**, **Hindi**, **Arabic**, **Japanese**) "
+            "instead of technical IDs."
+        ),
         inline=False,
     )
-    embed.set_footer(text="Codunot — AI Chatbot + Moderation • by my creator aarav_2022")
+
+    embed.add_field(
+        name="🔊 3) Better Music Controls",
+        value=(
+            "Music got quality-of-life buffs:\n"
+            "• `/volume_up` and `/volume_down` commands\n"
+            "• `/autoplay` toggle — keeps playing after the queue ends\n"
+            "• `/lyrics` — fetch full lyrics for the current track"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🖼️ 4) Free Image Search (`/image_search`)",
+        value=(
+            "New free command — no vote needed!\n"
+            "Search images from **Wikimedia Commons** and **Openverse** by typing any query. "
+            "Find any image instantly without leaving Discord."
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="💬 Why this matters",
+        value=(
+            "• More control over AI behavior (model selection)\n"
+            "• Way better voice diversity in TTS\n"
+            "• Smoother music experience\n"
+            "• Quick visual search tools"
+        ),
+        inline=False,
+    )
+
+    embed.set_footer(text="Codunot — ty for using codu! please support me by voting on top.gg 🙂 — by aarav_2022")
     return embed
 
 def pick_channel(guild: discord.Guild) -> discord.TextChannel | None:
