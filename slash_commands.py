@@ -929,6 +929,13 @@ class MusicControls(discord.ui.View):
 	async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_next(interaction)
 
+	@discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary)
+	async def volume_down_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+		await self.cog._music_adjust_volume(interaction, -10)
+
+	@discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary)
+	async def volume_up_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+		await self.cog._music_adjust_volume(interaction, 10)
 
 	@discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
 	async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1382,6 +1389,7 @@ class Codunot(commands.Cog):
 								next_track = results
 							if next_track is None:
 								raise Exception("No different autoplay track found.")
+							next_track = results[0] if isinstance(results, list) else results
 							await player.play(next_track)
 							guild_now_playing_track[guild_id] = {
 								"title": next_track.title or seed,
@@ -1625,6 +1633,7 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
 		await interaction.response.defer(ephemeral=False)
+		await interaction.response.defer(ephemeral=True)
 		if not await self._ensure_music_control(interaction):
 			return
 		await self._music_adjust_volume(interaction, 10)
@@ -1635,6 +1644,7 @@ class Codunot(commands.Cog):
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
 		await interaction.response.defer(ephemeral=False)
+		await interaction.response.defer(ephemeral=True)
 		if not await self._ensure_music_control(interaction):
 			return
 		await self._music_adjust_volume(interaction, -10)
@@ -2157,6 +2167,7 @@ class Codunot(commands.Cog):
 						info = await _ytdl_extract_different_track(f"ytsearch8:{seed}", "free", seed)
 						if info is None:
 							info = await _ytdl_extract_different_track(f"scsearch8:{seed}", "free", seed)
+						info = await _ytdl_extract(_build_query_candidates(seed), "free")
 						if info and info.get("url"):
 							queue.append({
 								"title": info.get("title") or seed,
@@ -2171,6 +2182,8 @@ class Codunot(commands.Cog):
 							})
 						else:
 							print(f"[YTDL] Autoplay couldn't find a different track for seed={seed!r}")
+								"filter": guild_filters.get(guild_id, "normal"),
+							})
 					except Exception as e:
 						print(f"[YTDL] Autoplay fetch failed: {e}")
 
