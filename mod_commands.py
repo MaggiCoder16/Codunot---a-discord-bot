@@ -867,13 +867,13 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         tokens = [t for t in text.split(" ") if t]
         normalized: list[str] = []
         for t in tokens:
-            if len(t) > 5 and t.endswith("ing"):
+            if len(t) > 5 and t.endswith("ing") and len(t[:-3]) >= 4:
                 t = t[:-3]
-            elif len(t) > 4 and t.endswith("ed"):
+            elif len(t) > 4 and t.endswith("ed") and len(t[:-2]) >= 4:
                 t = t[:-2]
-            elif len(t) > 4 and t.endswith("es"):
+            elif len(t) > 4 and t.endswith("es") and len(t[:-2]) >= 4:
                 t = t[:-2]
-            elif len(t) > 3 and t.endswith("s"):
+            elif len(t) > 3 and t.endswith("s") and len(t[:-1]) >= 4:
                 t = t[:-1]
             normalized.append(t)
         return normalized
@@ -938,15 +938,17 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
 
         for action, variants in self.ACTION_PATTERNS.items():
             score = 0
+            has_direct_phrase_match = False
             for phrase in variants:
                 p = phrase.lower().strip()
                 if re.search(rf"\b{re.escape(p)}\b", low):
+                    has_direct_phrase_match = True
                     score += 8 + min(len(p), 12)
                     continue
                 p_tokens = self._tokenize_nlp(self._normalize_nlp_text(p))
                 if p_tokens and all(pt in token_set for pt in p_tokens):
                     score += 4 + len(p_tokens)
-            if score:
+            if score and (has_direct_phrase_match or score >= 8):
                 scored.append((score, priority.get(action, 0), action))
 
         if not scored:
@@ -1073,11 +1075,28 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                 "user_ids": "provide one or more user IDs",
                 "note_text": "provide note text",
             }
+            action_examples = {
+                "mute": "@Codunot timeout @user 5m for spam",
+                "ban": "@Codunot ban @user for raiding",
+                "kick": "@Codunot kick @user for trolling",
+                "warn": "@Codunot warn @user for spam",
+                "unmute": "@Codunot unmute @user",
+                "clearwarns": "@Codunot clearwarns @user",
+                "tempban": "@Codunot tempban @user 2d for repeated abuse",
+                "userinfo": "@Codunot userinfo @user",
+                "note": "@Codunot note add @user: repeated spam",
+                "unban": "@Codunot unban 123456789012345678",
+                "clear": "@Codunot clear 20",
+                "slowmode": "@Codunot slowmode 10s",
+                "case": "@Codunot case #12",
+                "massban": "@Codunot massban 123456789012345678 234567890123456789",
+            }
             missing = "\n".join(f"• {scope_help.get(s, s)}" for s in parsed.missing_scopes)
+            example = action_examples.get(parsed.action, "@Codunot timeout @user 5m for spam")
             await channel.send(
                 "❌ Missing required info for that moderation action. Please include:\n"
                 f"{missing}\n\n"
-                "Example: `@Codunot timeout @user 5m for spam`"
+                f"Example: `{example}`"
             )
             return True
 
