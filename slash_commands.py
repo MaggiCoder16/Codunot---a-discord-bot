@@ -671,6 +671,28 @@ async def _ytdl_extract_playlist(url: str, tier: str) -> list[dict]:
 	return [data]
 
 
+async def _ytdl_extract_different_track(query: str, tier: str, current_title: str) -> dict | None:
+	"""Search multiple candidates and return first track with a different normalized title."""
+	loop = asyncio.get_running_loop()
+	current_norm = _normalized_title(current_title)
+
+	def _extract():
+		opts = _get_ytdl_options(tier)
+		with yt_dlp.YoutubeDL(opts) as ytdl:
+			return ytdl.extract_info(query, download=False)
+
+	data = await loop.run_in_executor(None, _extract)
+	if not data:
+		return None
+
+	entries = [e for e in data.get("entries", []) if e] if isinstance(data, dict) and "entries" in data else [data]
+	for entry in entries:
+		candidate_norm = _normalized_title(entry.get("title"))
+		if candidate_norm and candidate_norm != current_norm and entry.get("url"):
+			return entry
+	return None
+
+
 # ── Transcription config ──────────────────────────────────────────────────────
 
 ALLOWED_TRANSCRIBE_HOSTS = (
@@ -737,6 +759,14 @@ def _format_duration_seconds(seconds: int | None) -> str:
 	if hours:
 		return f"{hours}:{minutes:02d}:{secs:02d}"
 	return f"{minutes}:{secs:02d}"
+
+
+def _normalized_title(value: str | None) -> str:
+	text = (value or "").lower().strip()
+	text = re.sub(r"\([^)]*\)|\[[^\]]*\]", "", text)
+	text = re.sub(r"[^a-z0-9\s]", " ", text)
+	text = re.sub(r"\s+", " ", text)
+	return text.strip()
 
 
 # ── GIF / Meme data ───────────────────────────────────────────────────────────
@@ -1344,6 +1374,21 @@ class Codunot(commands.Cog):
 					try:
 						results = await wavelink.Playable.search(seed)
 						if results:
+							if isinstance(results, list):
+								current_norm = _normalized_title(seed)
+								next_track = None
+								for candidate in results:
+									candidate_norm = _normalized_title(getattr(candidate, "title", ""))
+									if candidate_norm and candidate_norm != current_norm:
+										next_track = candidate
+										break
+								if next_track is None:
+									print(f"[WAVELINK] Autoplay couldn't find a different track for seed={seed!r}")
+									next_track = None
+							else:
+								next_track = results
+							if next_track is None:
+								raise Exception("No different autoplay track found.")
 							next_track = results[0] if isinstance(results, list) else results
 							await player.play(next_track)
 							guild_now_playing_track[guild_id] = {
@@ -1587,6 +1632,7 @@ class Codunot(commands.Cog):
 		if interaction.guild is None:
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
+		await interaction.response.defer(ephemeral=False)
 		await interaction.response.defer(ephemeral=True)
 		if not await self._ensure_music_control(interaction):
 			return
@@ -1597,6 +1643,7 @@ class Codunot(commands.Cog):
 		if interaction.guild is None:
 			await interaction.response.send_message("❌ Server only.", ephemeral=True)
 			return
+		await interaction.response.defer(ephemeral=False)
 		await interaction.response.defer(ephemeral=True)
 		if not await self._ensure_music_control(interaction):
 			return
@@ -1815,14 +1862,14 @@ class Codunot(commands.Cog):
 		"""Adjust guild playback volume by delta percentage points within 10%-200%."""
 		voice_client = interaction.guild.voice_client
 		if not voice_client or not voice_client.is_connected():
-			await interaction.followup.send("❌ I'm not connected to a voice channel.", ephemeral=True)
+			await interaction.followup.send("❌ I'm not connected to a voice channel.", ephemeral=False)
 			return
 
 		guild_id = interaction.guild.id
 		current = guild_volume.get(guild_id, 100)
 		new_volume = max(10, min(200, current + delta))
 		if new_volume == current:
-			await interaction.followup.send(f"🔊 Volume is already at **{new_volume}%**.", ephemeral=True)
+			await interaction.followup.send(f"🔊 Volume is already at **{new_volume}%**.", ephemeral=False)
 			return
 
 		guild_volume[guild_id] = new_volume
@@ -1831,7 +1878,7 @@ class Codunot(commands.Cog):
 		elif isinstance(getattr(voice_client, "source", None), discord.PCMVolumeTransformer):
 			voice_client.source.volume = new_volume / 100
 
-		await interaction.followup.send(f"🔊 Volume set to **{new_volume}%**.", ephemeral=True)
+		await interaction.followup.send(f"🔊 Volume set to **{new_volume}%**.", ephemeral=False)
 
 	# ── Play command ──────────────────────────────────────────────────────────
 
@@ -2117,6 +2164,9 @@ class Codunot(commands.Cog):
 				seed = current.get("title")
 				if seed:
 					try:
+						info = await _ytdl_extract_different_track(f"ytsearch8:{seed}", "free", seed)
+						if info is None:
+							info = await _ytdl_extract_different_track(f"scsearch8:{seed}", "free", seed)
 						info = await _ytdl_extract(_build_query_candidates(seed), "free")
 						if info and info.get("url"):
 							queue.append({
@@ -2128,6 +2178,10 @@ class Codunot(commands.Cog):
 								"stream_url": info.get("url"),
 								"requested_by": "Autoplay",
 								"tier": "free",
+								"filter": "normal",
+							})
+						else:
+							print(f"[YTDL] Autoplay couldn't find a different track for seed={seed!r}")
 								"filter": guild_filters.get(guild_id, "normal"),
 							})
 					except Exception as e:
@@ -2160,7 +2214,7 @@ class Codunot(commands.Cog):
 			)
 
 		try:
-			selected_filter = next_track.get("filter") or guild_filters.get(guild_id, "normal")
+			selected_filter = "normal" if next_track.get("requested_by") == "Autoplay" else (next_track.get("filter") or guild_filters.get(guild_id, "normal"))
 			volume = guild_volume.get(guild_id, 100) / 100
 			source = discord.PCMVolumeTransformer(
 				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(selected_filter)),

@@ -11,6 +11,14 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 SESSION: aiohttp.ClientSession | None = None
 
+
+def _max_tokens_for_model(model: str) -> int:
+    """Return a safe max_tokens value per model."""
+    strict_limits = {
+        "allam-2-7b": 4096,
+    }
+    return strict_limits.get(model, 8000)
+
 def clean_log(text: str) -> str:
     if not text:
         return text
@@ -69,7 +77,7 @@ async def call_groq(
             }
         ],
         "temperature": temperature,
-        "max_tokens": 8000  # ← High limit, prevents truncation
+        "max_tokens": _max_tokens_for_model(model)
     }
 
     headers = {

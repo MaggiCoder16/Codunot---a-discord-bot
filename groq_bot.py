@@ -596,6 +596,12 @@ async def call_groq_with_health(prompt, temperature=0.7, mode: str = "", model_o
 		model = PRIMARY_MODEL
 
 	try:
+		if model == "qwen/qwen3-32b":
+			prompt = (
+				f"{prompt}\n\n"
+				"IMPORTANT: Return only the final user-facing answer. "
+				"Do not include chain-of-thought, reasoning, or any <think> tags."
+			)
 		return await call_groq(
 			prompt=prompt,
 			model=model,
@@ -839,6 +845,23 @@ def humanize_and_safeify(text, short=False):
 			text = text[:100].rsplit(" ", 1)[0].strip()
 		if not text.endswith(('.', '!', '?')):
 			text += '.'
+	return text
+
+
+def _strip_thinking_blocks(text: str) -> str:
+	"""Remove reasoning blocks like <think>...</think> from model output."""
+	if not text:
+		return text
+	cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
+	cleaned = re.sub(r"</?think>", "", cleaned, flags=re.IGNORECASE)
+	return cleaned.strip()
+
+
+def sanitize_model_output(text: str, model_name: str | None = None) -> str:
+	if not text:
+		return text
+	if model_name == "qwen/qwen3-32b":
+		return _strip_thinking_blocks(text)
 	return text
 	
 async def send_human_reply(channel, reply_text):
@@ -1204,6 +1227,7 @@ async def handle_roast_mode(chan_id, message, user_message):
 	
 	selected_model = memory.get_channel_model(chan_id)
 	raw = await call_groq(prompt, model=selected_model, temperature=1.3)
+	raw = sanitize_model_output(raw, selected_model)
 	reply = raw.strip() if raw else choose_fallback("roast")
 	if reply and not reply.endswith(('.', '!', '?')):
 		reply += '.'
@@ -1235,6 +1259,7 @@ async def handle_rizz_message(chan_id, message, mode):
 	try:
 		selected_model = memory.get_channel_model(chan_id)
 		response = await call_groq_with_health(prompt, temperature=0.85, mode=mode, model_override=selected_model)
+		response = sanitize_model_output(response, selected_model)
 	except Exception as e:
 		print(f"[RIZZ ERROR] {e}")
 		response = None
@@ -1288,6 +1313,7 @@ async def generate_and_reply(chan_id, message, content, mode):
 	try:
 		selected_model = memory.get_channel_model(chan_id)
 		response = await call_groq_with_health(prompt, temperature=0.7, mode=mode, model_override=selected_model)
+		response = sanitize_model_output(response, selected_model)
 	except Exception as e:
 		print(f"[API ERROR] {e}")
 		response = None
@@ -1665,6 +1691,7 @@ async def handle_file_message(message, mode):
 			model_override=selected_model,
 		)
 		if response:
+			response = sanitize_model_output(response, selected_model)
 			await send_human_reply(message.channel, response.strip())
 
 			# Update counts
