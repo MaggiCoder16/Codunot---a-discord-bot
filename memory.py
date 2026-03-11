@@ -9,7 +9,8 @@ class MemoryManager:
         #     "messages": [...],
         #     "timestamps": [...],
         #     "roast_target": None,
-        #     "mode": "funny"
+        #     "mode": "funny",
+        #     "model": "openai/gpt-oss-120b"
         # }
         self.memory = {}
 
@@ -23,7 +24,8 @@ class MemoryManager:
                 "messages": [],
                 "timestamps": [],
                 "roast_target": None,
-                "mode": "funny"
+                "mode": "funny",
+                "model": "openai/gpt-oss-120b"
             }
 
         entry = f"{user}: {message}"
@@ -74,6 +76,20 @@ class MemoryManager:
             return self.memory[channel_id].get("mode")
         return None
 
+    def save_channel_model(self, channel_id, model):
+        self._ensure_channel(channel_id)
+        self.memory[channel_id]["model"] = model
+
+    def get_channel_model(self, channel_id):
+        if channel_id in self.memory:
+            return self.memory[channel_id].get("model", "openai/gpt-oss-120b")
+        return "openai/gpt-oss-120b"
+
+    def clear_channel_messages(self, channel_id):
+        self._ensure_channel(channel_id)
+        self.memory[channel_id]["messages"] = []
+        self.memory[channel_id]["timestamps"] = []
+
     # ---------------- FLAGS ----------------
     def set_flag(self, key):
         self.flags[key] = True
@@ -88,7 +104,8 @@ class MemoryManager:
                 "messages": [],
                 "timestamps": [],
                 "roast_target": None,
-                "mode": "funny"
+                "mode": "funny",
+                "model": "openai/gpt-oss-120b"
             }
 
     # ---------------- PERSIST (currently inactive) ----------------

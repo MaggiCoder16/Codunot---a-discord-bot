@@ -87,52 +87,417 @@ TTS_ALL_VOICES: dict[str, str] = {
 }
 TTS_VOICE_CODE_TO_NAME = {code: name for name, code in TTS_ALL_VOICES.items()}
 
-EDGE_TTS_LANG_VOICES: dict[str, list[str]] = {
-    "Afrikaans (South Africa)": ["af-ZA-AdriNeural", "af-ZA-WillemNeural"],
-    "Albanian": ["sq-AL-AnilaNeural", "sq-AL-IlirNeural"],
-    "Arabic (Egypt)": ["ar-EG-SalmaNeural", "ar-EG-ShakirNeural"],
-    "Arabic (Saudi Arabia)": ["ar-SA-ZariyahNeural", "ar-SA-HamedNeural"],
-    "Bangla (Bangladesh)": ["bn-BD-HiraNeural", "bn-BD-NabanitaNeural"],
-    "Bangla (India)": ["bn-IN-TanishaaNeural", "bn-IN-BashkarNeural"],
-    "Chinese (Simplified)": ["zh-CN-XiaoxiaoNeural", "zh-CN-YunyangNeural"],
-    "Chinese (Traditional, HK)": ["zh-HK-HiuGaaiNeural", "zh-HK-WanLungNeural"],
-    "Chinese (Traditional, TW)": ["zh-TW-HanHanNeural", "zh-TW-YunJheNeural"],
-    "Croatian": ["hr-HR-SreckoNeural", "hr-HR-GabrijelaNeural"],
-    "Czech": ["cs-CZ-VlastaNeural", "cs-CZ-AntoninNeural"],
-    "Danish": ["da-DK-ChristelNeural", "da-DK-JeppeNeural"],
-    "Dutch (Netherlands)": ["nl-NL-ColetteNeural", "nl-NL-BartNeural", "nl-NL-MaartenNeural"],
-    "English (US)": ["en-US-MichelleNeural", "en-US-AriaNeural", "en-US-GuyNeural", "en-US-JennyNeural", "en-US-RogerNeural"],
-    "English (GB)": ["en-GB-SoniaNeural", "en-GB-RyanNeural", "en-GB-LibbyNeural", "en-GB-ThomasNeural"],
-    "English (AU)": ["en-AU-NatashaNeural", "en-AU-WilliamNeural"],
-    "English (IN)": ["en-IN-SwaraNeural", "en-IN-SohamNeural", "en-IN-NeerjaNeural"],
-    "English (CA)": ["en-CA-ClaraNeural"],
-    "English (NZ)": ["en-NZ-MollyNeural"],
-    "Finnish": ["fi-FI-HarriNeural", "fi-FI-NooraNeural"],
-    "French (FR)": ["fr-FR-DeniseNeural", "fr-FR-HenriNeural", "fr-FR-EloiseNeural"],
-    "French (CA)": ["fr-CA-JeanNeural", "fr-CA-SylvieNeural"],
-    "German (DE)": ["de-DE-KatjaNeural", "de-DE-ConradNeural", "de-DE-AmalaNeural"],
-    "German (AT)": ["de-AT-IngridNeural", "de-AT-JonasNeural"],
-    "Greek": ["el-GR-AthinaNeural", "el-GR-NestorasNeural"],
-    "Hindi (IN)": ["hi-IN-SwaraNeural", "hi-IN-NeerjaNeural", "hi-IN-HemantNeural", "hi-IN-KalpanaNeural"],
-    "Hungarian": ["hu-HU-NoemiNeural"],
-    "Indonesian": ["id-ID-ArdiNeural"],
-    "Italian": ["it-IT-IsabellaNeural", "it-IT-CosimoNeural"],
-    "Japanese": ["ja-JP-NanamiNeural", "ja-JP-TakumiNeural"],
-    "Korean": ["ko-KR-SunHiNeural", "ko-KR-HeamiNeural"],
-    "Norwegian Bokmål": ["nb-NO-PernilleNeural", "nb-NO-FinnNeural"],
-    "Polish": ["pl-PL-MajaNeural", "pl-PL-JacekNeural"],
-    "Portuguese (Brazil)": ["pt-BR-FranciscaNeural", "pt-BR-DanielNeural"],
-    "Portuguese (Portugal)": ["pt-PT-CatarinaNeural", "pt-PT-FranciscoNeural"],
-    "Romanian": ["ro-RO-AndreiNeural", "ro-RO-LauraNeural"],
-    "Russian": ["ru-RU-DariyaNeural", "ru-RU-PavelNeural", "ru-RU-IrinaNeural"],
-    "Spanish (ES)": ["es-ES-ElviraNeural", "es-ES-AlvaroNeural"],
-    "Spanish (MX)": ["es-MX-AlvaroNeural", "es-MX-MiaNeural"],
-    "Swedish": ["sv-SE-SofieNeural", "sv-SE-ErikNeural"],
-    "Thai": ["th-TH-PremwadeeNeural"],
-    "Turkish": ["tr-TR-RemziNeural", "tr-TR-EmelNeural"],
-    "Ukrainian": ["uk-UA-OstapNeural", "uk-UA-PolinaNeural"],
-    "Vietnamese": ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"],
+EDGE_TTS_LANGUAGE_NAMES: dict[str, str] = {
+    "af": "Afrikaans",
+    "am": "Amharic",
+    "ar": "Arabic",
+    "az": "Azerbaijani",
+    "bg": "Bulgarian",
+    "bn": "Bengali",
+    "bs": "Bosnian",
+    "ca": "Catalan",
+    "cs": "Czech",
+    "cy": "Welsh",
+    "da": "Danish",
+    "de": "German",
+    "el": "Greek",
+    "en": "English",
+    "es": "Spanish",
+    "et": "Estonian",
+    "fa": "Persian",
+    "fi": "Finnish",
+    "fil": "Filipino",
+    "fr": "French",
+    "ga": "Irish",
+    "gl": "Galician",
+    "gu": "Gujarati",
+    "he": "Hebrew",
+    "hi": "Hindi",
+    "hr": "Croatian",
+    "hu": "Hungarian",
+    "id": "Indonesian",
+    "is": "Icelandic",
+    "it": "Italian",
+    "iu": "Inuktitut",
+    "ja": "Japanese",
+    "jv": "Javanese",
+    "ka": "Georgian",
+    "kk": "Kazakh",
+    "km": "Khmer",
+    "kn": "Kannada",
+    "ko": "Korean",
+    "lo": "Lao",
+    "lt": "Lithuanian",
+    "lv": "Latvian",
+    "mk": "Macedonian",
+    "ml": "Malayalam",
+    "mn": "Mongolian",
+    "mr": "Marathi",
+    "ms": "Malay",
+    "mt": "Maltese",
+    "my": "Burmese",
+    "nb": "Norwegian Bokmål",
+    "ne": "Nepali",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "ps": "Pashto",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "si": "Sinhala",
+    "sk": "Slovak",
+    "sl": "Slovenian",
+    "so": "Somali",
+    "sq": "Albanian",
+    "sr": "Serbian",
+    "su": "Sundanese",
+    "sv": "Swedish",
+    "sw": "Swahili",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "th": "Thai",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "ur": "Urdu",
+    "uz": "Uzbek",
+    "vi": "Vietnamese",
+    "zh": "Chinese",
+    "zu": "Zulu",
 }
+
+_EDGE_TTS_VOICE_CODES: list[str] = [
+    "af-ZA-AdriNeural",
+    "af-ZA-WillemNeural",
+    "am-ET-AmehaNeural",
+    "am-ET-MekdesNeural",
+    "ar-AE-FatimaNeural",
+    "ar-AE-HamdanNeural",
+    "ar-BH-AliNeural",
+    "ar-BH-LailaNeural",
+    "ar-DZ-AminaNeural",
+    "ar-DZ-IsmaelNeural",
+    "ar-EG-SalmaNeural",
+    "ar-EG-ShakirNeural",
+    "ar-IQ-BasselNeural",
+    "ar-IQ-RanaNeural",
+    "ar-JO-SanaNeural",
+    "ar-JO-TaimNeural",
+    "ar-KW-FahedNeural",
+    "ar-KW-NouraNeural",
+    "ar-LB-LaylaNeural",
+    "ar-LB-RamiNeural",
+    "ar-LY-ImanNeural",
+    "ar-LY-OmarNeural",
+    "ar-MA-JamalNeural",
+    "ar-MA-MounaNeural",
+    "ar-OM-AbdullahNeural",
+    "ar-OM-AyshaNeural",
+    "ar-QA-AmalNeural",
+    "ar-QA-MoazNeural",
+    "ar-SA-HamedNeural",
+    "ar-SA-ZariyahNeural",
+    "ar-SY-AmanyNeural",
+    "ar-SY-LaithNeural",
+    "ar-TN-HediNeural",
+    "ar-TN-ReemNeural",
+    "ar-YE-MaryamNeural",
+    "ar-YE-SalehNeural",
+    "az-AZ-BabekNeural",
+    "az-AZ-BanuNeural",
+    "bg-BG-BorislavNeural",
+    "bg-BG-KalinaNeural",
+    "bn-BD-NabanitaNeural",
+    "bn-BD-PradeepNeural",
+    "bn-IN-BashkarNeural",
+    "bn-IN-TanishaaNeural",
+    "bs-BA-GoranNeural",
+    "bs-BA-VesnaNeural",
+    "ca-ES-EnricNeural",
+    "ca-ES-JoanaNeural",
+    "cs-CZ-AntoninNeural",
+    "cs-CZ-VlastaNeural",
+    "cy-GB-AledNeural",
+    "cy-GB-NiaNeural",
+    "da-DK-ChristelNeural",
+    "da-DK-JeppeNeural",
+    "de-AT-IngridNeural",
+    "de-AT-JonasNeural",
+    "de-CH-JanNeural",
+    "de-CH-LeniNeural",
+    "de-DE-AmalaNeural",
+    "de-DE-ConradNeural",
+    "de-DE-FlorianMultilingualNeural",
+    "de-DE-KatjaNeural",
+    "de-DE-KillianNeural",
+    "de-DE-SeraphinaMultilingualNeural",
+    "el-GR-AthinaNeural",
+    "el-GR-NestorasNeural",
+    "en-AU-NatashaNeural",
+    "en-AU-WilliamMultilingualNeural",
+    "en-CA-ClaraNeural",
+    "en-CA-LiamNeural",
+    "en-GB-LibbyNeural",
+    "en-GB-MaisieNeural",
+    "en-GB-RyanNeural",
+    "en-GB-SoniaNeural",
+    "en-GB-ThomasNeural",
+    "en-HK-SamNeural",
+    "en-HK-YanNeural",
+    "en-IE-ConnorNeural",
+    "en-IE-EmilyNeural",
+    "en-IN-NeerjaExpressiveNeural",
+    "en-IN-NeerjaNeural",
+    "en-IN-PrabhatNeural",
+    "en-KE-AsiliaNeural",
+    "en-KE-ChilembaNeural",
+    "en-NG-AbeoNeural",
+    "en-NG-EzinneNeural",
+    "en-NZ-MitchellNeural",
+    "en-NZ-MollyNeural",
+    "en-PH-JamesNeural",
+    "en-PH-RosaNeural",
+    "en-SG-LunaNeural",
+    "en-SG-WayneNeural",
+    "en-TZ-ElimuNeural",
+    "en-TZ-ImaniNeural",
+    "en-US-AnaNeural",
+    "en-US-AndrewMultilingualNeural",
+    "en-US-AndrewNeural",
+    "en-US-AriaNeural",
+    "en-US-AvaMultilingualNeural",
+    "en-US-AvaNeural",
+    "en-US-BrianMultilingualNeural",
+    "en-US-BrianNeural",
+    "en-US-ChristopherNeural",
+    "en-US-EmmaMultilingualNeural",
+    "en-US-EmmaNeural",
+    "en-US-EricNeural",
+    "en-US-GuyNeural",
+    "en-US-JennyNeural",
+    "en-US-MichelleNeural",
+    "en-US-RogerNeural",
+    "en-US-SteffanNeural",
+    "en-ZA-LeahNeural",
+    "en-ZA-LukeNeural",
+    "es-AR-ElenaNeural",
+    "es-AR-TomasNeural",
+    "es-BO-MarceloNeural",
+    "es-BO-SofiaNeural",
+    "es-CL-CatalinaNeural",
+    "es-CL-LorenzoNeural",
+    "es-CO-GonzaloNeural",
+    "es-CO-SalomeNeural",
+    "es-CR-JuanNeural",
+    "es-CR-MariaNeural",
+    "es-CU-BelkysNeural",
+    "es-CU-ManuelNeural",
+    "es-DO-EmilioNeural",
+    "es-DO-RamonaNeural",
+    "es-EC-AndreaNeural",
+    "es-EC-LuisNeural",
+    "es-ES-AlvaroNeural",
+    "es-ES-ElviraNeural",
+    "es-ES-XimenaNeural",
+    "es-GQ-JavierNeural",
+    "es-GQ-TeresaNeural",
+    "es-GT-AndresNeural",
+    "es-GT-MartaNeural",
+    "es-HN-CarlosNeural",
+    "es-HN-KarlaNeural",
+    "es-MX-DaliaNeural",
+    "es-MX-JorgeNeural",
+    "es-NI-FedericoNeural",
+    "es-NI-YolandaNeural",
+    "es-PA-MargaritaNeural",
+    "es-PA-RobertoNeural",
+    "es-PE-AlexNeural",
+    "es-PE-CamilaNeural",
+    "es-PR-KarinaNeural",
+    "es-PR-VictorNeural",
+    "es-PY-MarioNeural",
+    "es-PY-TaniaNeural",
+    "es-SV-LorenaNeural",
+    "es-SV-RodrigoNeural",
+    "es-US-AlonsoNeural",
+    "es-US-PalomaNeural",
+    "es-UY-MateoNeural",
+    "es-UY-ValentinaNeural",
+    "es-VE-PaolaNeural",
+    "es-VE-SebastianNeural",
+    "et-EE-AnuNeural",
+    "et-EE-KertNeural",
+    "fa-IR-DilaraNeural",
+    "fa-IR-FaridNeural",
+    "fi-FI-HarriNeural",
+    "fi-FI-NooraNeural",
+    "fil-PH-AngeloNeural",
+    "fil-PH-BlessicaNeural",
+    "fr-BE-CharlineNeural",
+    "fr-BE-GerardNeural",
+    "fr-CA-AntoineNeural",
+    "fr-CA-JeanNeural",
+    "fr-CA-SylvieNeural",
+    "fr-CA-ThierryNeural",
+    "fr-CH-ArianeNeural",
+    "fr-CH-FabriceNeural",
+    "fr-FR-DeniseNeural",
+    "fr-FR-EloiseNeural",
+    "fr-FR-HenriNeural",
+    "fr-FR-RemyMultilingualNeural",
+    "fr-FR-VivienneMultilingualNeural",
+    "ga-IE-ColmNeural",
+    "ga-IE-OrlaNeural",
+    "gl-ES-RoiNeural",
+    "gl-ES-SabelaNeural",
+    "gu-IN-DhwaniNeural",
+    "gu-IN-NiranjanNeural",
+    "he-IL-AvriNeural",
+    "he-IL-HilaNeural",
+    "hi-IN-MadhurNeural",
+    "hi-IN-SwaraNeural",
+    "hr-HR-GabrijelaNeural",
+    "hr-HR-SreckoNeural",
+    "hu-HU-NoemiNeural",
+    "hu-HU-TamasNeural",
+    "id-ID-ArdiNeural",
+    "id-ID-GadisNeural",
+    "is-IS-GudrunNeural",
+    "is-IS-GunnarNeural",
+    "it-IT-DiegoNeural",
+    "it-IT-ElsaNeural",
+    "it-IT-GiuseppeMultilingualNeural",
+    "it-IT-IsabellaNeural",
+    "iu-Cans-CA-SiqiniqNeural",
+    "iu-Cans-CA-TaqqiqNeural",
+    "iu-Latn-CA-SiqiniqNeural",
+    "iu-Latn-CA-TaqqiqNeural",
+    "ja-JP-KeitaNeural",
+    "ja-JP-NanamiNeural",
+    "jv-ID-DimasNeural",
+    "jv-ID-SitiNeural",
+    "ka-GE-EkaNeural",
+    "ka-GE-GiorgiNeural",
+    "kk-KZ-AigulNeural",
+    "kk-KZ-DauletNeural",
+    "km-KH-PisethNeural",
+    "km-KH-SreymomNeural",
+    "kn-IN-GaganNeural",
+    "kn-IN-SapnaNeural",
+    "ko-KR-HyunsuMultilingualNeural",
+    "ko-KR-InJoonNeural",
+    "ko-KR-SunHiNeural",
+    "lo-LA-ChanthavongNeural",
+    "lo-LA-KeomanyNeural",
+    "lt-LT-LeonasNeural",
+    "lt-LT-OnaNeural",
+    "lv-LV-EveritaNeural",
+    "lv-LV-NilsNeural",
+    "mk-MK-AleksandarNeural",
+    "mk-MK-MarijaNeural",
+    "ml-IN-MidhunNeural",
+    "ml-IN-SobhanaNeural",
+    "mn-MN-BataaNeural",
+    "mn-MN-YesuiNeural",
+    "mr-IN-AarohiNeural",
+    "mr-IN-ManoharNeural",
+    "ms-MY-OsmanNeural",
+    "ms-MY-YasminNeural",
+    "mt-MT-GraceNeural",
+    "mt-MT-JosephNeural",
+    "my-MM-NilarNeural",
+    "my-MM-ThihaNeural",
+    "nb-NO-FinnNeural",
+    "nb-NO-PernilleNeural",
+    "ne-NP-HemkalaNeural",
+    "ne-NP-SagarNeural",
+    "nl-BE-ArnaudNeural",
+    "nl-BE-DenaNeural",
+    "nl-NL-ColetteNeural",
+    "nl-NL-FennaNeural",
+    "nl-NL-MaartenNeural",
+    "pl-PL-MarekNeural",
+    "pl-PL-ZofiaNeural",
+    "ps-AF-GulNawazNeural",
+    "ps-AF-LatifaNeural",
+    "pt-BR-AntonioNeural",
+    "pt-BR-FranciscaNeural",
+    "pt-BR-ThalitaMultilingualNeural",
+    "pt-PT-DuarteNeural",
+    "pt-PT-RaquelNeural",
+    "ro-RO-AlinaNeural",
+    "ro-RO-EmilNeural",
+    "ru-RU-DmitryNeural",
+    "ru-RU-SvetlanaNeural",
+    "si-LK-SameeraNeural",
+    "si-LK-ThiliniNeural",
+    "sk-SK-LukasNeural",
+    "sk-SK-ViktoriaNeural",
+    "sl-SI-PetraNeural",
+    "sl-SI-RokNeural",
+    "so-SO-MuuseNeural",
+    "so-SO-UbaxNeural",
+    "sq-AL-AnilaNeural",
+    "sq-AL-IlirNeural",
+    "sr-RS-NicholasNeural",
+    "sr-RS-SophieNeural",
+    "su-ID-JajangNeural",
+    "su-ID-TutiNeural",
+    "sv-SE-MattiasNeural",
+    "sv-SE-SofieNeural",
+    "sw-KE-RafikiNeural",
+    "sw-KE-ZuriNeural",
+    "sw-TZ-DaudiNeural",
+    "sw-TZ-RehemaNeural",
+    "ta-IN-PallaviNeural",
+    "ta-IN-ValluvarNeural",
+    "ta-LK-KumarNeural",
+    "ta-LK-SaranyaNeural",
+    "ta-MY-KaniNeural",
+    "ta-MY-SuryaNeural",
+    "ta-SG-AnbuNeural",
+    "ta-SG-VenbaNeural",
+    "te-IN-MohanNeural",
+    "te-IN-ShrutiNeural",
+    "th-TH-NiwatNeural",
+    "th-TH-PremwadeeNeural",
+    "tr-TR-AhmetNeural",
+    "tr-TR-EmelNeural",
+    "uk-UA-OstapNeural",
+    "uk-UA-PolinaNeural",
+    "ur-IN-GulNeural",
+    "ur-IN-SalmanNeural",
+    "ur-PK-AsadNeural",
+    "ur-PK-UzmaNeural",
+    "uz-UZ-MadinaNeural",
+    "uz-UZ-SardorNeural",
+    "vi-VN-HoaiMyNeural",
+    "vi-VN-NamMinhNeural",
+    "zh-CN-XiaoxiaoNeural",
+    "zh-CN-XiaoyiNeural",
+    "zh-CN-YunjianNeural",
+    "zh-CN-YunxiNeural",
+    "zh-CN-YunxiaNeural",
+    "zh-CN-YunyangNeural",
+    "zh-CN-liaoning-XiaobeiNeural",
+    "zh-CN-shaanxi-XiaoniNeural",
+    "zh-HK-HiuGaaiNeural",
+    "zh-HK-HiuMaanNeural",
+    "zh-HK-WanLungNeural",
+    "zh-TW-HsiaoChenNeural",
+    "zh-TW-HsiaoYuNeural",
+    "zh-TW-YunJheNeural",
+    "zu-ZA-ThandoNeural",
+    "zu-ZA-ThembaNeural",
+]
+
+EDGE_TTS_LANG_VOICES: dict[str, list[str]] = {}
+for voice_code in _EDGE_TTS_VOICE_CODES:
+    lang_code = voice_code.split("-", 1)[0]
+    language_name = EDGE_TTS_LANGUAGE_NAMES.get(lang_code, lang_code)
+    EDGE_TTS_LANG_VOICES.setdefault(language_name, []).append(voice_code)
+
+EDGE_TTS_LANG_VOICES = dict(sorted(EDGE_TTS_LANG_VOICES.items(), key=lambda item: item[0].lower()))
+
 EDGE_TTS_ALL_VOICES: list[str] = [v for voices in EDGE_TTS_LANG_VOICES.values() for v in voices]
 
 boost_image_prompt = None
@@ -141,6 +506,7 @@ save_vote_unlocks = None
 set_server_mode = None
 set_channels_mode = None
 get_guild_config = None
+clear_runtime_channel_memory = None
 pending_transcriptions: dict[str, int] = {}
 guild_history: dict[int, list] = {}
 guild_now_message: dict[int, dict] = {}
@@ -151,6 +517,26 @@ guild_volume: dict[int, int] = {}
 guild_filters: dict[int, str] = {}
 guild_now_playing_track: dict[int, dict] = {}
 guild_last_activity = {}
+guild_autoplay: dict[int, bool] = {}
+
+MODEL_CHOICES = [
+	"openai/gpt-oss-120b",
+	"moonshotai/kimi-k2-instruct",
+	"allam-2-7b",
+	"qwen/qwen3-32b",
+	"llama-3.3-70b-versatile",
+	"meta-llama/llama-4-scout-17b-16e-instruct",
+	"llama-3.1-8b-instant",
+]
+MODEL_LABELS = {
+	"openai/gpt-oss-120b": "GPT-OSS-120B",
+	"moonshotai/kimi-k2-instruct": "moonshotai/kimi-k2-instruct",
+	"allam-2-7b": "allam-2-7b",
+	"qwen/qwen3-32b": "qwen/qwen3-32b",
+	"llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
+	"meta-llama/llama-4-scout-17b-16e-instruct": "meta-llama/llama-4-scout-17b-16e-instruct",
+	"llama-3.1-8b-instant": "llama-3.1-8b-instant",
+}
 _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
 
@@ -512,6 +898,14 @@ class MusicControls(discord.ui.View):
 	@discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary)
 	async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
 		await self.cog._music_next(interaction)
+
+	@discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary)
+	async def volume_down_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+		await self.cog._music_adjust_volume(interaction, -10)
+
+	@discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary)
+	async def volume_up_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+		await self.cog._music_adjust_volume(interaction, 10)
 
 	@discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
 	async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -943,6 +1337,25 @@ class Codunot(commands.Cog):
 		await self._mark_now_playing_as_ended(guild_id)
 		queue = player.queue
 		if queue.is_empty:
+			if guild_autoplay.get(guild_id, False):
+				current_info = guild_now_playing_track.get(guild_id, {})
+				seed = current_info.get("title")
+				if seed:
+					try:
+						results = await wavelink.Playable.search(seed)
+						if results:
+							next_track = results[0] if isinstance(results, list) else results
+							await player.play(next_track)
+							guild_now_playing_track[guild_id] = {
+								"title": next_track.title or seed,
+								"uploader": next_track.author or "Unknown",
+							}
+							embed = self._build_now_playing_embed_from_wl(next_track, guild_id)
+							view = MusicControls(self, guild_id)
+							await self._post_now_playing(guild_id, embed, view)
+							return
+					except Exception as e:
+						print(f"[WAVELINK] Autoplay fetch failed: {e}")
 			print(f"[WAVELINK] Queue empty, going idle for guild {guild_id}")
 			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
 			asyncio.create_task(self._start_idle_timer(guild_id))
@@ -950,6 +1363,10 @@ class Codunot(commands.Cog):
 		next_track = queue.get()
 		try:
 			await player.play(next_track)
+			guild_now_playing_track[guild_id] = {
+				"title": next_track.title or "Unknown",
+				"uploader": next_track.author or "Unknown",
+			}
 			embed = self._build_now_playing_embed_from_wl(next_track, guild_id)
 			view = MusicControls(self, guild_id)
 			await self._post_now_playing(guild_id, embed, view)
@@ -1165,6 +1582,145 @@ class Codunot(commands.Cog):
 
 		await interaction.response.send_message(embed=embed, ephemeral=False)
 
+	@app_commands.command(name="volume_up", description="🔊 Increase music volume by 10%")
+	async def volume_up_slash(self, interaction: discord.Interaction):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ Server only.", ephemeral=True)
+			return
+		await interaction.response.defer(ephemeral=True)
+		if not await self._ensure_music_control(interaction):
+			return
+		await self._music_adjust_volume(interaction, 10)
+
+	@app_commands.command(name="volume_down", description="🔉 Decrease music volume by 10%")
+	async def volume_down_slash(self, interaction: discord.Interaction):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ Server only.", ephemeral=True)
+			return
+		await interaction.response.defer(ephemeral=True)
+		if not await self._ensure_music_control(interaction):
+			return
+		await self._music_adjust_volume(interaction, -10)
+
+	@app_commands.command(name="autoplay", description="🔁 Toggle autoplay when queue ends")
+	@app_commands.describe(enabled="Enable or disable autoplay")
+	async def autoplay_slash(self, interaction: discord.Interaction, enabled: bool):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ Server only.", ephemeral=True)
+			return
+		guild_autoplay[interaction.guild.id] = enabled
+		status = "enabled ✅" if enabled else "disabled ⏹️"
+		await interaction.response.send_message(f"🔁 Autoplay is now **{status}**.", ephemeral=False)
+
+	@app_commands.command(name="lyrics", description="📝 Show full lyrics for the current track")
+	async def lyrics_slash(self, interaction: discord.Interaction):
+		if interaction.guild is None:
+			await interaction.response.send_message("❌ Server only.", ephemeral=True)
+			return
+		track = guild_now_playing_track.get(interaction.guild.id)
+		if not track:
+			await interaction.response.send_message("❌ Nothing is playing right now.", ephemeral=False)
+			return
+		title = (track.get("title") or "").strip()
+		artist = (track.get("uploader") or "").strip()
+		if not title:
+			await interaction.response.send_message("❌ Couldn't determine the current track title.", ephemeral=False)
+			return
+		await interaction.response.defer()
+		params = {"track_name": title}
+		if artist and artist.lower() != "unknown":
+			params["artist_name"] = artist
+		try:
+			async with aiohttp.ClientSession() as session:
+				async with session.get("https://lrclib.net/api/get", params=params, timeout=aiohttp.ClientTimeout(total=12)) as resp:
+					if resp.status != 200:
+						await interaction.followup.send(f"❌ Lyrics not found for **{title}**.")
+						return
+					data = await resp.json()
+			lyrics = (data.get("plainLyrics") or "").strip()
+			if not lyrics:
+				await interaction.followup.send(f"❌ No static full lyrics available for **{title}**.")
+				return
+			content = f"📝 **Lyrics: {title}**\n"
+			if artist and artist.lower() != "unknown":
+				content += f"👤 **Artist:** {artist}\n"
+			content += "\n" + lyrics
+			for i in range(0, len(content), 1900):
+				await interaction.followup.send(content[i:i+1900])
+		except Exception as e:
+			print(f"[LYRICS] Error: {e}")
+			await interaction.followup.send("❌ Failed to fetch lyrics right now.")
+
+	@app_commands.command(name="image_search", description="🖼️ Search free images by text query")
+	@app_commands.describe(query="What image do you want to find?")
+	async def image_search_slash(self, interaction: discord.Interaction, query: str):
+		await interaction.response.defer()
+		wikimedia_url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={quote_plus(query)}&gsrnamespace=6&gsrlimit=8&prop=imageinfo&iiprop=url&format=json"
+		openverse_url = f"https://api.openverse.org/v1/images/?q={quote_plus(query)}&page_size=8"
+		try:
+			results = []
+			async with aiohttp.ClientSession() as session:
+				async with session.get(wikimedia_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+					if resp.status == 200:
+						data = await resp.json()
+						pages = (data.get("query") or {}).get("pages") or {}
+						for page in pages.values():
+							info = (page.get("imageinfo") or [{}])[0]
+							img = info.get("url")
+							title = page.get("title", "Image")
+							if img:
+								results.append((f"Wikimedia • {title.replace('File:', '')}", img))
+
+				async with session.get(openverse_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+					if resp.status == 200:
+						data = await resp.json()
+						for item in data.get("results", []):
+							img = item.get("url")
+							title = item.get("title") or "Openverse image"
+							if img:
+								results.append((f"Openverse • {title}", img))
+
+			if not results:
+				await interaction.followup.send(f"❌ No images found for **{query}**.")
+				return
+			embed = discord.Embed(title=f"🖼️ Image search: {query}", description="Free images from Wikimedia Commons + Openverse", color=0x4DA3FF)
+			embed.set_image(url=results[0][1])
+			lines = [f"`{i + 1}.` [{t}]({u})" for i, (t, u) in enumerate(results[:5])]
+			embed.add_field(name="Results", value="\n".join(lines), inline=False)
+			await interaction.followup.send(embed=embed)
+		except Exception as e:
+			print(f"[IMAGE SEARCH] Error: {e}")
+			await interaction.followup.send("❌ Failed to search images right now.")
+
+	@app_commands.command(name="model", description="🧠 Change chat model for this channel/DM")
+	@app_commands.describe(model="Choose the model")
+	@app_commands.choices(model=[
+		app_commands.Choice(name="GPT-OSS-120B (DEFAULT)", value="openai/gpt-oss-120b"),
+		app_commands.Choice(name="moonshotai/kimi-k2-instruct", value="moonshotai/kimi-k2-instruct"),
+		app_commands.Choice(name="allam-2-7b", value="allam-2-7b"),
+		app_commands.Choice(name="qwen/qwen3-32b", value="qwen/qwen3-32b"),
+		app_commands.Choice(name="llama-3.3-70b-versatile", value="llama-3.3-70b-versatile"),
+		app_commands.Choice(name="meta-llama/llama-4-scout-17b-16e-instruct", value="meta-llama/llama-4-scout-17b-16e-instruct"),
+		app_commands.Choice(name="llama-3.1-8b-instant", value="llama-3.1-8b-instant"),
+	])
+	async def model_slash(self, interaction: discord.Interaction, model: app_commands.Choice[str]):
+		if memory is None:
+			await interaction.response.send_message("❌ Memory system is not ready.", ephemeral=True)
+			return
+		chan_id = f"dm_{interaction.user.id}" if isinstance(interaction.channel, discord.DMChannel) else str(interaction.channel.id)
+		old_model = memory.get_channel_model(chan_id)
+		new_model = model.value
+		memory.save_channel_model(chan_id, new_model)
+		memory.clear_channel_messages(chan_id)
+		if clear_runtime_channel_memory is not None:
+			clear_runtime_channel_memory(chan_id)
+		memory.persist()
+		await interaction.response.send_message(
+			f"🧠✨ **Model switched!**\n"
+			f"🔁 The model has been changed to **{MODEL_LABELS.get(new_model, new_model)}** from **{MODEL_LABELS.get(old_model, old_model)}**!\n"
+			"🧹 Previous memory has been cleared - this chat is now fresh! 🚀"
+		)
+
 	# ── Music controls ────────────────────────────────────────────────────────
 
 	async def _music_pause(self, interaction: discord.Interaction):
@@ -1371,6 +1927,10 @@ class Codunot(commands.Cog):
 						queue_messages.append({"channel_id": queued_msg.channel.id, "message_id": queued_msg.id})
 					else:
 						await player.play(track)
+						guild_now_playing_track[interaction.guild.id] = {
+							"title": track.title or "Unknown",
+							"uploader": track.author or "Unknown",
+						}
 						history = guild_history.setdefault(interaction.guild.id, [])
 						if len(history) > 25:
 							history.pop(0)
@@ -1551,6 +2111,28 @@ class Codunot(commands.Cog):
 		guild_now_message.pop(guild_id, None)
 
 		queue = guild_ytdl_queue.get(guild_id, [])
+		if not queue:
+			if guild_autoplay.get(guild_id, False):
+				current = guild_now_playing_track.get(guild_id, {})
+				seed = current.get("title")
+				if seed:
+					try:
+						info = await _ytdl_extract(_build_query_candidates(seed), "free")
+						if info and info.get("url"):
+							queue.append({
+								"title": info.get("title") or seed,
+								"web_url": info.get("webpage_url") or info.get("url"),
+								"uploader": info.get("uploader") or info.get("channel") or "Unknown",
+								"duration": info.get("duration"),
+								"thumbnail": info.get("thumbnail"),
+								"stream_url": info.get("url"),
+								"requested_by": "Autoplay",
+								"tier": "free",
+								"filter": guild_filters.get(guild_id, "normal"),
+							})
+					except Exception as e:
+						print(f"[YTDL] Autoplay fetch failed: {e}")
+
 		if not queue:
 			asyncio.create_task(self._start_idle_timer(guild_id))
 			return

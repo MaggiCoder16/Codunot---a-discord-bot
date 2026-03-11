@@ -106,6 +106,10 @@ user_vote_unlocks = {}
 channel_last_images = {}
 channel_last_chess_result = {}
 
+
+def clear_runtime_channel_memory(chan_id: str):
+	channel_memory.pop(chan_id, None)
+
 channel_message_counts = {}
 PROMO_MIN_MESSAGES = 10
 PROMO_MAX_MESSAGES = 25
@@ -129,6 +133,7 @@ async def setup_hook():
 	slash_commands.set_server_mode = set_server_mode
 	slash_commands.set_channels_mode = set_channels_mode
 	slash_commands.get_guild_config = get_guild_config
+	slash_commands.clear_runtime_channel_memory = clear_runtime_channel_memory
 	
 	await slash_commands.setup(bot)
 
@@ -574,7 +579,7 @@ PRIMARY_COOLDOWN_UNTIL = None
 PRIMARY_COOLDOWN_DURATION = timedelta(minutes=10)
 
 # ---------------- MODEL HEALTH ----------------
-async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
+async def call_groq_with_health(prompt, temperature=0.7, mode: str = "", model_override: str | None = None):
 	"""
 	Handles calling Groq with automatic fallback when primary model is overloaded.
 	Tries PRIMARY_MODEL first, falls back to FALLBACK_MODEL on 503 errors.
@@ -582,7 +587,9 @@ async def call_groq_with_health(prompt, temperature=0.7, mode: str = ""):
 	global PRIMARY_COOLDOWN_UNTIL
 	
 	# Check if Primary model is in cooldown - if yes, use fallback directly
-	if PRIMARY_COOLDOWN_UNTIL and datetime.utcnow() < PRIMARY_COOLDOWN_UNTIL:
+	if model_override:
+		model = model_override
+	elif PRIMARY_COOLDOWN_UNTIL and datetime.utcnow() < PRIMARY_COOLDOWN_UNTIL:
 		print(f"[GROQ] Primary model in cooldown until {PRIMARY_COOLDOWN_UNTIL.isoformat()}, using fallback")
 		model = FALLBACK_MODEL
 	else:
@@ -1195,7 +1202,8 @@ async def handle_roast_mode(chan_id, message, user_message):
 	reply_context = await build_reply_context(message)
 	prompt = build_roast_prompt(chan_id, user_message, reply_context=reply_context)
 	
-	raw = await call_groq(prompt, model="openai/gpt-oss-120b", temperature=1.3)
+	selected_model = memory.get_channel_model(chan_id)
+	raw = await call_groq(prompt, model=selected_model, temperature=1.3)
 	reply = raw.strip() if raw else choose_fallback("roast")
 	if reply and not reply.endswith(('.', '!', '?')):
 		reply += '.'
@@ -1225,7 +1233,8 @@ async def handle_rizz_message(chan_id, message, mode):
 	)
 
 	try:
-		response = await call_groq_with_health(prompt, temperature=0.85, mode=mode)
+		selected_model = memory.get_channel_model(chan_id)
+		response = await call_groq_with_health(prompt, temperature=0.85, mode=mode, model_override=selected_model)
 	except Exception as e:
 		print(f"[RIZZ ERROR] {e}")
 		response = None
@@ -1277,7 +1286,8 @@ async def generate_and_reply(chan_id, message, content, mode):
 	
 	# ---------------- GENERATE RESPONSE ----------------
 	try:
-		response = await call_groq_with_health(prompt, temperature=0.7, mode=mode)
+		selected_model = memory.get_channel_model(chan_id)
+		response = await call_groq_with_health(prompt, temperature=0.7, mode=mode, model_override=selected_model)
 	except Exception as e:
 		print(f"[API ERROR] {e}")
 		response = None
@@ -1646,10 +1656,13 @@ async def handle_file_message(message, mode):
 		f"Answer ONLY what the user asked. If the user didn't ask anything and just sent the file, just summarize the file, and tell the user what the file is about."
 	)
 	try:
+		chan_id = f"dm_{message.author.id}" if isinstance(message.channel, discord.DMChannel) else str(message.channel.id)
+		selected_model = memory.get_channel_model(chan_id)
 		response = await call_groq_with_health(
 			prompt=prompt,
 			temperature=0.7,
-			mode=mode
+			mode=mode,
+			model_override=selected_model,
 		)
 		if response:
 			await send_human_reply(message.channel, response.strip())
