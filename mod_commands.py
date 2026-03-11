@@ -37,6 +37,7 @@ def _guild_cfg(data: dict, guild_id: int) -> dict:
             "setup_complete": False,
             "automod_enabled": False,
             "bad_words": [],
+            "automod_exempt_roles": [],
             "log_channels": [],
             "log_everywhere": False,
             "mod_roles": [],
@@ -176,6 +177,7 @@ def emb_step1() -> discord.Embed:
         "**AutoMod** watches every message 24/7 — no moderator needs to be online.\n\n"
         "**What it handles automatically:**\n"
         "🤬  Deletes messages containing your blocked words\n"
+        "🎭  Lets you exempt specific roles from AutoMod message checks\n"
         "🚫  Timeouts spammers *(threshold set in Step 5)*\n"
         "🚨  Locks the server if a raid is detected *(threshold set in Step 5)*\n\n"
         "If you click **Yes**, you'll fill in your bad word list next.\n\n"
@@ -255,6 +257,12 @@ def emb_summary(s: dict) -> discord.Embed:
         value=f"✅ Enabled — {len(s.get('bad_words',[]))} blocked word(s)" if s.get("automod") else "⛔ Disabled",
         inline=True,
     )
+    exempt_roles = s.get("automod_exempt_roles", [])
+    e.add_field(
+        name="🎭 AutoMod Exempt Roles",
+        value=(" ".join(f"<@&{r}>" for r in exempt_roles) if exempt_roles else "None"),
+        inline=True,
+    )
 
     if s.get("log_everywhere"):
         log_val = "🌐 Log Everywhere"
@@ -327,14 +335,25 @@ class BadWordsModal(discord.ui.Modal, title="🤬 Set Bad Word List"):
         session["bad_words"] = [w.strip().lower() for w in self.words.value.split(",") if w.strip()]
         confirm = discord.Embed(
             title="✅ AutoMod Enabled",
-            description=f"**{len(session['bad_words'])} word(s)** added. Moving to Step 2...",
+            description=(
+                f"**{len(session['bad_words'])} word(s)** added.\n"
+                "Now pick any roles you want to exempt from AutoMod checks."
+            ),
             color=COLOR_SUCCESS,
         )
         await interaction.response.defer()
         msg = session["message"]
         await msg.edit(embed=confirm, view=None)
         await asyncio.sleep(1.5)
-        await msg.edit(embed=emb_step2(), view=Step2View(self.sk))
+        await msg.edit(embed=emb_automod_exempt_roles(), view=AutoModExemptRolesView(self.sk))
+
+
+def emb_automod_exempt_roles() -> discord.Embed:
+    return _wizard_embed(1, "🛡️ Step 1b — AutoMod Exempt Roles",
+        "Choose roles that should be **ignored by AutoMod message checks** (bad words, links, spam).\n\n"
+        "Useful for announcement roles, bots, or trusted staff.\n"
+        "Leave empty and continue if nobody should be exempt."
+    )
 
 
 class _ThresholdModalBase(discord.ui.Modal):
@@ -498,6 +517,28 @@ class Step1View(_WizardBase):
         s = setup_sessions[self.sk]
         s["automod"] = False
         s["bad_words"] = []
+        s["automod_exempt_roles"] = []
+        await interaction.response.edit_message(embed=emb_step2(), view=Step2View(self.sk))
+
+
+class AutoModExemptRolesView(_WizardBase):
+    def __init__(self, sk: str):
+        super().__init__(sk)
+        self._selected: list[int] = []
+
+    @discord.ui.select(
+        cls=discord.ui.RoleSelect,
+        placeholder="Roles to exempt from AutoMod checks…",
+        min_values=0, max_values=10,
+        row=0,
+    )
+    async def role_select(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
+        self._selected = [r.id for r in select.values]
+        await interaction.response.defer()
+
+    @discord.ui.button(label="Continue →", style=discord.ButtonStyle.primary, row=1)
+    async def cont_btn(self, interaction: discord.Interaction, _):
+        setup_sessions[self.sk]["automod_exempt_roles"] = self._selected
         await interaction.response.edit_message(embed=emb_step2(), view=Step2View(self.sk))
 
 
@@ -665,6 +706,7 @@ class SummaryView(_WizardBase):
             "setup_complete":       True,
             "automod_enabled":      s.get("automod", False),
             "bad_words":            s.get("bad_words", []),
+            "automod_exempt_roles": s.get("automod_exempt_roles", []),
             "log_channels":         s.get("log_channels", []),
             "log_everywhere":       s.get("log_everywhere", False),
             "mod_roles":            s.get("mod_roles", []),
@@ -709,6 +751,7 @@ class SummaryView(_WizardBase):
         setup_sessions[self.sk] = {
             "message": msg, "user_id": uid, "guild_id": gid,
             "automod": False, "bad_words": [],
+            "automod_exempt_roles": [],
             "log_channels": [], "log_everywhere": False,
             "mod_roles": [],
             "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
@@ -1390,9 +1433,17 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         user_id  = message.author.id
         now_ts   = datetime.now(timezone.utc).timestamp()
 
+        exempt_roles = set(cfg.get("automod_exempt_roles", []))
+        if isinstance(message.author, discord.Member) and exempt_roles:
+            if any(role.id in exempt_roles for role in message.author.roles):
+                return
+
         cl = content.lower()
         for word in cfg.get("bad_words", []):
-            if word.lower() in cl:
+            clean_word = word.lower().strip()
+            if not clean_word:
+                continue
+            if re.search(rf"(?<!\w){re.escape(clean_word)}(?!\w)", cl, re.IGNORECASE):
                 try:
                     await message.delete()
                     await message.channel.send(
@@ -1593,6 +1644,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             "guild_id": interaction.guild.id,
             "user_id": interaction.user.id,
             "automod": False, "bad_words": [],
+            "automod_exempt_roles": [],
             "log_channels": [], "log_everywhere": False,
             "mod_roles": [],
             "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
