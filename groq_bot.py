@@ -965,7 +965,7 @@ PERSONAS = {
 "Image edit (attach+instruction, vote), merge (2+ images + merge/combine/blend/mix, vote), analysis (attach+ask)\n"
 "File read: .txt/.pdf/.docx (vote)\n"
 "/play (vote) plays music, supports SoundCloud and YouTube, /chessmode and play a move (e4, Nf3)\n"
-"Free: /bet, /meme, /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
+"Free: /bet, /meme, /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\. In /bet, it's coin flip - heads or tails.\n"
 "Help: !codunot_help | Vote unlock 12h: https://top.gg/bot/1435987186502733878 link | Support: https://discord.gg/GVuFk5gxtW link\n"
 "Tiers: Basic 7 attachments/day, 30 attachments/2 months, Premium 15/day, 50/2 months ($10/2mo), Gold 25/day, 100/2 months ($15/2mo)\n\n"
 
@@ -995,7 +995,7 @@ PERSONAS = {
 "Image edit (attach+instruction, vote), merge (2+ images + merge/combine/blend/mix, vote), analysis (attach+ask)\n"
 "File read: .txt/.pdf/.docx (vote)\n"
 "/play (vote) plays music, supports SoundCloud and YouTube, /chessmode and play a move (e4, Nf3)\n"
-"Free: /bet, /meme, /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
+"Free: /bet, /meme, /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\. In /bet, it's coin flip - heads or tails.\n"
 "Help: !codunot_help | Vote unlock 12h: https://top.gg/bot/1435987186502733878 link | Support: https://discord.gg/GVuFk5gxtW link\n"
 "Tiers: Basic 7 attachments/day, 30 attachments/2 months, Premium 15/day, 50/2 months ($10/2mo), Gold 25/day, 100/2 months ($15/2mo)\n\n"
 
@@ -1026,7 +1026,7 @@ PERSONAS = {
 "Image edit (attach+instruction, vote), merge (2+ images + merge/combine/blend/mix, vote), analysis (attach+ask)\n"
 "File read: .txt/.pdf/.docx (vote)\n"
 "/play (vote) plays music, supports SoundCloud and YouTube, /chessmode and play a move (e4, Nf3)\n"
-"Free: /bet, /meme, /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\n"
+"Free: /bet, /meme, /hug @user, /kiss @user, /kick @user, /slap @user, /wish_goodmorning @user\. In /bet, it's coin flip - heads or tails.\n"
 "Help: !codunot_help | Vote unlock 12h: https://top.gg/bot/1435987186502733878 link | Support: https://discord.gg/GVuFk5gxtW link\n"
 "Tiers: Basic 7 attachments/day, 30 attachments/2 months, Premium 15/day, 50/2 months ($10/2mo), Gold 25/day, 100/2 months ($15/2mo)\n\n"
 
