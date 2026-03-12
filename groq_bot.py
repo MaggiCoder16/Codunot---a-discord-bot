@@ -1757,61 +1757,40 @@ async def decide_image_action(user_text: str, image_count: int) -> str:
 
 async def boost_image_prompt(user_prompt: str) -> str:
 	"""
-	Rewrite user's image idea following Z-Image Turbo best practices.
-	Structured prompt engineering with hierarchical components.
-	Enforces clothing on humans if nudity is implied.
+	Rewrite user's image idea into a concise, structured prompt.
+	Uses Subject + Action + Style + Context framework.
+	Keeps output short (30-80 words) for high-quality model compatibility.
 	"""
 
-	boost_instruction = f"""You are a professional Nano Banana Pro prompt engineer.
+	boost_instruction = f"""You are a concise image prompt engineer.
 
-Transform the user's idea into a structured, high-quality image generation prompt (80-250 words).
+Rewrite the user's idea into a SHORT image generation prompt (30-80 words MAX). Keep it tight and efficient.
 
-Establishing the vision: Story, subject and style
-To achieve the best results and have more nuanced creative control, include the following elements in your prompt:
-Subject: Who or what is in the image? Be specific. (e.g., a stoic robot barista with glowing blue optics; a fluffy calico cat wearing a tiny wizard hat).
-Composition: How is the shot framed? (e.g., extreme close-up, wide shot, low angle shot, portrait).
-Action: What is happening? (e.g., brewing a cup of coffee, casting a magical spell, mid-stride running through a field).
-Location: Where does the scene take place? (e.g., a futuristic cafe on Mars, a cluttered alchemist's library, a sun-drenched meadow at golden hour).
-Style: What is the overall aesthetic? (e.g., 3D animation, film noir, watercolor painting, photorealistic, 1990s product photography).
-Editing Instructions: For modifying an existing image, be direct and specific. (e.g., change the man's tie to green, remove the car in the background)
+Use this framework strictly:
+Subject + Action + Style + Context
 
-Refining the details: Camera, lighting and format
-While simple prompts still work, achieving professional results requires more specific instructions. When crafting your prompts, move beyond the basics and consider these advanced elements:
-Composition and aspect ratio: Define the canvas. (e.g., "A 9:16 vertical poster," "A cinematic 21:9 wide shot.")
-Camera and lighting details: Direct the shot like a cinematographer. (e.g., "A low-angle shot with a shallow depth of field (f/1.8)," "Golden hour backlighting creating long shadows," "Cinematic color grading with muted teal tones.")
-Specific text integration: Clearly state what text should appear and how it should look. (e.g., "The headline 'URBAN EXPLORER' rendered in bold, white, sans-serif font at the top.")
-Factual constraints (for diagrams): Specify the need for accuracy and ensure your inputs themselves are factual (e.g., "A scientifically accurate cross-section diagram," "Ensure historical accuracy for the Victorian era.").
-Reference inputs: When using uploaded images, clearly define the role of each. (e.g., "Use Image A for the character's pose, Image B for the art style, and Image C for the background environment.")
+- Subject: Main object/character (be specific but brief)
+- Action: Pose or behavior
+- Style: Artistic approach (e.g., photorealistic shot on Sony A7IV, 3D animation, watercolor, film noir, digital art)
+- Context: Lighting, setting, mood (e.g., golden hour, dramatic shadows, soft rim light)
 
-Prompting examples: A showcase of creative techniques
-Different prompting strategies can help you craft everything from photorealistic edits to fantastical new worlds. Here are some techniques to try:
-1. Generate visuals with incredible text rendering: Sharp, legible text helps you create impactful posters, intricate diagrams, and even detailed product mockups.
-2. Create with real-world knowledge: Built on Gemini 3 Pro, Nano Banana uses Gemini 3’s real-world knowledge and deep reasoning capabilities to deliver precise, detailed, rich image results.
-3. Translate and localize your ideas: Generate localized text, or translate text inside images. See what products might look like in multiple languages, ready for international markets, and create posters and infographics for use across different regions.
-4. Use studio-quality control edits: Get extensive controls for professional-grade results. Directly influence lighting and camera settings like angle, focus, color grading and more.
-5. Resize with precision: Experiment with different aspect ratios and generate crisp visuals at 1K, 2K or 4K resolution across various products.
-6. Blend images and keep multiple characters consistent: Maintain the consistency and resemblance of multiple characters, even when they appear together in a group. Take up to 6 to 14 (input number varies by surface) entirely unconnected images and blend them to create something new.
-7. Create and maintain your brand look and feel: Render and apply designs with consistent brand styling to visualize concepts easily. Seamlessly drape patterns, logos, and artwork onto 3D objects and surfaces—from apparel to packaging—while preserving natural lighting and texture.
+For photorealism, add a camera/lens reference (e.g., "shot on Canon 5D Mark IV, 85mm, f/1.8, HDR").
 
-CRITICAL SAFETY RULES:
-- If ANY human appears without full clothing coverage, ADD appropriate clothing details
-- This clothing requirement applies ONLY to humans/humanoids, NOT to animals, robots, or objects
-- Default human age to 20-25 years unless user specifies otherwise
-- Do NOT add people if the user didn't request them (landscapes, objects, animals, etc.)
-- If the user wants an image of a kitten/cat or any animal that has FUR, don't make it CURLY fur, unless the user specifies that they want CURLY FUR.
+SAFETY RULES:
+- If humans appear, ensure full clothing coverage
+- Default human age to 20-25 unless specified
+- Do NOT add people if user didn't request them
+- No curly fur on animals unless user asks for it
 
-SPECIAL CODUNOT RULE (SELF-REFERENCE ONLY):
-Apply ONLY if user explicitly requests image of YOU (the assistant).
-Triggers: 'codunot', 'yourself'/'urself', 'you' with image context ('image of you', 'draw you')
-Does NOT trigger for: third-person humans ('girl', 'person'), descriptive requests ('hot girl'), fictional characters
-
-If triggered, include this EXACTLY:
+SPECIAL CODUNOT RULE:
+If user requests image of YOU/codunot/yourself, use this EXACTLY:
 {CODUNOT_SELF_IMAGE_PROMPT}
 
-FORMATTING:
-- Output ONLY the boosted prompt text
-- NO preamble, explanations, or meta-commentary
-- DONT MAKE IT TOO BIG - ABOUT 200-250 WORDS MAX
+OUTPUT RULES:
+- Output ONLY the prompt text, nothing else
+- NO preamble, headers, labels, or explanations
+- MUST be 30-80 words. Do NOT exceed 80 words.
+- Do NOT start with "Here's..." or any meta-commentary
 
 User idea:
 {user_prompt}"""
