@@ -1,1 +1,42 @@
-{"playlists":{}}
+{
+  "playlists": {
+    "1470038794274209815": {
+      "ac20318c": {
+        "name": "Phonk",
+        "creator_id": 1220934047794987048,
+        "creator_name": "aarav_2022",
+        "created_at": "2026-03-14T09:36:05.977101+00:00",
+        "tracks": [
+          {
+            "title": "DJ Asul - MATADORA (Lyrics)",
+            "uploader": "EchøPhonk Lyrics",
+            "duration": 89,
+            "thumbnail": "https://i.ytimg.com/vi_webp/ucQAcZjutsY/maxresdefault.webp",
+            "web_url": "https://www.youtube.com/watch?v=ucQAcZjutsY"
+          },
+          {
+            "title": "NO BATIDÃO (SLOWED)",
+            "uploader": "MAFIA",
+            "duration": 243,
+            "thumbnail": "https://i.ytimg.com/vi/Bf2ml3oE2JA/maxresdefault.jpg",
+            "web_url": "https://www.youtube.com/watch?v=Bf2ml3oE2JA"
+          },
+          {
+            "title": "TIKI TIKI (Slowed)",
+            "uploader": "HyperTunes",
+            "duration": 122,
+            "thumbnail": "https://i.ytimg.com/vi/aSGeQA5eRqw/maxresdefault.jpg",
+            "web_url": "https://www.youtube.com/watch?v=aSGeQA5eRqw"
+          },
+          {
+            "title": "MONTAGEM RUGADA",
+            "uploader": "MAFIA",
+            "duration": 305,
+            "thumbnail": "https://i.ytimg.com/vi/Hd5nXTyaXZg/maxresdefault.jpg",
+            "web_url": "https://www.youtube.com/watch?v=Hd5nXTyaXZg"
+          }
+        ]
+      }
+    }
+  }
+}

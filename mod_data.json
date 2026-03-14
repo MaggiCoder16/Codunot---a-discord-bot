@@ -526,6 +526,42 @@
       "anti_raid": false,
       "raid_joins": 10,
       "raid_seconds": 10
+    },
+    "927192512358121552": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "automod_exempt_roles": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
+    },
+    "1412059339551805480": {
+      "setup_complete": false,
+      "automod_enabled": false,
+      "bad_words": [],
+      "automod_exempt_roles": [],
+      "log_channels": [],
+      "log_everywhere": false,
+      "mod_roles": [],
+      "links_allowed_server": true,
+      "link_allowed_channels": [],
+      "link_allowed_roles": [],
+      "anti_spam": false,
+      "spam_messages": 5,
+      "spam_seconds": 5,
+      "anti_raid": false,
+      "raid_joins": 10,
+      "raid_seconds": 10
     }
   },
   "warns": {
@@ -543,7 +579,7 @@
   },
   "cases": {
     "1470038794274209815": {
-      "next_case": 5,
+      "next_case": 6,
       "by_number": {
         "1": {
           "type": "mute",
@@ -590,6 +626,16 @@
           "extra": {
             "minutes": 5
           }
+        },
+        "5": {
+          "type": "kick",
+          "user_id": 810540985032900648,
+          "user": "Musico#2915",
+          "moderator_id": 1220934047794987048,
+          "moderator": "aarav_2022",
+          "reason": "No reason provided",
+          "timestamp": "2026-03-14T09:50:35.107820+00:00",
+          "extra": {}
         }
       }
     }
