@@ -43,6 +43,8 @@ from guild_access_config import (
 	get_guild_config,
 )
 
+import playlist_manager
+
 from usage_manager import (
 	check_limit,
 	check_total_limit,
@@ -2545,4 +2547,5 @@ if __name__ == "__main__":
 	atexit.register(save_usage)
 	atexit.register(save_vote_unlocks)
 	atexit.register(save_guild_chat_config)
+	atexit.register(playlist_manager.save)
 	run()
