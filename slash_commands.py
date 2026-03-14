@@ -2694,6 +2694,7 @@ class Codunot(commands.Cog):
 	async def _ytdl_auto_advance(self, guild_id: int):
 		"""yt-dlp fallback auto-advance with loop, dedup, prefetch, and lazy playlist resolve."""
 		loop_mode = guild_loop_mode.get(guild_id, "off")
+		print(f"[AUTOPLAY DEBUG] _ytdl_auto_advance called guild={guild_id} loop_mode={loop_mode} autoplay={guild_autoplay.get(guild_id, False)}")
 
 		# ── Loop song: re-stream current track ────────────────────────────────
 		if loop_mode == "song":
@@ -2741,8 +2742,7 @@ class Codunot(commands.Cog):
 			_add_to_recent_titles(guild_id, finished["title"])
 
 		queue = guild_ytdl_queue.get(guild_id, [])
-
-		# ── Loop queue: reload from snapshot when empty ────────────────────
+		print(f"[AUTOPLAY DEBUG] queue length={len(queue)} after loop checks")
 		if loop_mode == "queue" and not queue:
 			saved = guild_saved_queue.get(guild_id, [])
 			if saved:
@@ -2753,20 +2753,25 @@ class Codunot(commands.Cog):
 		if not queue:
 			if guild_autoplay.get(guild_id, False):
 				seed   = finished.get("title")
+				print(f"[AUTOPLAY DEBUG] Queue empty, autoplay ON, seed={seed!r}")
 				recent = guild_recent_titles.get(guild_id, deque())
 
 				# Try pre-fetched candidate first (fastest path — ~0 s delay)
 				prefetched = guild_prefetched_autoplay.pop(guild_id, None)
+				print(f"[AUTOPLAY DEBUG] prefetched={prefetched.get('title') if prefetched else None}")
 				candidate  = None
 
 				if prefetched and not _is_duplicate_track(prefetched.get("title", ""), recent):
 					candidate = prefetched
+					print(f"[AUTOPLAY DEBUG] Using prefetched candidate: {prefetched.get('title')}")
 				else:
+					print(f"[AUTOPLAY DEBUG] No valid prefetch, searching yt-dlp for seed={seed!r}")
 					for _attempt in range(3):
 						try:
 							c = await _ytdl_extract_different_track(
 								f"ytsearch8:{seed or 'top hits'}", "free", seed or ""
 							)
+							print(f"[AUTOPLAY DEBUG] search attempt {_attempt+1} result={c.get('title') if c else None}")
 							if c and not _is_duplicate_track(c.get("title", ""), recent):
 								candidate = c
 								break
@@ -2774,6 +2779,7 @@ class Codunot(commands.Cog):
 							print(f"[YTDL AUTOPLAY] attempt {_attempt+1}: {e}")
 
 				if candidate and candidate.get("url"):
+					print(f"[AUTOPLAY DEBUG] Candidate found: {candidate.get('title')} url={candidate.get('url','')[:60]}")
 					queue.append({
 						"title":        candidate.get("title") or seed or "Unknown",
 						"web_url":      candidate.get("webpage_url") or candidate.get("url"),
@@ -2786,9 +2792,11 @@ class Codunot(commands.Cog):
 						"filter":       guild_filters.get(guild_id, "normal"),
 					})
 				else:
+					print(f"[AUTOPLAY DEBUG] No candidate found (candidate={candidate}), going idle")
 					asyncio.create_task(self._start_idle_timer(guild_id))
 					return
 			else:
+				print(f"[AUTOPLAY DEBUG] Queue empty but autoplay is OFF, going idle")
 				asyncio.create_task(self._start_idle_timer(guild_id))
 				return
 
@@ -2812,14 +2820,18 @@ class Codunot(commands.Cog):
 				return
 
 		stream_url = next_track.get("stream_url")
+		print(f"[AUTOPLAY DEBUG] next_track={next_track.get('title')!r} stream_url={'SET' if stream_url else 'MISSING'}")
 		if not stream_url:
+			print(f"[AUTOPLAY DEBUG] stream_url missing, skipping to next")
 			asyncio.create_task(self._ytdl_auto_advance(guild_id))
 			return
 
 		guild = self.bot.get_guild(guild_id)
 		if guild is None:
+			print(f"[AUTOPLAY DEBUG] guild not found, aborting")
 			return
 		voice_client = guild.voice_client
+		print(f"[AUTOPLAY DEBUG] voice_client={voice_client} connected={voice_client.is_connected() if voice_client else False}")
 		if not voice_client or not voice_client.is_connected():
 			guild_ytdl_queue.pop(guild_id, None)
 			return
@@ -2827,6 +2839,7 @@ class Codunot(commands.Cog):
 		def _after_playback(error):
 			if error:
 				print(f"[YTDL] Playback error: {error}")
+			print(f"[AUTOPLAY DEBUG] _after_playback fired guild={guild_id} error={error}")
 			asyncio.run_coroutine_threadsafe(
 				self._ytdl_auto_advance(guild_id),
 				self.bot.loop
@@ -2841,6 +2854,7 @@ class Codunot(commands.Cog):
 				discord.FFmpegPCMAudio(stream_url, **_get_ffmpeg_options(sel_filter)),
 				volume=volume,
 			)
+			print(f"[AUTOPLAY DEBUG] Calling voice_client.play() for {next_track.get('title')!r}")
 			voice_client.play(source, after=_after_playback)
 			_apply_bitrate(voice_client, next_track.get("tier", "basic"))
 			guild_last_activity[guild_id] = asyncio.get_event_loop().time()
@@ -2863,7 +2877,7 @@ class Codunot(commands.Cog):
 			view = MusicControls(self, guild_id)
 			await self._post_now_playing(guild_id, embed, view)
 		except Exception as e:
-			print(f"[YTDL] Auto-advance error: {e}")
+			print(f"[YTDL] Auto-advance error: {e}", exc_info=True)
 			asyncio.create_task(self._ytdl_auto_advance(guild_id))
 
 	# ── Mode commands ─────────────────────────────────────────────────────────
