@@ -89,7 +89,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents, owner_ids=set(OWNER_IDS))
+# --- ENABLE SHARDING ---
+bot = commands.AutoShardedBot(command_prefix="!", intents=intents, owner_ids=set(OWNER_IDS))
 
 memory = MemoryManager(limit=60, file_path="codunot_memory.json")
 chess_engine = OnlineChessEngine()
@@ -2517,7 +2518,7 @@ async def on_message(message: Message):
 		return
 		
 # ---------------- EVENTS ----------------
-@bot.event
+bot.event
 async def on_ready():
 	await bot.change_presence(
 		activity=discord.CustomActivity(
@@ -2528,6 +2529,10 @@ async def on_ready():
 	print(f"{BOT_NAME} is ready!")
 	asyncio.create_task(process_queue())
 	asyncio.create_task(autosave_usage())
+
+	print("Shard mapping of all servers:")
+	for guild in bot.guilds:
+		print(f"Guild: {guild.name} (ID: {guild.id}) | Shard ID: {guild.shard_id} | Member count: {guild.member_count}")
 		
 # ---------------- RUN ----------------
 def run():
