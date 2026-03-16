@@ -1,0 +1,7 @@
+name: Generate Key
+on: workflow_dispatch
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install cryptography && python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
