@@ -566,11 +566,11 @@ YTDL_OPTIONS = {
     "socket_timeout": 10,
 	"extractor_args": {
 	    "youtube": {
-	        "player_client": ["web"],
-	        "player_skip": ["mweb", "tv_embedded"],
+	        "player_client": ["ios"],
+	        "player_skip": ["mweb", "web", "tv_embedded"],
 	    }
 	}
-},
+}
 
 _COOKIES_VALID: bool = bool(os.getenv("YTDL_COOKIE_CONTENT", "").strip() or os.getenv("YTDL_COOKIES_TXT", "").strip())
 FFMPEG_BEFORE_OPTIONS = (
@@ -617,9 +617,10 @@ def _get_ytdl_options(tier: str, allow_playlist: bool = False, with_cookies: boo
         options["noplaylist"] = False
     if with_cookies and _COOKIES_VALID and COOKIE_PATH:
         options["cookiefile"] = COOKIE_PATH
+        # ios doesn't support cookies — fall back to web client when cookies are present
         options["extractor_args"] = {
             "youtube": {
-                "player_client": ["web", "ios"],
+                "player_client": ["web"],
                 "player_skip": ["mweb", "tv_embedded"],
             }
         }
