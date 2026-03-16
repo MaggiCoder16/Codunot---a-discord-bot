@@ -835,7 +835,9 @@ def _build_query_candidates(song: str) -> list[str]:
 	if query.startswith("www."):
 		return [f"https://{query}"]
 	if _looks_like_collection_query(query):
-		return [f"ytsearch5:{query}", f"scsearch1:{query}"]
+		# Bias toward mix/compilation videos by appending keywords and widening search
+		boosted = query if any(kw in query.lower() for kw in ("mix", "playlist", "compilation")) else f"{query} mix playlist"
+		return [f"ytsearch10:{boosted}", f"scsearch1:{query}"]
 	return [f"ytsearch1:{query}", f"scsearch1:{query}"]
 
 def _format_duration_seconds(seconds: int | None) -> str:
@@ -2128,7 +2130,10 @@ class Codunot(commands.Cog):
 		embed.add_field(name="Duration", value=duration, inline=True)
 		embed.add_field(name="Requested By", value=requested_by, inline=True)
 		embed.add_field(name="Quality", value=quality, inline=True)
-		embed.set_footer(text="HD free • 320kbps for Premium/Gold")
+		if tier in {"premium", "gold"}:
+			embed.set_footer(text=f"🎧 {quality} quality • Tier: {tier.capitalize()}")
+		else:
+			embed.set_footer(text="🎧 HD quality • Upgrade to Premium/Gold for 320kbps")
 		return embed
 
 	# ── Music control helpers ─────────────────────────────────────────────────
