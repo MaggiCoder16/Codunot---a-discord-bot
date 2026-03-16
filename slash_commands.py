@@ -508,13 +508,21 @@ MODEL_CHOICES = [
 ]
 MODEL_LABELS = {
 	"openai/gpt-oss-120b": "GPT-OSS-120B",
-	"moonshotai/kimi-k2-instruct": "moonshotai/kimi-k2-instruct",
-	"allam-2-7b": "allam-2-7b",
-	"qwen/qwen3-32b": "qwen/qwen3-32b",
-	"llama-3.3-70b-versatile": "llama-3.3-70b-versatile",
-	"meta-llama/llama-4-scout-17b-16e-instruct": "meta-llama/llama-4-scout-17b-16e-instruct",
-	"llama-3.1-8b-instant": "llama-3.1-8b-instant",
+	"moonshotai/kimi-k2-instruct": "Kimi K2 Instruct",
+	"allam-2-7b": "Allam 2 7B",
+	"qwen/qwen3-32b": "Qwen3 32B",
+	"llama-3.3-70b-versatile": "Llama 3.3 70B Versatile",
+	"meta-llama/llama-4-scout-17b-16e-instruct": "Llama 4 Scout 17B 16E",
+	"llama-3.1-8b-instant": "Llama 3.1 8B Instant",
 }
+DEFAULT_MODEL_ID = MODEL_CHOICES[0] if MODEL_CHOICES else ""
+MODEL_CHOICE_OPTIONS = [
+	app_commands.Choice(
+		name=f"{MODEL_LABELS.get(model_id, model_id)} (DEFAULT)" if model_id == DEFAULT_MODEL_ID else MODEL_LABELS.get(model_id, model_id),
+		value=model_id,
+	)
+	for model_id in MODEL_CHOICES
+]
 _COOKIE_TEMP_FILE = None
 _COOKIE_TEMP_PATH: str = ""
 
@@ -1818,41 +1826,6 @@ class CodeTestModal(discord.ui.Modal, title="🧪 Test Your Python Code"):
 				error_preview = result["error"][:500] or "Unknown error"
 				embed = discord.Embed(title="❌ Code failed", color=0xFF0000)
 				embed.add_field(name="🐛 Error", value=f"```\n{error_preview}\n```", inline=False)
-	
-				embed.add_field(name="🔧 Attempting AI fix...", value="Please wait...", inline=False)
-				await interaction.edit_original_response(content=None, embed=embed)
-	
-				fix_prompt = (
-					"You are a Python code fixer. The following Python code produced an error.\n"
-					"Fix the code and return ONLY the corrected Python code, nothing else. "
-					"Do NOT include markdown fences or explanations.\n\n"
-					f"Original code:\n{code}\n\n"
-					f"Error:\n{result['error']}\n\n"
-					"Fixed code:"
-				)
-				try:
-					fixed_code = await call_cerebras(prompt=fix_prompt, temperature=0.2)
-					fixed_code = (fixed_code or "").strip()
-					
-					if fixed_code.startswith("```"):
-						fixed_code = re.sub(r"^```(?:python)?\n?", "", fixed_code)
-						fixed_code = re.sub(r"\n?```$", "", fixed_code)
-	
-					if fixed_code:
-						retest = await run_python_code(fixed_code)
-						if retest["success"]:
-							retest_output = retest["output"][:300] or "(no output)"
-							embed.set_field_at(1, name="✅ AI-Fixed Code", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
-							embed.add_field(name="✅ Fixed code output", value=f"```\n{retest_output}\n```", inline=False)
-						else:
-							embed.set_field_at(1, name="🔧 AI Fix Attempted", value=f"```python\n{fixed_code[:800]}\n```", inline=False)
-							embed.add_field(name="⚠️ Fix still has errors", value=f"```\n{retest['error'][:300]}\n```", inline=False)
-					else:
-						embed.set_field_at(1, name="🔧 AI Fix", value="Could not generate a fix.", inline=False)
-				except Exception as e:
-					print(f"[TEST_CODE AI FIX ERROR] {e}")
-					embed.set_field_at(1, name="🔧 AI Fix", value="AI fixer unavailable right now.", inline=False)
-	
 				await interaction.edit_original_response(content=None, embed=embed)
 				
 		except Exception as e:
@@ -2389,17 +2362,23 @@ class Codunot(commands.Cog):
 			print(f"[IMAGE SEARCH] Error: {e}")
 			await interaction.followup.send("❌ Failed to search images right now.")
 
+	@app_commands.command(name="models", description="📚 View available chat models")
+	async def models_slash(self, interaction: discord.Interaction):
+		lines: list[str] = []
+		for model_id in MODEL_CHOICES:
+			label = MODEL_LABELS.get(model_id, model_id)
+			suffix = " (DEFAULT)" if model_id == DEFAULT_MODEL_ID else ""
+			lines.append(f"- {label}{suffix}")
+		embed = discord.Embed(
+			title="🧠 Available Models",
+			description="\n".join(lines) if lines else "No models are configured.",
+			color=0x4DA3FF,
+		)
+		await interaction.response.send_message(embed=embed, ephemeral=False)
+
 	@app_commands.command(name="model", description="🧠 Change chat model for this channel/DM")
 	@app_commands.describe(model="Choose the model")
-	@app_commands.choices(model=[
-		app_commands.Choice(name="GPT-OSS-120B (DEFAULT)", value="openai/gpt-oss-120b"),
-		app_commands.Choice(name="moonshotai/kimi-k2-instruct", value="moonshotai/kimi-k2-instruct"),
-		app_commands.Choice(name="allam-2-7b", value="allam-2-7b"),
-		app_commands.Choice(name="qwen/qwen3-32b", value="qwen/qwen3-32b"),
-		app_commands.Choice(name="llama-3.3-70b-versatile", value="llama-3.3-70b-versatile"),
-		app_commands.Choice(name="meta-llama/llama-4-scout-17b-16e-instruct", value="meta-llama/llama-4-scout-17b-16e-instruct"),
-		app_commands.Choice(name="llama-3.1-8b-instant", value="llama-3.1-8b-instant"),
-	])
+	@app_commands.choices(model=MODEL_CHOICE_OPTIONS)
 	async def model_slash(self, interaction: discord.Interaction, model: app_commands.Choice[str]):
 		if memory is None:
 			await interaction.response.send_message("❌ Memory system is not ready.", ephemeral=True)
@@ -3315,192 +3294,6 @@ class Codunot(commands.Cog):
 				split_at += 1
 			await interaction.followup.send(remaining[:split_at], ephemeral=False)
 			remaining = remaining[split_at:]
-
-	def _safe_json_parse(self, payload: str) -> dict | None:
-		if not payload:
-			return None
-		cleaned = payload.strip()
-		if cleaned.startswith("```"):
-			cleaned = cleaned.strip("`")
-			if cleaned.lower().startswith("json"):
-				cleaned = cleaned[4:]
-			cleaned = cleaned.strip()
-		try:
-			return json.loads(cleaned)
-		except Exception:
-			start = cleaned.find("{")
-			end = cleaned.rfind("}")
-			if start != -1 and end != -1 and start < end:
-				try:
-					return json.loads(cleaned[start:end + 1])
-				except Exception:
-					return None
-		return None
-
-	def _compact_message_for_prompt(self, text: str, max_len: int = 180) -> str:
-		clean = " ".join((text or "").split())
-		if not clean:
-			return ""
-		tokens = clean.split(" ")
-		compacted: list[str] = []
-		last = None
-		repeat_count = 0
-		for token in tokens:
-			if token == last:
-				repeat_count += 1
-				if repeat_count <= 3:
-					compacted.append(token)
-				continue
-			last = token
-			repeat_count = 1
-			compacted.append(token)
-		result = " ".join(compacted)
-		if len(result) > max_len:
-			return result[:max_len].rstrip() + "..."
-		return result
-
-	def _clean_reasoning_items(self, items: list[str]) -> list[str]:
-		seen = set()
-		cleaned: list[str] = []
-		for item in items:
-			line = self._compact_message_for_prompt(str(item), max_len=170)
-			if not line:
-				continue
-			key = line.lower()
-			if key in seen:
-				continue
-			seen.add(key)
-			cleaned.append(line)
-			if len(cleaned) >= 4:
-				break
-		return cleaned
-
-	async def _collect_recent_user_messages(self, channel, user_id, limit=60, max_scan=4000):
-		messages: list[str] = []
-		scanned = 0
-		fetch_failed = False
-		try:
-			async for message in channel.history(limit=max_scan):
-				scanned += 1
-				if message.author.bot:
-					continue
-				if message.author.id != user_id:
-					continue
-				content = self._compact_message_for_prompt((message.content or "").strip(), max_len=180)
-				if not content or len(content) < 3:
-					continue
-				messages.append(content)
-				if len(messages) >= limit:
-					break
-		except Exception as e:
-			fetch_failed = True
-			print(f"[GUESSAGE FETCH ERROR] {e}")
-		messages.reverse()
-		return messages, scanned, fetch_failed
-
-	async def _collect_recent_user_messages_across_guild(self, guild, user_id, exclude_channel_ids=None, limit=60, max_scan_per_channel=1200):
-		messages: list[str] = []
-		scanned_total = 0
-		fetch_failed = False
-		channels_used = 0
-		exclude_ids = exclude_channel_ids or set()
-		for channel in guild.text_channels:
-			if channel.id in exclude_ids:
-				continue
-			channel_messages, scanned_count, failed = await self._collect_recent_user_messages(
-				channel, user_id, limit=max(1, limit - len(messages)), max_scan=max_scan_per_channel,
-			)
-			scanned_total += scanned_count
-			fetch_failed = fetch_failed or failed
-			if channel_messages:
-				channels_used += 1
-				messages.extend(channel_messages)
-			if len(messages) >= limit:
-				break
-		if len(messages) > limit:
-			messages = messages[-limit:]
-		return messages, scanned_total, fetch_failed, channels_used
-
-	@app_commands.command(name="guessage", description="🔍 Guess a user's age range from recent messages (AI estimate)")
-	@app_commands.describe(target_user="The user whose age you want estimated")
-	async def guessage_slash(self, interaction: discord.Interaction, target_user: discord.User):
-		if not isinstance(interaction.channel, (discord.TextChannel, discord.Thread, discord.DMChannel)):
-			await interaction.response.send_message("❌ Can't use this here.", ephemeral=False)
-			return
-		await interaction.response.defer(ephemeral=False)
-		await interaction.edit_original_response(content="🗳️ **Checking your vote status...**")
-		if not await require_vote_deferred(interaction):
-			return
-		await interaction.edit_original_response(content="🔎 **Collecting recent messages...**")
-		recent_messages, scanned_count, fetch_failed = await self._collect_recent_user_messages(
-			interaction.channel, target_user.id, limit=60,
-		)
-		source_channels_used = 1 if recent_messages else 0
-		if len(recent_messages) == 0 and interaction.guild is not None:
-			await interaction.edit_original_response(content="🔎 **Searching other channels...**")
-			exclude_channel_ids: set[int] = set()
-			if interaction.channel_id is not None:
-				exclude_channel_ids.add(interaction.channel_id)
-			alt_messages, alt_scanned, alt_fetch_failed, alt_channels_used = await self._collect_recent_user_messages_across_guild(
-				interaction.guild, target_user.id, exclude_channel_ids=exclude_channel_ids, limit=60,
-			)
-			scanned_count += alt_scanned
-			fetch_failed = fetch_failed or alt_fetch_failed
-			if alt_messages:
-				recent_messages = alt_messages
-				source_channels_used = alt_channels_used
-		sample_count = len(recent_messages)
-		if sample_count < 10:
-			error_hint = " Missing **Read Message History** permission?" if fetch_failed else ""
-			await interaction.followup.send(
-				f"⚠️ Only **{sample_count}** messages found after scanning **{scanned_count}**. Need at least 10.{error_hint}"
-			)
-			return
-		await interaction.edit_original_response(content="🧠 **Analyzing...**")
-		joined_messages = "\n".join(f"- {line}" for line in recent_messages)
-		prompt = (
-			"You are an expert at estimating someone's age from how they write online.\n"
-			"Analyze the writing style, vocabulary, slang, topics, and tone of the messages below.\n"
-			"Be precise — do NOT default to 16 or 13-18. Most people online are NOT teenagers.\n"
-			"Consider the full age spectrum: the person could be anywhere from 12 to 50+.\n"
-			"If messages show maturity, work topics, complex language, or adult references, guess higher.\n"
-			"If messages show clear teen slang, school topics, or childish tone, guess lower.\n\n"
-			"Return ONLY valid JSON with NO example values — fill in YOUR actual estimate:\n"
-			"{\n"
-			"  \"age_range\": \"<your estimated range e.g. 18-24>\",\n"
-			"  \"exact_guess\": <your single best integer guess>,\n"
-			"  \"confidence\": \"<low or medium or high>\",\n"
-			"  \"reasoning\": [\"<specific observation 1>\", \"<specific observation 2>\", \"<specific observation 3>\"]\n"
-			"}\n\n"
-			f"Sample count: {sample_count}\n\nUser messages:\n{joined_messages}"
-		)
-		result_text = await call_google_ai_studio(prompt=prompt, temperature=0.7)
-		payload = self._safe_json_parse(result_text or "")
-		if not payload:
-			await interaction.followup.send("🤔 Couldn't parse AI output. Try again.")
-			return
-		age_range = str(payload.get("age_range") or "Unknown")
-		exact_guess = payload.get("exact_guess")
-		confidence = str(payload.get("confidence") or "unknown").capitalize()
-		reasoning = payload.get("reasoning") or []
-		if not isinstance(reasoning, list):
-			reasoning = [str(reasoning)]
-		reasoning = self._clean_reasoning_items([str(i) for i in reasoning])
-		reasoning_lines = "\n".join(f"• {item}" for item in reasoning) or "• Not enough signal."
-		confidence_badge = {"high": "🟢 High", "medium": "🟡 Medium", "low": "🔴 Low"}.get(confidence.lower(), "⚪ Unknown")
-		guess_display = str(exact_guess) if exact_guess is not None else "Unknown"
-		embed = discord.Embed(
-			title="🧭 Message Style Insight Panel",
-			description=f"Target: {target_user.mention}\n**Range:** `{age_range}` • **Best Guess:** `{guess_display}` • **Confidence:** {confidence_badge}",
-			color=0x8A63D2,
-		)
-		embed.add_field(name="📊 Stats", value=f"• Messages: **{sample_count}**\n• Scanned: **{scanned_count}**\n• Channels: **{source_channels_used}**", inline=False)
-		embed.add_field(name="🧠 Why", value=reasoning_lines, inline=False)
-		embed.add_field(name="⚠️ Important", value="Style-based estimate only. Never use for verification.", inline=False)
-		embed.set_footer(text=f"Requested by {interaction.user.display_name} • /guessage")
-		if target_user.display_avatar:
-			embed.set_thumbnail(url=target_user.display_avatar.url)
-		await interaction.edit_original_response(content=None, embed=embed)
 
 	def _normalize_transcribe_url(self, url: str) -> str | None:
 		from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse

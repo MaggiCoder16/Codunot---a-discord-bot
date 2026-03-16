@@ -261,8 +261,7 @@ async def help_command(ctx: commands.Context):
 			"• 🎵 Play Music — `/play [song/URL]`\n"
 			"• 🖌️ Edit Images (send image + instruction)\n"
 			"• 🖼️ Merge Images (attach 2+ images + say 'merge')\n"
-			"• 🌐 Smart Web Search (auto when needed for fresh info)\n"
-			"• 🔍 Guess Age — `/guessage @user`"
+			"• 🌐 Smart Web Search (auto when needed for fresh info)"
 		),
 		inline=False
 	)
