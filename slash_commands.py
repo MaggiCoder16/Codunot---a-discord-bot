@@ -550,15 +550,31 @@ def _init_cookie_file() -> str:
 COOKIE_PATH: str = _init_cookie_file()
 
 YTDL_OPTIONS = {
-	"format": "bestaudio/best",
+	# Prefer direct HTTPS audio over HLS manifests — FFmpeg handles direct URLs instantly.
+	"format": "bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best",
 	"noplaylist": True,
 	"quiet": True,
 	"nocheckcertificate": True,
 	"default_search": "ytsearch",
 	"source_address": "0.0.0.0",
-	"extractor_args": {"youtube": {"player_client": ["mweb", "web"]}},
+	"socket_timeout": 10,
+	# ios: fast, no PO Token needed, works with cookies.
+	# Skip mweb/web (need PO Token) and tv_embedded (slower fallback).
+	"extractor_args": {
+		"youtube": {
+			"player_client": ["ios"],
+			"player_skip": ["mweb", "web", "tv_embedded"],
+		}
+	},
 }
-FFMPEG_BEFORE_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+
+# Tracks whether the cookie file is still valid.
+_COOKIES_VALID: bool = bool(os.getenv("YTDL_COOKIE_CONTENT", "").strip() or os.getenv("YTDL_COOKIES_TXT", "").strip())
+# Protocol whitelist covers both direct HTTPS and HLS/m3u8 fallback streams.
+FFMPEG_BEFORE_OPTIONS = (
+	"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+	"-protocol_whitelist file,http,https,tcp,tls,crypto,m3u8,hls"
+)
 
 AUDIO_FILTERS = {
 	"normal": "",
@@ -586,12 +602,12 @@ def _find_node_path() -> str | None:
 
 _NODE_PATH = _find_node_path()
 
-def _get_ytdl_options(tier: str, allow_playlist: bool = False) -> dict:
+def _get_ytdl_options(tier: str, allow_playlist: bool = False, with_cookies: bool = True) -> dict:
 	options = dict(YTDL_OPTIONS)
 	options["format"] = "bestaudio/best" if tier in {"premium", "gold"} else "bestaudio[abr<=192]/bestaudio/best"
 	if allow_playlist:
 		options["noplaylist"] = False
-	if COOKIE_PATH:
+	if with_cookies and _COOKIES_VALID and COOKIE_PATH:
 		options["cookiefile"] = COOKIE_PATH
 	if _NODE_PATH:
 		options["js_runtimes"] = {"node": {"path": _NODE_PATH}}
@@ -637,12 +653,24 @@ def _apply_bitrate(voice_client: discord.VoiceClient, tier: str) -> None:
 	except Exception as e:
 		print(f"[BITRATE] Could not set encoder bitrate: {e}")
 
+_COOKIE_ERROR_PHRASES = (
+	"cookies are no longer valid",
+	"sign in to confirm",
+	"cookie",
+)
+
+def _is_cookie_error(exc: Exception) -> bool:
+	msg = str(exc).lower()
+	return any(phrase in msg for phrase in _COOKIE_ERROR_PHRASES)
+
 async def _ytdl_extract(queries: list[str], tier: str) -> dict:
+	global _COOKIES_VALID
 	loop = asyncio.get_running_loop()
 	last_error: Exception | None = None
 	for query in queries:
-		def _extract(q=query):
-			opts = _get_ytdl_options(tier)
+		# ── Attempt 1: with cookies (if still considered valid) ───────────
+		def _extract(q=query, use_cookies=True):
+			opts = _get_ytdl_options(tier, with_cookies=use_cookies)
 			with yt_dlp.YoutubeDL(opts) as ytdl:
 				return ytdl.extract_info(q, download=False)
 		try:
@@ -656,6 +684,27 @@ async def _ytdl_extract(queries: list[str], tier: str) -> dict:
 				data = _pick_best_entry(entries)
 			return data
 		except Exception as e:
+			# ── Cookie rejection: disable cookies and retry bare ──────────
+			if _is_cookie_error(e) and _COOKIES_VALID:
+				print(f"[YTDL] Cookie error detected — disabling cookies and retrying: {e}")
+				_COOKIES_VALID = False
+				def _extract_bare(q=query):
+					opts = _get_ytdl_options(tier, with_cookies=False)
+					with yt_dlp.YoutubeDL(opts) as ytdl:
+						return ytdl.extract_info(q, download=False)
+				try:
+					data = await loop.run_in_executor(None, _extract_bare)
+					if not data:
+						raise Exception("No data returned.")
+					if "entries" in data:
+						entries = [e for e in data.get("entries", []) if e]
+						if not entries:
+							raise Exception("No results found.")
+						data = _pick_best_entry(entries)
+					return data
+				except Exception as e2:
+					last_error = e2
+					continue
 			last_error = e
 			continue
 	raise last_error or Exception("No results found.")
@@ -667,7 +716,20 @@ async def _ytdl_extract_playlist(url: str, tier: str) -> list[dict]:
 		opts = _get_ytdl_options(tier, allow_playlist=True)
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(url, download=False)
-	data = await loop.run_in_executor(None, _extract)
+	try:
+		data = await loop.run_in_executor(None, _extract)
+	except Exception as e:
+		if _is_cookie_error(e):
+			global _COOKIES_VALID
+			_COOKIES_VALID = False
+			print(f"[YTDL PLAYLIST] Cookie error — retrying without cookies: {e}")
+			def _extract_bare():
+				opts = _get_ytdl_options(tier, allow_playlist=True, with_cookies=False)
+				with yt_dlp.YoutubeDL(opts) as ytdl:
+					return ytdl.extract_info(url, download=False)
+			data = await loop.run_in_executor(None, _extract_bare)
+		else:
+			raise
 	if not data:
 		raise Exception("No data returned.")
 	if "entries" in data:
@@ -724,22 +786,27 @@ async def _ytdl_fetch_yt_mix(video_id: str, tier: str, exclude_ids: set[str]) ->
 	mix_url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
 	loop = asyncio.get_running_loop()
 
-	def _extract():
-		opts = dict(YTDL_OPTIONS)
-		opts["noplaylist"] = False
+	def _extract(use_cookies: bool = True):
+		opts = _get_ytdl_options(tier, allow_playlist=True, with_cookies=use_cookies)
 		opts["playlistend"] = 10
-		if COOKIE_PATH:
-			opts["cookiefile"] = COOKIE_PATH
-		if _NODE_PATH:
-			opts["js_runtimes"] = {"node": {"path": _NODE_PATH}}
 		with yt_dlp.YoutubeDL(opts) as ytdl:
 			return ytdl.extract_info(mix_url, download=False)
 
 	try:
 		data = await loop.run_in_executor(None, _extract)
 	except Exception as e:
-		print(f"[AUTOPLAY] YT mix fetch failed: {e}")
-		return None
+		if _is_cookie_error(e):
+			global _COOKIES_VALID
+			_COOKIES_VALID = False
+			print(f"[AUTOPLAY] YT mix cookie error — retrying without cookies: {e}")
+			try:
+				data = await loop.run_in_executor(None, lambda: _extract(use_cookies=False))
+			except Exception as e2:
+				print(f"[AUTOPLAY] YT mix fetch failed after cookie retry: {e2}")
+				return None
+		else:
+			print(f"[AUTOPLAY] YT mix fetch failed: {e}")
+			return None
 
 	if not data:
 		return None
@@ -749,7 +816,7 @@ async def _ytdl_fetch_yt_mix(video_id: str, tier: str, exclude_ids: set[str]) ->
 		eid = entry.get("id") or _extract_yt_video_id(entry.get("webpage_url") or entry.get("url") or "")
 		if eid and eid in exclude_ids:
 			continue
-		if entry.get("url") or entry.get("webpage_url"):
+		if entry.get("url"):
 			return entry
 	return None
 
@@ -803,41 +870,12 @@ def _is_playlist_url(url: str) -> bool:
 		return path.startswith("/playlist/") or path.startswith("/album/")
 	return False
 
-_COLLECTION_KEYWORDS = {
-	"songs", "music", "mix", "playlist", "hits", "collection", "best", "top",
-	"compilation", "hour", "phonk", "lofi", "chill", "vibes", "rap", "rnb",
-	"edm", "pop", "rock", "jazz", "classical", "country", "metal", "indie",
-}
-
-def _looks_like_collection_query(query: str) -> bool:
-	"""True if the query sounds like a request for a mix/playlist rather than one song."""
-	words = set(query.lower().split())
-	return bool(words & _COLLECTION_KEYWORDS)
-
-_MIX_TITLE_KEYWORDS = {"mix", "playlist", "compilation", "hour", "songs", "hits", "collection", "best", "top"}
-
-def _pick_best_entry(entries: list[dict]) -> dict:
-	"""
-	From a list of yt-dlp search results, prefer long compilation/mix videos.
-	Scores on: (has mix/compilation keyword in title, duration).
-	"""
-	def _score(e: dict):
-		title_words = set((e.get("title") or "").lower().split())
-		keyword_hit = bool(title_words & _MIX_TITLE_KEYWORDS)
-		duration    = e.get("duration") or 0
-		return (keyword_hit, duration)
-	return max(entries, key=_score)
-
 def _build_query_candidates(song: str) -> list[str]:
 	query = (song or "").strip()
 	if _looks_like_url(query):
 		return [query]
 	if query.startswith("www."):
 		return [f"https://{query}"]
-	if _looks_like_collection_query(query):
-		# Bias toward mix/compilation videos by appending keywords and widening search
-		boosted = query if any(kw in query.lower() for kw in ("mix", "playlist", "compilation")) else f"{query} mix playlist"
-		return [f"ytsearch10:{boosted}", f"scsearch1:{query}"]
 	return [f"ytsearch1:{query}", f"scsearch1:{query}"]
 
 def _format_duration_seconds(seconds: int | None) -> str:
@@ -2130,10 +2168,7 @@ class Codunot(commands.Cog):
 		embed.add_field(name="Duration", value=duration, inline=True)
 		embed.add_field(name="Requested By", value=requested_by, inline=True)
 		embed.add_field(name="Quality", value=quality, inline=True)
-		if tier in {"premium", "gold"}:
-			embed.set_footer(text=f"🎧 {quality} quality • Tier: {tier.capitalize()}")
-		else:
-			embed.set_footer(text="🎧 HD quality • Upgrade to Premium/Gold for 320kbps")
+		embed.set_footer(text="HD free • 320kbps for Premium/Gold")
 		return embed
 
 	# ── Music control helpers ─────────────────────────────────────────────────
@@ -2903,22 +2938,18 @@ class Codunot(commands.Cog):
 					except Exception as e:
 						print(f"[AUTOPLAY] Fallback search failed: {e}")
 
-				web_url    = (candidate.get("webpage_url") or candidate.get("url")) if candidate else None
-				stream_url = candidate.get("url") if candidate else None
-				if candidate and web_url:
+				if candidate and candidate.get("url"):
 					print(f"[AUTOPLAY] Playing next: {candidate.get('title')}")
-					needs_resolve = not stream_url
 					queue.append({
-						"title":         candidate.get("title") or seed or "Unknown",
-						"web_url":       web_url,
-						"uploader":      candidate.get("uploader") or candidate.get("channel") or "Unknown",
-						"duration":      candidate.get("duration"),
-						"thumbnail":     candidate.get("thumbnail"),
-						"stream_url":    stream_url,
-						"needs_resolve": needs_resolve,
-						"requested_by":  "Autoplay",
-						"tier":          "free",
-						"filter":        guild_filters.get(guild_id, "normal"),
+						"title":        candidate.get("title") or seed or "Unknown",
+						"web_url":      candidate.get("webpage_url") or candidate.get("url"),
+						"uploader":     candidate.get("uploader") or candidate.get("channel") or "Unknown",
+						"duration":     candidate.get("duration"),
+						"thumbnail":    candidate.get("thumbnail"),
+						"stream_url":   candidate.get("url"),
+						"requested_by": "Autoplay",
+						"tier":         "free",
+						"filter":       guild_filters.get(guild_id, "normal"),
 					})
 				else:
 					print(f"[AUTOPLAY] No candidate found after all strategies, going idle")
