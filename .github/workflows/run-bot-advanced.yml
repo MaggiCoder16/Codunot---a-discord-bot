@@ -114,6 +114,7 @@ jobs:
           LAVALINK_SECURE: ${{ secrets.LAVALINK_SECURE }}
           PUTER_USERNAME: ${{secrets.PUTER_USERNAME }}
           PUTER_PASSWORD: ${{ secrets.PUTER_PASSWORD }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           YTDL_COOKIES_TXT: .secrets/cookies.txt
           YDL_OPTS: "--js-runtimes node:/opt/hostedtoolcache/node/20.20.0/x64/bin/node"
         run: |
