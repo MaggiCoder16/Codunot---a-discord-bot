@@ -8,9 +8,11 @@ TOTAL_FILE = "total_usage.json"
 
 PREMIUM_FILE = "tiers_premium.txt"
 GOLD_FILE = "tiers_gold.txt"
+ENTERPRISE_FILE = "enterprise.txt"
 
 channel_usage = {}
 attachment_history = {}
+enterprise_overrides = {}
 
 OWNER_IDS = {int(os.environ.get("OWNER_ID", 0))}
 
@@ -36,6 +38,10 @@ LIMITS = {
 		"messages": float("inf"),
 		"attachments": float("inf"),
 	},
+	"enterprise": {
+		"messages": float("inf"),
+		"attachments": float("inf"),
+	},
 }
 
 # 2 months
@@ -43,6 +49,7 @@ TOTAL_LIMITS = {
 	"basic": 30,
 	"premium": 75,
 	"gold": 200,
+	"enterprise": float("inf"),
 }
 
 ROLLING_WINDOW = timedelta(days=60)
@@ -62,8 +69,81 @@ def load_tier_file(path: str) -> set[str]:
 PREMIUM_IDS = load_tier_file(PREMIUM_FILE)
 GOLD_IDS = load_tier_file(GOLD_FILE)
 
+def _to_limit(value: str):
+	v = value.strip().lower().strip('"')
+	if v in {"inf", "infinite", "infinity", "unlimited"}:
+		return float("inf")
+	try:
+		return int(v)
+	except ValueError:
+		return None
+
+def load_enterprise_overrides(path: str) -> dict[str, dict]:
+	"""
+	Supports blocks like:
+	ServerID (or ChannelID for dms): 123
+	Name: "Client"
+	DailyLimits:
+	"messages": 999
+	"attachments": 99
+	TotalLimits:
+	"attachments": 9999
+	"""
+	overrides: dict[str, dict] = {}
+	if not os.path.exists(path):
+		return overrides
+
+	current_key = None
+	section = None
+	with open(path, "r", encoding="utf-8") as f:
+		for raw in f:
+			line = raw.split("#", 1)[0].strip()
+			if not line:
+				continue
+			if line.lower().startswith("serverid") or line.lower().startswith("channelid"):
+				_, _, value = line.partition(":")
+				key = value.strip().strip('"')
+				if key:
+					overrides[key] = {"name": "Enterprise", "daily": {}, "total": {}}
+					current_key = key
+					section = None
+				continue
+			if not current_key:
+				continue
+			if line.lower().startswith("name"):
+				_, _, value = line.partition(":")
+				overrides[current_key]["name"] = value.strip().strip('"') or "Enterprise"
+				continue
+			if line.lower().startswith("dailylimits"):
+				section = "daily"
+				continue
+			if line.lower().startswith("totallimits"):
+				section = "total"
+				continue
+			if section in {"daily", "total"} and ":" in line:
+				k, _, value = line.partition(":")
+				k = k.strip().strip('"').lower()
+				parsed = _to_limit(value)
+				if k and parsed is not None:
+					overrides[current_key][section][k] = parsed
+
+	return overrides
+
+ENTERPRISE_OVERRIDES = load_enterprise_overrides(ENTERPRISE_FILE)
+ENTERPRISE_IDS = set(ENTERPRISE_OVERRIDES.keys())
+
 print(f"Loaded premium IDs: {sorted(PREMIUM_IDS)}")
 print(f"Loaded gold IDs: {sorted(GOLD_IDS)}")
+print(f"Loaded enterprise IDs: {sorted(ENTERPRISE_IDS)}")
+
+def get_tier_for_key(key: str) -> str:
+	if key in ENTERPRISE_IDS:
+		return "enterprise"
+	if key in GOLD_IDS:
+		return "gold"
+	if key in PREMIUM_IDS:
+		return "premium"
+	return "basic"
 
 def get_tier_key(message_or_interaction) -> str:
 	if hasattr(message_or_interaction, 'guild'):
@@ -77,11 +157,16 @@ def get_tier_key(message_or_interaction) -> str:
 
 def get_tier_from_message(message_or_interaction) -> str:
 	key = get_tier_key(message_or_interaction)
-	if key in GOLD_IDS:
-		return "gold"
-	if key in PREMIUM_IDS:
-		return "premium"
-	return "basic"
+	return get_tier_for_key(key)
+
+def _get_limits_for_key(key: str, tier: str) -> tuple[dict, float | int]:
+	daily = dict(LIMITS[tier])
+	total = TOTAL_LIMITS[tier]
+	if tier == "enterprise":
+		override = ENTERPRISE_OVERRIDES.get(key, {})
+		daily.update(override.get("daily", {}))
+		total = override.get("total", {}).get("attachments", total)
+	return daily, total
 
 def get_usage(key: str) -> dict:
 	today = date.today().isoformat()
@@ -107,14 +192,10 @@ def check_limit(message_or_interaction, kind: str, usage_key: str | None = None)
 	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
 	if usage_key is not None:
-		if usage_key in GOLD_IDS:
-			tier = "gold"
-		elif usage_key in PREMIUM_IDS:
-			tier = "premium"
-		else:
-			tier = "basic"
+		tier = get_tier_for_key(usage_key)
 	usage = get_usage(key)
-	limit = LIMITS[tier][kind]
+	daily_limits, _ = _get_limits_for_key(key, tier)
+	limit = daily_limits[kind]
 	return usage[kind] < limit
 
 def consume(message_or_interaction, kind: str, usage_key: str | None = None):
@@ -124,15 +205,11 @@ def consume(message_or_interaction, kind: str, usage_key: str | None = None):
 	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
 	if usage_key is not None:
-		if usage_key in GOLD_IDS:
-			tier = "gold"
-		elif usage_key in PREMIUM_IDS:
-			tier = "premium"
-		else:
-			tier = "basic"
+		tier = get_tier_for_key(usage_key)
 	usage = get_usage(key)
+	daily_limits, _ = _get_limits_for_key(key, tier)
 
-	if usage[kind] >= LIMITS[tier][kind]:
+	if usage[kind] >= daily_limits[kind]:
 		print(
 			"[BLOCKED] daily limit hit but consume() was called",
 			"key=", key,
@@ -160,13 +237,8 @@ def check_total_limit(message_or_interaction, kind: str, usage_key: str | None =
 	key = usage_key or get_tier_key(message_or_interaction)
 	tier = get_tier_from_message(message_or_interaction)
 	if usage_key is not None:
-		if usage_key in GOLD_IDS:
-			tier = "gold"
-		elif usage_key in PREMIUM_IDS:
-			tier = "premium"
-		else:
-			tier = "basic"
-	limit = TOTAL_LIMITS[tier]
+		tier = get_tier_for_key(usage_key)
+	_, limit = _get_limits_for_key(key, tier)
 
 	history = attachment_history.get(key, [])
 	history = _prune(history)
@@ -190,14 +262,9 @@ def consume_total(message_or_interaction, kind: str, usage_key: str | None = Non
 	daily = get_usage(key)["attachments"]
 	tier = get_tier_from_message(message_or_interaction)
 	if usage_key is not None:
-		if usage_key in GOLD_IDS:
-			tier = "gold"
-		elif usage_key in PREMIUM_IDS:
-			tier = "premium"
-		else:
-			tier = "basic"
-	daily_limit = LIMITS[tier]["attachments"]
-	total_limit = TOTAL_LIMITS[tier]
+		tier = get_tier_for_key(usage_key)
+	daily_limits, total_limit = _get_limits_for_key(key, tier)
+	daily_limit = daily_limits["attachments"]
 
 	print(
 		"[ATTACHMENT LOGGED]",
