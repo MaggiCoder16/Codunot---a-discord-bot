@@ -653,7 +653,7 @@ async def _ytdl_extract(queries: list[str], tier: str) -> dict:
 				entries = [e for e in data.get("entries", []) if e]
 				if not entries:
 					raise Exception("No results found.")
-				data = entries[0]
+				data = _pick_best_entry(entries)
 			return data
 		except Exception as e:
 			last_error = e
@@ -749,7 +749,7 @@ async def _ytdl_fetch_yt_mix(video_id: str, tier: str, exclude_ids: set[str]) ->
 		eid = entry.get("id") or _extract_yt_video_id(entry.get("webpage_url") or entry.get("url") or "")
 		if eid and eid in exclude_ids:
 			continue
-		if entry.get("url"):
+		if entry.get("url") or entry.get("webpage_url"):
 			return entry
 	return None
 
@@ -803,12 +803,39 @@ def _is_playlist_url(url: str) -> bool:
 		return path.startswith("/playlist/") or path.startswith("/album/")
 	return False
 
+_COLLECTION_KEYWORDS = {
+	"songs", "music", "mix", "playlist", "hits", "collection", "best", "top",
+	"compilation", "hour", "phonk", "lofi", "chill", "vibes", "rap", "rnb",
+	"edm", "pop", "rock", "jazz", "classical", "country", "metal", "indie",
+}
+
+def _looks_like_collection_query(query: str) -> bool:
+	"""True if the query sounds like a request for a mix/playlist rather than one song."""
+	words = set(query.lower().split())
+	return bool(words & _COLLECTION_KEYWORDS)
+
+_MIX_TITLE_KEYWORDS = {"mix", "playlist", "compilation", "hour", "songs", "hits", "collection", "best", "top"}
+
+def _pick_best_entry(entries: list[dict]) -> dict:
+	"""
+	From a list of yt-dlp search results, prefer long compilation/mix videos.
+	Scores on: (has mix/compilation keyword in title, duration).
+	"""
+	def _score(e: dict):
+		title_words = set((e.get("title") or "").lower().split())
+		keyword_hit = bool(title_words & _MIX_TITLE_KEYWORDS)
+		duration    = e.get("duration") or 0
+		return (keyword_hit, duration)
+	return max(entries, key=_score)
+
 def _build_query_candidates(song: str) -> list[str]:
 	query = (song or "").strip()
 	if _looks_like_url(query):
 		return [query]
 	if query.startswith("www."):
 		return [f"https://{query}"]
+	if _looks_like_collection_query(query):
+		return [f"ytsearch5:{query}", f"scsearch1:{query}"]
 	return [f"ytsearch1:{query}", f"scsearch1:{query}"]
 
 def _format_duration_seconds(seconds: int | None) -> str:
@@ -2871,18 +2898,22 @@ class Codunot(commands.Cog):
 					except Exception as e:
 						print(f"[AUTOPLAY] Fallback search failed: {e}")
 
-				if candidate and candidate.get("url"):
+				web_url    = (candidate.get("webpage_url") or candidate.get("url")) if candidate else None
+				stream_url = candidate.get("url") if candidate else None
+				if candidate and web_url:
 					print(f"[AUTOPLAY] Playing next: {candidate.get('title')}")
+					needs_resolve = not stream_url
 					queue.append({
-						"title":        candidate.get("title") or seed or "Unknown",
-						"web_url":      candidate.get("webpage_url") or candidate.get("url"),
-						"uploader":     candidate.get("uploader") or candidate.get("channel") or "Unknown",
-						"duration":     candidate.get("duration"),
-						"thumbnail":    candidate.get("thumbnail"),
-						"stream_url":   candidate.get("url"),
-						"requested_by": "Autoplay",
-						"tier":         "free",
-						"filter":       guild_filters.get(guild_id, "normal"),
+						"title":         candidate.get("title") or seed or "Unknown",
+						"web_url":       web_url,
+						"uploader":      candidate.get("uploader") or candidate.get("channel") or "Unknown",
+						"duration":      candidate.get("duration"),
+						"thumbnail":     candidate.get("thumbnail"),
+						"stream_url":    stream_url,
+						"needs_resolve": needs_resolve,
+						"requested_by":  "Autoplay",
+						"tier":          "free",
+						"filter":        guild_filters.get(guild_id, "normal"),
 					})
 				else:
 					print(f"[AUTOPLAY] No candidate found after all strategies, going idle")
