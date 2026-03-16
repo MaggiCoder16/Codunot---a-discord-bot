@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import json, os, asyncio, re
+import json, os, asyncio, re, random
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 from typing import Literal, Optional
@@ -50,6 +50,21 @@ def _guild_cfg(data: dict, guild_id: int) -> dict:
             "anti_raid": False,
             "raid_joins": 10,
             "raid_seconds": 10,
+            "verification_enabled": False,
+            "verification_mode": "button",
+            "verification_channel_id": None,
+            "verification_role_id": None,
+            "verification_button_text": "✅ Verify",
+            "verification_difficulty": "easy",
+            "verification_branding": "",
+            "shadowban_enabled": False,
+            "shadowbanned_users": [],
+            "sticky_messages": {},
+            "adaptive_slowmode_enabled": False,
+            "adaptive_threshold_messages": 50,
+            "adaptive_threshold_seconds": 10,
+            "adaptive_slowmode_seconds": 10,
+            "adaptive_cooldown_seconds": 30,
         }
     return data["guilds"][gid]
 
@@ -67,6 +82,65 @@ COLOR_GREY    = 0x808080
 setup_sessions: dict[str, dict] = {}
 _spam_tracker: dict = defaultdict(lambda: defaultdict(lambda: deque(maxlen=25)))
 _raid_tracker: dict = defaultdict(lambda: deque(maxlen=40))
+_channel_msg_tracker: dict = defaultdict(lambda: deque(maxlen=300))
+
+
+class VerifyButton(discord.ui.View):
+    def __init__(self, cog: "ModerationCog", guild_id: int, user_id: int, button_text: str = "✅ Verify", timeout: int = 1800):
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.user_id = user_id
+        self.verify_btn.label = button_text[:80] if button_text else "✅ Verify"
+
+    @discord.ui.button(label="✅ Verify", style=discord.ButtonStyle.success)
+    async def verify_btn(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This verification is not for you.", ephemeral=True)
+            return
+        ok, msg = await self.cog._grant_verification_role(interaction.guild, interaction.user)
+        await interaction.response.send_message(msg, ephemeral=True)
+        if ok:
+            self.stop()
+
+
+def _resolve_verification_channel(guild: discord.Guild, configured_channel_id: int | None) -> discord.TextChannel | None:
+    if configured_channel_id:
+        ch = guild.get_channel(int(configured_channel_id))
+        if isinstance(ch, discord.TextChannel):
+            return ch
+    if isinstance(guild.system_channel, discord.TextChannel):
+        return guild.system_channel
+    for ch in guild.text_channels:
+        return ch
+    return None
+
+
+async def _set_verification_visibility(
+    guild: discord.Guild,
+    verified_role: discord.Role,
+    verification_channel_id: int | None,
+    enabled: bool,
+) -> tuple[int, int]:
+    updated, failed = 0, 0
+    for ch in guild.channels:
+        if not isinstance(ch, discord.abc.GuildChannel):
+            continue
+        try:
+            if enabled:
+                if verification_channel_id and ch.id == int(verification_channel_id):
+                    await ch.set_permissions(guild.default_role, view_channel=True, reason="Verification gate setup")
+                    await ch.set_permissions(verified_role, view_channel=True, reason="Verification gate setup")
+                else:
+                    await ch.set_permissions(guild.default_role, view_channel=False, reason="Verification gate setup")
+                    await ch.set_permissions(verified_role, view_channel=True, reason="Verification gate setup")
+            else:
+                await ch.set_permissions(guild.default_role, view_channel=None, reason="Verification gate disabled")
+                await ch.set_permissions(verified_role, view_channel=None, reason="Verification gate disabled")
+            updated += 1
+        except Exception:
+            failed += 1
+    return updated, failed
 
 def _parse_duration(s: str) -> Optional[timedelta]:
     m = re.match(r"^(\d+)([mhd])$", s.strip().lower())
@@ -166,10 +240,10 @@ def _perms_embed(guild: discord.Guild) -> discord.Embed | None:
 # EMBED BUILDERS  (one per wizard step)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _wizard_embed(step: int, title: str, description: str, color=COLOR_ORANGE) -> discord.Embed:
+def _wizard_embed(step: int, title: str, description: str, color=COLOR_ORANGE, total_steps: int = 7) -> discord.Embed:
     e = discord.Embed(title=title, description=description, color=color,
                       timestamp=datetime.now(timezone.utc))
-    e.set_footer(text=f"Moderation Setup  •  Step {step}/6  [{_progress_bar(step)}]")
+    e.set_footer(text=f"Moderation Setup  •  Step {step}/{total_steps}  [{_progress_bar(step, total=total_steps)}]")
     return e
 
 def emb_step1() -> discord.Embed:
@@ -240,9 +314,19 @@ def emb_step5() -> discord.Embed:
         "Click **Yes** to enable both with custom thresholds, or use the partial options."
     )
 
+def emb_step6() -> discord.Embed:
+    return _wizard_embed(6, "🧩 Step 6 — Premium/Enterprise Features",
+        "Configure extra moderation features:\n\n"
+        "1) **Button/Math Verification** (Premium+; Gold custom difficulty/text; Enterprise branding)\n"
+        "2) **Shadowban** (Premium: 5, Gold: 20, Enterprise: unlimited)\n"
+        "3) **Sticky Messages** (Premium: 1, Gold: 5, Enterprise: unlimited)\n"
+        "4) **Adaptive Slowmode** (Gold+; Enterprise fully custom thresholds)\n\n"
+        "You can skip this and configure later using slash commands."
+    )
+
 def emb_summary(s: dict) -> discord.Embed:
     e = discord.Embed(
-        title="🛡️ Step 6 — Review & Confirm",
+        title="🛡️ Step 7 — Review & Confirm",
         description=(
             "Everything you configured is shown below.\n"
             "Click **✅ Confirm & Save** to activate moderation, "
@@ -304,11 +388,12 @@ def emb_summary(s: dict) -> discord.Embed:
             "`/warn` `/warns` `/clearwarns` `/case`\n"
             "`/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
             "`/clear` `/slowmode` `/lock` `/unlock` `/userinfo`\n"
-            "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`"
+            "`/verification` `/shadowban` `/sticky` `/adaptive-slowmode`\n"
+            "🌟 **Premium/Gold/Enterprise:** `/tempban` `/massban` `/modstats` `/note`"
         ),
         inline=False,
     )
-    e.set_footer(text=f"Step 6/6  [{_progress_bar(6)}]  •  Moderation Setup")
+    e.set_footer(text=f"Step 7/7  [{_progress_bar(7, total=7)}]  •  Moderation Setup")
     return e
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -368,7 +453,7 @@ class _ThresholdModalBase(discord.ui.Modal):
             await interaction.response.send_message("❌ Session expired.", ephemeral=True)
             return
         await interaction.response.defer()
-        await session["message"].edit(embed=emb_summary(session), view=SummaryView(self.sk))
+        await session["message"].edit(embed=emb_step6(), view=Step6View(self.sk))
 
 
 class SpamRaidModal(_ThresholdModalBase, title="⚡ AntiSpam & AntiRaid Settings"):
@@ -684,6 +769,13 @@ class Step5View(_WizardBase):
     async def skip_btn(self, interaction: discord.Interaction, _):
         s = setup_sessions[self.sk]
         s.update({"anti_spam": False, "anti_raid": False})
+        await interaction.response.edit_message(embed=emb_step6(), view=Step6View(self.sk))
+
+
+class Step6View(_WizardBase):
+    @discord.ui.button(label="⏭️ Skip Extras", style=discord.ButtonStyle.secondary, row=0)
+    async def skip_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions[self.sk]
         await interaction.response.edit_message(embed=emb_summary(s), view=SummaryView(self.sk))
 
 
@@ -728,6 +820,7 @@ class SummaryView(_WizardBase):
                 "Your server is protected. All mod commands are unlocked.\n\n"
                 "**Quick reference:**\n"
                 "`/warn` `/ban` `/mute` `/clear` `/lock` `/userinfo`\n"
+                "`/verification` `/shadowban` `/sticky` `/adaptive-slowmode`\n"
                 "`/case` — lookup any mod action by case number\n"
                 "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`\n\n"
                 "Use `/setup-moderation` any time to reconfigure."
@@ -757,6 +850,21 @@ class SummaryView(_WizardBase):
             "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
             "anti_spam": False, "spam_messages": 5, "spam_seconds": 5,
             "anti_raid": False, "raid_joins": 10, "raid_seconds": 10,
+            "verification_enabled": False,
+            "verification_mode": "button",
+            "verification_channel_id": None,
+            "verification_role_id": None,
+            "verification_button_text": "✅ Verify",
+            "verification_difficulty": "easy",
+            "verification_branding": "",
+            "shadowban_enabled": False,
+            "shadowbanned_users": [],
+            "sticky_messages": {},
+            "adaptive_slowmode_enabled": False,
+            "adaptive_threshold_messages": 50,
+            "adaptive_threshold_seconds": 10,
+            "adaptive_slowmode_seconds": 10,
+            "adaptive_cooldown_seconds": 30,
         }
         await interaction.response.edit_message(embed=emb_step1(), view=Step1View(self.sk))
 
@@ -1388,7 +1496,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             tier = get_tier_from_message(_Pseudo(guild, actor))
         except Exception:
             tier = "free"
-        if tier in ("premium", "gold"):
+        if tier in ("premium", "gold", "enterprise"):
             return True
         await channel.send("🌟 This action requires Premium/Gold.")
         return False
@@ -1399,7 +1507,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             tier = get_tier_from_message(interaction)
         except Exception:
             tier = "free"
-        if tier in ("premium", "gold"):
+        if tier in ("premium", "gold", "enterprise"):
             return True
         embed = discord.Embed(
             title="🌟 Premium / Gold Required",
@@ -1407,12 +1515,102 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                 "This command is available for **Premium** and **Gold** subscribers.\n\n"
                 "🔵 **Premium** — $10 / 2 months\n"
                 "🟡 **Gold 👑** — $15 / 2 months\n\n"
+                "🏢 **Enterprise** — custom limits/features, contact for pricing\n\n"
                 "Contact `@aarav_2022` on Discord to upgrade!"
             ),
             color=COLOR_GOLD,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return False
+
+    def _get_tier(self, interaction_or_message) -> str:
+        try:
+            from usage_manager import get_tier_from_message
+            return get_tier_from_message(interaction_or_message)
+        except Exception:
+            return "basic"
+
+    def _get_feature_limit(self, tier: str, feature: str) -> int | None:
+        caps = {
+            "shadowban": {"premium": 5, "gold": 20, "enterprise": None},
+            "sticky": {"premium": 1, "gold": 5, "enterprise": None},
+        }
+        if feature not in caps:
+            return 0
+        return caps[feature].get(tier, 0)
+
+    async def _grant_verification_role(self, guild: discord.Guild, user: discord.abc.User):
+        if not guild:
+            return False, "❌ Server only."
+        member = guild.get_member(user.id)
+        if not isinstance(member, discord.Member):
+            return False, "❌ Could not find you in this server."
+        cfg = self._cfg(guild.id)
+        role_id = cfg.get("verification_role_id")
+        if not role_id:
+            return False, "❌ Verification role is not configured."
+        role = guild.get_role(int(role_id))
+        if not role:
+            return False, "❌ Verification role was deleted. Please re-run setup."
+        try:
+            await member.add_roles(role, reason="Member completed verification")
+            try:
+                if member.is_timed_out():
+                    await member.timeout(None, reason="Member completed verification")
+            except Exception:
+                pass
+            return True, "✅ You are verified. Welcome!"
+        except discord.Forbidden:
+            return False, "❌ I do not have permission to assign the verification role."
+        except Exception:
+            return False, "❌ Could not complete verification."
+
+    async def _handle_verification_for_join(self, member: discord.Member, cfg: dict):
+        channel = _resolve_verification_channel(member.guild, cfg.get("verification_channel_id"))
+        if not channel:
+            return
+
+        try:
+            if not member.is_timed_out():
+                await member.timeout(timedelta(days=28), reason="Pending verification")
+        except Exception:
+            pass
+
+        mode = cfg.get("verification_mode", "button")
+        brand = (cfg.get("verification_branding") or "").strip()
+
+        try:
+            if mode == "math":
+                difficulty = cfg.get("verification_difficulty", "easy")
+                lim = 10 if difficulty == "easy" else 25 if difficulty == "medium" else 100
+                a, b = random.randint(1, lim), random.randint(1, lim)
+                answer = str(a + b)
+
+                def check(m: discord.Message):
+                    return m.author.id == member.id and m.channel.id == channel.id
+
+                prompt = f"{member.mention} solve: **{a} + {b} = ?**"
+                if brand:
+                    prompt = f"**{brand}**\n{prompt}"
+                await channel.send(prompt)
+
+                try:
+                    reply = await self.bot.wait_for("message", timeout=180, check=check)
+                    if reply.content.strip() == answer:
+                        await self._grant_verification_role(member.guild, member)
+                        await channel.send(f"✅ {member.mention} verified!", delete_after=10)
+                    else:
+                        await channel.send(f"❌ {member.mention} wrong answer. Try again or ask staff.", delete_after=10)
+                except asyncio.TimeoutError:
+                    await channel.send(f"⌛ {member.mention} verification timed out. Run `/verification` setup or ask staff.", delete_after=10)
+            else:
+                text = cfg.get("verification_button_text", "✅ Verify")
+                msg = f"{member.mention} click the button below to verify."
+                if brand:
+                    msg = f"**{brand}**\n{msg}"
+                await channel.send(msg, view=VerifyButton(self, member.guild.id, member.id, text))
+        except Exception as ex:
+            print(f"[VERIFY] {ex}")
 
     # ── auto-mod: on_message ─────────────────────────────────────────────────
 
@@ -1425,6 +1623,63 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             return
 
         cfg = self._cfg(message.guild.id)
+
+        if cfg.get("shadowban_enabled") and message.author.id in cfg.get("shadowbanned_users", []):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        sticky_cfg = cfg.get("sticky_messages", {}) or {}
+        sticky_state = sticky_cfg.get(str(message.channel.id)) if isinstance(sticky_cfg, dict) else None
+        if sticky_state and sticky_state.get("message"):
+            try:
+                last_id = sticky_state.get("last_message_id")
+                if last_id:
+                    old = message.channel.get_partial_message(int(last_id))
+                    await old.delete()
+            except Exception:
+                pass
+            try:
+                sent = await message.channel.send(sticky_state["message"])
+                sticky_state["last_message_id"] = sent.id
+                cfg["sticky_messages"][str(message.channel.id)] = sticky_state
+                self._save()
+            except Exception:
+                pass
+
+        if cfg.get("adaptive_slowmode_enabled"):
+            now_ts = datetime.now(timezone.utc).timestamp()
+            key = (message.guild.id, message.channel.id)
+            bucket = _channel_msg_tracker[key]
+            bucket.append(now_ts)
+            window = max(3, int(cfg.get("adaptive_threshold_seconds", 10)))
+            threshold = max(3, int(cfg.get("adaptive_threshold_messages", 50)))
+            recent = [t for t in bucket if now_ts - t <= window]
+            if len(recent) >= threshold:
+                delay = max(1, min(21600, int(cfg.get("adaptive_slowmode_seconds", 10))))
+                cooldown = max(10, int(cfg.get("adaptive_cooldown_seconds", 30)))
+                try:
+                    if getattr(message.channel, "slowmode_delay", 0) != delay:
+                        await message.channel.edit(slowmode_delay=delay, reason="Adaptive slowmode enabled")
+                        await message.channel.send(f"🐌 Adaptive slowmode enabled: {delay}s", delete_after=8)
+                    cfg.setdefault("_adaptive_last_trigger", {})[str(message.channel.id)] = now_ts
+                    cfg.setdefault("_adaptive_last_delay", {})[str(message.channel.id)] = delay
+                    cfg.setdefault("_adaptive_cooldown", {})[str(message.channel.id)] = cooldown
+                    self._save()
+                except Exception:
+                    pass
+
+            last_trigger = (cfg.get("_adaptive_last_trigger", {}) or {}).get(str(message.channel.id))
+            if last_trigger:
+                cooldown = int((cfg.get("_adaptive_cooldown", {}) or {}).get(str(message.channel.id), 30))
+                if now_ts - float(last_trigger) >= cooldown and len(recent) < max(1, threshold // 3):
+                    try:
+                        if getattr(message.channel, "slowmode_delay", 0) > 0:
+                            await message.channel.edit(slowmode_delay=0, reason="Adaptive slowmode disabled")
+                    except Exception:
+                        pass
         if not cfg.get("setup_complete") or not cfg.get("automod_enabled"):
             return
 
@@ -1516,6 +1771,9 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         cfg = self._cfg(member.guild.id)
+        if cfg.get("verification_enabled"):
+            asyncio.create_task(self._handle_verification_for_join(member, cfg))
+
         if not cfg.get("setup_complete") or not cfg.get("anti_raid"):
             return
         now_ts = datetime.now(timezone.utc).timestamp()
@@ -1650,6 +1908,21 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
             "anti_spam": False, "spam_messages": 5, "spam_seconds": 5,
             "anti_raid": False, "raid_joins": 10, "raid_seconds": 10,
+            "verification_enabled": False,
+            "verification_mode": "button",
+            "verification_channel_id": None,
+            "verification_role_id": None,
+            "verification_button_text": "✅ Verify",
+            "verification_difficulty": "easy",
+            "verification_branding": "",
+            "shadowban_enabled": False,
+            "shadowbanned_users": [],
+            "sticky_messages": {},
+            "adaptive_slowmode_enabled": False,
+            "adaptive_threshold_messages": 50,
+            "adaptive_threshold_seconds": 10,
+            "adaptive_slowmode_seconds": 10,
+            "adaptive_cooldown_seconds": 30,
         }
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -1673,6 +1946,205 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             )
         else:
             await interaction.response.send_message("⛔ **AutoMod disabled.**")
+
+    @app_commands.command(name="verification", description="✅ Configure join verification (button or math)")
+    @app_commands.describe(
+        enable="Enable or disable verification",
+        mode="Verification mode",
+        channel="Channel where verification prompts are sent",
+        role="Role to grant after successful verification",
+        button_text="Custom verify button text (Gold+)",
+        math_difficulty="Math difficulty: easy, medium, hard (Gold+)",
+        branding="Enterprise custom branding text",
+    )
+    async def verification_slash(
+        self,
+        interaction: discord.Interaction,
+        enable: bool,
+        mode: Literal["button", "math"] = "button",
+        channel: discord.TextChannel | None = None,
+        role: discord.Role | None = None,
+        button_text: str | None = None,
+        math_difficulty: Literal["easy", "medium", "hard"] = "easy",
+        branding: str | None = None,
+    ):
+        if not await self._gate(interaction):
+            return
+        cfg = self._cfg(interaction.guild.id)
+        tier = self._get_tier(interaction)
+        if button_text and tier not in {"gold", "enterprise"}:
+            await interaction.response.send_message("❌ Custom button text requires Gold or Enterprise.", ephemeral=True)
+            return
+        if math_difficulty != "easy" and tier not in {"gold", "enterprise"}:
+            await interaction.response.send_message("❌ Custom math difficulty requires Gold or Enterprise.", ephemeral=True)
+            return
+        if branding and tier != "enterprise":
+            await interaction.response.send_message("❌ Branding is Enterprise-only.", ephemeral=True)
+            return
+        if enable and not channel:
+            await interaction.response.send_message("❌ Provide a verification channel when enabling.", ephemeral=True)
+            return
+        if enable and not role:
+            await interaction.response.send_message("❌ Provide a verification role when enabling.", ephemeral=True)
+            return
+
+        if enable and role and role.is_default():
+            await interaction.response.send_message("❌ Verification role cannot be `@everyone`.", ephemeral=True)
+            return
+
+        if enable and role and interaction.guild.me and role >= interaction.guild.me.top_role:
+            await interaction.response.send_message(
+                "❌ I cannot assign that role. Move my role above the verification role.",
+                ephemeral=True,
+            )
+            return
+
+        cfg["verification_enabled"] = enable
+        cfg["verification_mode"] = mode
+        cfg["verification_channel_id"] = channel.id if channel else None
+        cfg["verification_role_id"] = role.id if role else None
+        if button_text:
+            cfg["verification_button_text"] = button_text[:80]
+        cfg["verification_difficulty"] = math_difficulty
+        if branding is not None:
+            cfg["verification_branding"] = branding[:120]
+        self._save()
+
+        visibility_note = ""
+        if role and channel:
+            updated, failed = await _set_verification_visibility(
+                interaction.guild, role, channel.id, enable
+            )
+            visibility_note = (
+                f"\n🔒 Visibility gate {'enabled' if enable else 'disabled'} "
+                f"on **{updated}** channel(s)"
+                + (f" (**{failed}** failed, check bot perms)." if failed else ".")
+            )
+
+        await interaction.response.send_message(
+            f"✅ Verification {'enabled' if enable else 'disabled'} | mode: **{cfg['verification_mode']}**\n"
+            "ℹ️ Unverified users are hidden from channels except verification."
+            f"{visibility_note}"
+        )
+
+    shadowban_group = app_commands.Group(name="shadowban", description="👻 Configure shadowban users")
+
+    @shadowban_group.command(name="add", description="👻 Shadowban a user")
+    @app_commands.describe(user="User to shadowban")
+    async def shadowban_add(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        tier = self._get_tier(interaction)
+        cap = self._get_feature_limit(tier, "shadowban")
+        cfg = self._cfg(interaction.guild.id)
+        users = cfg.setdefault("shadowbanned_users", [])
+        if user.id in users:
+            await interaction.response.send_message("ℹ️ User is already shadowbanned.", ephemeral=True)
+            return
+        if cap is not None and len(users) >= cap:
+            await interaction.response.send_message(f"❌ {tier.title()} shadowban cap reached ({cap}).", ephemeral=True)
+            return
+        cfg["shadowban_enabled"] = True
+        users.append(user.id)
+        self._save()
+        await interaction.response.send_message(f"✅ {user.mention} added to shadowban list.")
+
+    @shadowban_group.command(name="remove", description="👻 Remove a user from shadowban")
+    async def shadowban_remove(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        cfg = self._cfg(interaction.guild.id)
+        users = cfg.setdefault("shadowbanned_users", [])
+        if user.id in users:
+            users.remove(user.id)
+            self._save()
+            await interaction.response.send_message(f"✅ Removed {user.mention} from shadowban list.")
+            return
+        await interaction.response.send_message("ℹ️ That user is not shadowbanned.", ephemeral=True)
+
+    @shadowban_group.command(name="list", description="👻 Show shadowbanned users")
+    async def shadowban_list(self, interaction: discord.Interaction):
+        if not await self._gate(interaction):
+            return
+        cfg = self._cfg(interaction.guild.id)
+        users = cfg.get("shadowbanned_users", [])
+        if not users:
+            await interaction.response.send_message("No shadowbanned users.", ephemeral=True)
+            return
+        await interaction.response.send_message("\n".join(f"• <@{uid}> (`{uid}`)" for uid in users[:50]), ephemeral=True)
+
+    sticky_group = app_commands.Group(name="sticky", description="📌 Sticky message management")
+
+    @sticky_group.command(name="set", description="📌 Set sticky message for a channel")
+    async def sticky_set(self, interaction: discord.Interaction, channel: discord.TextChannel, message: str):
+        if not await self._gate(interaction):
+            return
+        tier = self._get_tier(interaction)
+        cap = self._get_feature_limit(tier, "sticky")
+        cfg = self._cfg(interaction.guild.id)
+        sticky = cfg.setdefault("sticky_messages", {})
+        if str(channel.id) not in sticky and cap is not None and len(sticky) >= cap:
+            await interaction.response.send_message(f"❌ {tier.title()} sticky cap reached ({cap}).", ephemeral=True)
+            return
+        sticky[str(channel.id)] = {"message": message[:1800], "last_message_id": None}
+        self._save()
+        await interaction.response.send_message(f"✅ Sticky message set for {channel.mention}.")
+
+    @sticky_group.command(name="clear", description="📌 Remove sticky message from a channel")
+    async def sticky_clear(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await self._gate(interaction):
+            return
+        cfg = self._cfg(interaction.guild.id)
+        sticky = cfg.setdefault("sticky_messages", {})
+        if str(channel.id) in sticky:
+            sticky.pop(str(channel.id), None)
+            self._save()
+            await interaction.response.send_message(f"✅ Sticky cleared for {channel.mention}.")
+            return
+        await interaction.response.send_message("ℹ️ No sticky configured for that channel.", ephemeral=True)
+
+    @sticky_group.command(name="list", description="📌 List sticky channels")
+    async def sticky_list(self, interaction: discord.Interaction):
+        if not await self._gate(interaction):
+            return
+        sticky = self._cfg(interaction.guild.id).get("sticky_messages", {}) or {}
+        if not sticky:
+            await interaction.response.send_message("No sticky messages configured.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            "\n".join(f"• <#{cid}>" for cid in list(sticky.keys())[:50]), ephemeral=True
+        )
+
+    @app_commands.command(name="adaptive-slowmode", description="🐌 Configure adaptive slowmode")
+    async def adaptive_slowmode_slash(
+        self,
+        interaction: discord.Interaction,
+        enable: bool,
+        threshold_messages: int = 50,
+        threshold_seconds: int = 10,
+        slowmode_seconds: int = 10,
+        cooldown_seconds: int = 30,
+    ):
+        if not await self._gate(interaction):
+            return
+        tier = self._get_tier(interaction)
+        if tier not in {"gold", "enterprise"}:
+            await interaction.response.send_message("❌ Adaptive slowmode requires Gold or Enterprise.", ephemeral=True)
+            return
+        if tier != "enterprise" and (threshold_messages != 50 or threshold_seconds != 10 or slowmode_seconds != 10):
+            await interaction.response.send_message("❌ Custom adaptive thresholds are Enterprise-only.", ephemeral=True)
+            return
+        cfg = self._cfg(interaction.guild.id)
+        cfg["adaptive_slowmode_enabled"] = enable
+        if tier == "enterprise":
+            cfg["adaptive_threshold_messages"] = max(3, min(500, threshold_messages))
+            cfg["adaptive_threshold_seconds"] = max(3, min(120, threshold_seconds))
+            cfg["adaptive_slowmode_seconds"] = max(1, min(21600, slowmode_seconds))
+            cfg["adaptive_cooldown_seconds"] = max(10, min(600, cooldown_seconds))
+        self._save()
+        await interaction.response.send_message(
+            f"✅ Adaptive slowmode {'enabled' if enable else 'disabled'}"
+        )
 
     # ──────────────────────────────────────────────────────────────────────────
     # WARN SYSTEM

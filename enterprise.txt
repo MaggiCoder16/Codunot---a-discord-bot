@@ -1,0 +1,11 @@
+# Enterprise overrides
+# Use ServerID for guild usage, or ChannelID for DM usage.
+ServerID (or ChannelID for dms): 123456789012345678
+Name: "Client Name"
+
+DailyLimits:
+"messages": unlimited
+"attachments": unlimited
+
+TotalLimits:
+"attachments": unlimited
