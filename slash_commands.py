@@ -564,13 +564,13 @@ YTDL_OPTIONS = {
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "socket_timeout": 10,
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["ios", "web"],
-            "player_skip": ["mweb", "tv_embedded"],
-        }
-    },
-}
+	"extractor_args": {
+	    "youtube": {
+	        "player_client": ["web"],
+	        "player_skip": ["mweb", "tv_embedded"],
+	    }
+	}
+},
 
 _COOKIES_VALID: bool = bool(os.getenv("YTDL_COOKIE_CONTENT", "").strip() or os.getenv("YTDL_COOKIES_TXT", "").strip())
 FFMPEG_BEFORE_OPTIONS = (
