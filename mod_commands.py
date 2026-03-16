@@ -103,6 +103,45 @@ class VerifyButton(discord.ui.View):
         if ok:
             self.stop()
 
+
+def _resolve_verification_channel(guild: discord.Guild, configured_channel_id: int | None) -> discord.TextChannel | None:
+    if configured_channel_id:
+        ch = guild.get_channel(int(configured_channel_id))
+        if isinstance(ch, discord.TextChannel):
+            return ch
+    if isinstance(guild.system_channel, discord.TextChannel):
+        return guild.system_channel
+    for ch in guild.text_channels:
+        return ch
+    return None
+
+
+async def _set_verification_visibility(
+    guild: discord.Guild,
+    verified_role: discord.Role,
+    verification_channel_id: int | None,
+    enabled: bool,
+) -> tuple[int, int]:
+    updated, failed = 0, 0
+    for ch in guild.channels:
+        if not isinstance(ch, discord.abc.GuildChannel):
+            continue
+        try:
+            if enabled:
+                if verification_channel_id and ch.id == int(verification_channel_id):
+                    await ch.set_permissions(guild.default_role, view_channel=True, reason="Verification gate setup")
+                    await ch.set_permissions(verified_role, view_channel=True, reason="Verification gate setup")
+                else:
+                    await ch.set_permissions(guild.default_role, view_channel=False, reason="Verification gate setup")
+                    await ch.set_permissions(verified_role, view_channel=True, reason="Verification gate setup")
+            else:
+                await ch.set_permissions(guild.default_role, view_channel=None, reason="Verification gate disabled")
+                await ch.set_permissions(verified_role, view_channel=None, reason="Verification gate disabled")
+            updated += 1
+        except Exception:
+            failed += 1
+    return updated, failed
+
 def _parse_duration(s: str) -> Optional[timedelta]:
     m = re.match(r"^(\d+)([mhd])$", s.strip().lower())
     if not m:
@@ -1515,11 +1554,63 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             return False, "❌ Verification role was deleted. Please re-run setup."
         try:
             await member.add_roles(role, reason="Member completed verification")
+            try:
+                if member.is_timed_out():
+                    await member.timeout(None, reason="Member completed verification")
+            except Exception:
+                pass
             return True, "✅ You are verified. Welcome!"
         except discord.Forbidden:
             return False, "❌ I do not have permission to assign the verification role."
         except Exception:
             return False, "❌ Could not complete verification."
+
+    async def _handle_verification_for_join(self, member: discord.Member, cfg: dict):
+        channel = _resolve_verification_channel(member.guild, cfg.get("verification_channel_id"))
+        if not channel:
+            return
+
+        try:
+            if not member.is_timed_out():
+                await member.timeout(timedelta(days=28), reason="Pending verification")
+        except Exception:
+            pass
+
+        mode = cfg.get("verification_mode", "button")
+        brand = (cfg.get("verification_branding") or "").strip()
+
+        try:
+            if mode == "math":
+                difficulty = cfg.get("verification_difficulty", "easy")
+                lim = 10 if difficulty == "easy" else 25 if difficulty == "medium" else 100
+                a, b = random.randint(1, lim), random.randint(1, lim)
+                answer = str(a + b)
+
+                def check(m: discord.Message):
+                    return m.author.id == member.id and m.channel.id == channel.id
+
+                prompt = f"{member.mention} solve: **{a} + {b} = ?**"
+                if brand:
+                    prompt = f"**{brand}**\n{prompt}"
+                await channel.send(prompt)
+
+                try:
+                    reply = await self.bot.wait_for("message", timeout=180, check=check)
+                    if reply.content.strip() == answer:
+                        await self._grant_verification_role(member.guild, member)
+                        await channel.send(f"✅ {member.mention} verified!", delete_after=10)
+                    else:
+                        await channel.send(f"❌ {member.mention} wrong answer. Try again or ask staff.", delete_after=10)
+                except asyncio.TimeoutError:
+                    await channel.send(f"⌛ {member.mention} verification timed out. Run `/verification` setup or ask staff.", delete_after=10)
+            else:
+                text = cfg.get("verification_button_text", "✅ Verify")
+                msg = f"{member.mention} click the button below to verify."
+                if brand:
+                    msg = f"**{brand}**\n{msg}"
+                await channel.send(msg, view=VerifyButton(self, member.guild.id, member.id, text))
+        except Exception as ex:
+            print(f"[VERIFY] {ex}")
 
     # ── auto-mod: on_message ─────────────────────────────────────────────────
 
@@ -1680,41 +1771,8 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         cfg = self._cfg(member.guild.id)
-
         if cfg.get("verification_enabled"):
-            ch = member.guild.get_channel(cfg.get("verification_channel_id") or 0)
-            if ch and isinstance(ch, discord.TextChannel):
-                mode = cfg.get("verification_mode", "button")
-                brand = (cfg.get("verification_branding") or "").strip()
-                try:
-                    if mode == "math":
-                        difficulty = cfg.get("verification_difficulty", "easy")
-                        lim = 10 if difficulty == "easy" else 25 if difficulty == "medium" else 100
-                        a, b = random.randint(1, lim), random.randint(1, lim)
-                        answer = str(a + b)
-                        def check(m: discord.Message):
-                            return m.author.id == member.id and m.channel.id == ch.id
-                        prompt = f"{member.mention} solve: **{a} + {b} = ?**"
-                        if brand:
-                            prompt = f"**{brand}**\n{prompt}"
-                        await ch.send(prompt)
-                        try:
-                            reply = await self.bot.wait_for("message", timeout=180, check=check)
-                            if reply.content.strip() == answer:
-                                await self._grant_verification_role(member.guild, member)
-                                await ch.send(f"✅ {member.mention} verified!", delete_after=10)
-                            else:
-                                await ch.send(f"❌ {member.mention} wrong answer.", delete_after=10)
-                        except asyncio.TimeoutError:
-                            await ch.send(f"⌛ {member.mention} verification timed out.", delete_after=10)
-                    else:
-                        text = cfg.get("verification_button_text", "✅ Verify")
-                        msg = f"{member.mention} click the button below to verify."
-                        if brand:
-                            msg = f"**{brand}**\n{msg}"
-                        await ch.send(msg, view=VerifyButton(self, member.guild.id, member.id, text))
-                except Exception as ex:
-                    print(f"[VERIFY] {ex}")
+            asyncio.create_task(self._handle_verification_for_join(member, cfg))
 
         if not cfg.get("setup_complete") or not cfg.get("anti_raid"):
             return
@@ -1923,27 +1981,50 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         if branding and tier != "enterprise":
             await interaction.response.send_message("❌ Branding is Enterprise-only.", ephemeral=True)
             return
-        if enable and (not channel and not cfg.get("verification_channel_id")):
-            await interaction.response.send_message("❌ Provide a verification channel.", ephemeral=True)
+        if enable and not channel:
+            await interaction.response.send_message("❌ Provide a verification channel when enabling.", ephemeral=True)
             return
-        if enable and (not role and not cfg.get("verification_role_id")):
-            await interaction.response.send_message("❌ Provide a verification role.", ephemeral=True)
+        if enable and not role:
+            await interaction.response.send_message("❌ Provide a verification role when enabling.", ephemeral=True)
+            return
+
+        if enable and role and role.is_default():
+            await interaction.response.send_message("❌ Verification role cannot be `@everyone`.", ephemeral=True)
+            return
+
+        if enable and role and interaction.guild.me and role >= interaction.guild.me.top_role:
+            await interaction.response.send_message(
+                "❌ I cannot assign that role. Move my role above the verification role.",
+                ephemeral=True,
+            )
             return
 
         cfg["verification_enabled"] = enable
         cfg["verification_mode"] = mode
-        if channel:
-            cfg["verification_channel_id"] = channel.id
-        if role:
-            cfg["verification_role_id"] = role.id
+        cfg["verification_channel_id"] = channel.id if channel else None
+        cfg["verification_role_id"] = role.id if role else None
         if button_text:
             cfg["verification_button_text"] = button_text[:80]
         cfg["verification_difficulty"] = math_difficulty
         if branding is not None:
             cfg["verification_branding"] = branding[:120]
         self._save()
+
+        visibility_note = ""
+        if role and channel:
+            updated, failed = await _set_verification_visibility(
+                interaction.guild, role, channel.id, enable
+            )
+            visibility_note = (
+                f"\n🔒 Visibility gate {'enabled' if enable else 'disabled'} "
+                f"on **{updated}** channel(s)"
+                + (f" (**{failed}** failed, check bot perms)." if failed else ".")
+            )
+
         await interaction.response.send_message(
-            f"✅ Verification {'enabled' if enable else 'disabled'} | mode: **{cfg['verification_mode']}**"
+            f"✅ Verification {'enabled' if enable else 'disabled'} | mode: **{cfg['verification_mode']}**\n"
+            "ℹ️ Unverified users are hidden from channels except verification."
+            f"{visibility_note}"
         )
 
     shadowban_group = app_commands.Group(name="shadowban", description="👻 Configure shadowban users")
