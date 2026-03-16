@@ -617,13 +617,6 @@ def _get_ytdl_options(tier: str, allow_playlist: bool = False, with_cookies: boo
         options["noplaylist"] = False
     if with_cookies and _COOKIES_VALID and COOKIE_PATH:
         options["cookiefile"] = COOKIE_PATH
-        # ios doesn't support cookies — fall back to web client when cookies are present
-        options["extractor_args"] = {
-            "youtube": {
-                "player_client": ["web"],
-                "player_skip": ["mweb", "tv_embedded"],
-            }
-        }
     if _NODE_PATH:
         options["js_runtimes"] = {"node": {"path": _NODE_PATH}}
     return options
