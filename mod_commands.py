@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import json, os, asyncio, re
+import json, os, asyncio, re, random
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 from typing import Literal, Optional
