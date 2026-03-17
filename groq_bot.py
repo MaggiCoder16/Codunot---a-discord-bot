@@ -58,6 +58,7 @@ from usage_manager import (
 	autosave_usage,
 	get_usage,
 	get_tier_key,
+	get_tier_from_message,
 )
 
 load_dotenv()
@@ -242,7 +243,7 @@ async def help_command(ctx: commands.Context):
 			"📘 **Serious Mode** — focused, fact-based help\n"
 			"`!seriousmode` or `/seriousmode`\n\n"
 			"💬 **Rizz Coach Mode** — online + IRL social coaching\n"
-			"`!teachmerizz online`, `!teachmerizz irl` or `/teachmerizz`\n\n"
+			"`!teachmerizz online` *(FREE)*, `!teachmerizz irl` *(PREMIUM/GOLD/ENTERPRISE)*, or `/teachmerizz`\n\n"
 			"♟️ **Chess Mode** — play chess inside Discord\n"
 			"`!chessmode` or `/chessmode`"
 		),
@@ -272,15 +273,34 @@ async def help_command(ctx: commands.Context):
 		name="🛡️ Moderation System",
 		value=(
 			"Slash-first moderation with setup + AutoMod:\n"
-			"• `/setup-moderation` (6-step wizard, 5 min timeout, starter-only controls)\n"
+			"• `/setup-moderation` (7-step wizard, 5 min timeout, starter-only controls)\n"
 			"• AutoMod: bad words, link policy, antispam timeout+purge, antiraid channel lock\n"
 			"• Text moderation also works by mention: `@Codunot AI mute @user 10m spamming` (same style for warn/ban/unmute/etc.)\n"
-			"• Core: `/warn` `/warns` `/clearwarns` `/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
-			"• Channel tools: `/clear` `/slowmode` `/lock` `/unlock`\n"
-			"• Lookup: `/userinfo` `/case`\n"
-			"• Premium/Gold: `/tempban` `/massban` `/modstats` `/note`"
+			"• [FREE] Core: `/warn` `/warns` `/clearwarns` `/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
+			"• [FREE] Channel tools: `/clear` `/slowmode` `/lock` `/unlock`\n"
+			"• [FREE] Lookup: `/userinfo` `/case`\n"
+			"• [PREMIUM/GOLD/ENTERPRISE] `/tempban` `/massban` `/modstats` `/note`\n"
+			"• [PREMIUM/GOLD/ENTERPRISE] `/shadowban` (caps: Premium 5, Gold 20, Enterprise unlimited)\n"
+			"• [PREMIUM/GOLD/ENTERPRISE] `/sticky` (caps: Premium 1, Gold 5, Enterprise unlimited)\n"
+			"• [GOLD/ENTERPRISE] `/adaptive-slowmode`"
 		),
 		inline=False
+	)
+
+	embed.add_field(
+		name="🐌 Adaptive Slowmode (clear options)",
+		value=(
+			"Command: `/adaptive-slowmode enable threshold_messages threshold_seconds slowmode_seconds cooldown_seconds`\n\n"
+			"• `enable` — turn adaptive mode on/off\n"
+			"• `threshold_messages` — trigger when this many msgs are sent in the window\n"
+			"• `threshold_seconds` — size of the detection window in seconds\n"
+			"• `slowmode_seconds` — slowmode applied after trigger\n"
+			"• `cooldown_seconds` — how long quiet period must last before auto-disabling slowmode\n\n"
+			"Tier behavior:\n"
+			"• Gold: can enable/disable only (uses defaults 50 msgs / 10s -> 10s slowmode).\n"
+			"• Enterprise: can customize all thresholds."
+		),
+		inline=False,
 	)
 
 	embed.add_field(
@@ -354,6 +374,12 @@ async def help_command(ctx: commands.Context):
 	embed.set_footer(text="💡 Tip: In servers, ping me with @Codunot 'your text' | DMs don't need pings!")
 
 	await ctx.send(embed=embed)
+
+
+@bot.command(name="helpC")
+async def helpc_prefix_command(ctx: commands.Context):
+	"""Alias for !codunot_help."""
+	await help_command(ctx)
 
 @bot.command(name="funmode")
 async def funmode(ctx: commands.Context):
@@ -445,6 +471,20 @@ async def teachmerizz(ctx: commands.Context, submode: str = None):
 		)
 
 	elif submode == "irl":
+		class _Pseudo:
+			def __init__(self, guild, user, channel):
+				self.guild = guild
+				self.user = user
+				self.channel = channel
+
+		tier = get_tier_from_message(_Pseudo(ctx.guild, ctx.author, ctx.channel))
+		if tier not in {"premium", "gold", "enterprise"}:
+			await ctx.send(
+				"🔒 **Rizz Coach (IRL)** is for **Premium / Gold / Enterprise** only.\n"
+				"Use `!teachmerizz online` for free, or contact `@aarav_2022` to upgrade."
+			)
+			return
+
 		channel_modes[chan_id] = "rizz_irl"
 		memory.save_channel_mode(chan_id, "rizz_irl")
 		channel_chess[chan_id] = False

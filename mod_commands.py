@@ -757,7 +757,7 @@ class SummaryView(_WizardBase):
                 "`/warn` `/ban` `/mute` `/clear` `/lock` `/userinfo`\n"
                 "`/shadowban` `/sticky` `/adaptive-slowmode`\n"
                 "`/case` — lookup any mod action by case number\n"
-                "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`\n\n"
+                "🌟 **Premium/Gold/Enterprise:** `/tempban` `/massban` `/modstats` `/note`\n\n"
                 "Use `/setup-moderation` any time to reconfigure."
             ),
             color=COLOR_SUCCESS,
@@ -1793,9 +1793,9 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         else:
             await interaction.response.send_message("⛔ **AutoMod disabled.**")
 
-    shadowban_group = app_commands.Group(name="shadowban", description="👻 Configure shadowban users")
+    shadowban_group = app_commands.Group(name="shadowban", description="👻 [Premium/Gold/Enterprise] Configure shadowban users")
 
-    @shadowban_group.command(name="add", description="👻 Shadowban a user")
+    @shadowban_group.command(name="add", description="👻 [Premium/Gold/Enterprise] Shadowban a user")
     @app_commands.describe(user="User to shadowban")
     async def shadowban_add(self, interaction: discord.Interaction, user: discord.Member):
         if not await self._gate(interaction):
@@ -1815,7 +1815,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         self._save()
         await interaction.response.send_message(f"✅ {user.mention} added to shadowban list.")
 
-    @shadowban_group.command(name="remove", description="👻 Remove a user from shadowban")
+    @shadowban_group.command(name="remove", description="👻 [Premium/Gold/Enterprise] Remove a user from shadowban")
     async def shadowban_remove(self, interaction: discord.Interaction, user: discord.Member):
         if not await self._gate(interaction):
             return
@@ -1828,7 +1828,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             return
         await interaction.response.send_message("ℹ️ That user is not shadowbanned.", ephemeral=True)
 
-    @shadowban_group.command(name="list", description="👻 Show shadowbanned users")
+    @shadowban_group.command(name="list", description="👻 [Premium/Gold/Enterprise] Show shadowbanned users")
     async def shadowban_list(self, interaction: discord.Interaction):
         if not await self._gate(interaction):
             return
@@ -1839,9 +1839,9 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             return
         await interaction.response.send_message("\n".join(f"• <@{uid}> (`{uid}`)" for uid in users[:50]), ephemeral=True)
 
-    sticky_group = app_commands.Group(name="sticky", description="📌 Sticky message management")
+    sticky_group = app_commands.Group(name="sticky", description="📌 [Premium/Gold/Enterprise] Sticky message management")
 
-    @sticky_group.command(name="set", description="📌 Set sticky message for a channel")
+    @sticky_group.command(name="set", description="📌 [Premium/Gold/Enterprise] Set sticky message for a channel")
     async def sticky_set(self, interaction: discord.Interaction, channel: discord.TextChannel, message: str):
         if not await self._gate(interaction):
             return
@@ -1856,7 +1856,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
         self._save()
         await interaction.response.send_message(f"✅ Sticky message set for {channel.mention}.")
 
-    @sticky_group.command(name="clear", description="📌 Remove sticky message from a channel")
+    @sticky_group.command(name="clear", description="📌 [Premium/Gold/Enterprise] Remove sticky message from a channel")
     async def sticky_clear(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await self._gate(interaction):
             return
@@ -1869,7 +1869,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             return
         await interaction.response.send_message("ℹ️ No sticky configured for that channel.", ephemeral=True)
 
-    @sticky_group.command(name="list", description="📌 List sticky channels")
+    @sticky_group.command(name="list", description="📌 [Premium/Gold/Enterprise] List sticky channels")
     async def sticky_list(self, interaction: discord.Interaction):
         if not await self._gate(interaction):
             return
@@ -1881,7 +1881,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             "\n".join(f"• <#{cid}>" for cid in list(sticky.keys())[:50]), ephemeral=True
         )
 
-    @app_commands.command(name="adaptive-slowmode", description="🐌 Configure adaptive slowmode")
+    @app_commands.command(name="adaptive-slowmode", description="🐌 [Gold/Enterprise] Configure adaptive slowmode")
     async def adaptive_slowmode_slash(
         self,
         interaction: discord.Interaction,
@@ -1909,7 +1909,10 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             cfg["adaptive_cooldown_seconds"] = max(10, min(600, cooldown_seconds))
         self._save()
         await interaction.response.send_message(
-            f"✅ Adaptive slowmode {'enabled' if enable else 'disabled'}"
+            f"✅ Adaptive slowmode {'enabled' if enable else 'disabled'}\n"
+            f"• Trigger: **{cfg.get('adaptive_threshold_messages', 50)}** msgs in **{cfg.get('adaptive_threshold_seconds', 10)}s**\n"
+            f"• On trigger: set slowmode to **{cfg.get('adaptive_slowmode_seconds', 10)}s**\n"
+            f"• Auto-off cooldown: **{cfg.get('adaptive_cooldown_seconds', 30)}s** of quieter chat"
         )
 
     # ──────────────────────────────────────────────────────────────────────────

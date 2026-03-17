@@ -3021,6 +3021,39 @@ class Codunot(commands.Cog):
 
 	# ── Mode commands ─────────────────────────────────────────────────────────
 
+	@app_commands.command(name="helpc", description="📘 Codunot help (tiers + command guide)")
+	async def helpc_slash(self, interaction: discord.Interaction):
+		embed = discord.Embed(
+			title="🤖 Codunot Help",
+			description="Tiers, moderation commands, and adaptive slowmode options.",
+			color=0xFFA500,
+		)
+		embed.add_field(
+			name="🛡️ Moderation command tiers",
+			value=(
+				"[FREE] `/warn` `/warns` `/clearwarns` `/ban` `/unban` `/modkick` `/mute` `/unmute` `/clear` `/slowmode` `/lock` `/unlock` `/userinfo` `/case`\n"
+				"[PREMIUM/GOLD/ENTERPRISE] `/tempban` `/massban` `/modstats` `/note`\n"
+				"[PREMIUM/GOLD/ENTERPRISE] `/shadowban` (Premium 5, Gold 20, Enterprise unlimited)\n"
+				"[PREMIUM/GOLD/ENTERPRISE] `/sticky` (Premium 1, Gold 5, Enterprise unlimited)\n"
+				"[GOLD/ENTERPRISE] `/adaptive-slowmode`"
+			),
+			inline=False,
+		)
+		embed.add_field(
+			name="🐌 Adaptive slowmode options (plain English)",
+			value=(
+				"`enable`: turn adaptive mode ON/OFF\n"
+				"`threshold_messages`: trigger at this many msgs\n"
+				"`threshold_seconds`: measured over this time window\n"
+				"`slowmode_seconds`: apply this slowmode duration\n"
+				"`cooldown_seconds`: quiet-time before auto-off\n\n"
+				"Gold uses defaults only. Enterprise can customize all values."
+			),
+			inline=False,
+		)
+		embed.set_footer(text="Prefix help: !codunot_help or !helpC")
+		await interaction.response.send_message(embed=embed, ephemeral=False)
+
 	@app_commands.command(name="funmode", description="😎 Activate Fun Mode - jokes, memes & chill vibes")
 	async def funmode_slash(self, interaction: discord.Interaction):
 		is_dm = isinstance(interaction.channel, discord.DMChannel)
@@ -3087,6 +3120,15 @@ class Codunot(commands.Cog):
 				"Send a screenshot, paste a convo, or describe what's happening — I'll coach you through it 👇"
 			)
 		elif mode.value == "irl":
+			tier = get_tier_from_message(interaction)
+			if tier not in {"premium", "gold", "enterprise"}:
+				await interaction.response.send_message(
+					"🔒 **Rizz Coach (IRL)** is for **Premium / Gold / Enterprise** only.\n"
+					"Use `/teachmerizz online` for free, or contact `@aarav_2022` to upgrade.",
+					ephemeral=True,
+				)
+				return
+
 			channel_modes[chan_id] = "rizz_irl"
 			memory.save_channel_mode(chan_id, "rizz_irl")
 			channel_chess[chan_id] = False
