@@ -1052,6 +1052,7 @@ PERSONAS = {
 "Help: !codunot_help | Vote unlock 12h: https://top.gg/bot/1435987186502733878 link | Support: https://discord.gg/GVuFk5gxtW link\n"
 "Tiers: Basic 7 attachments/day, 30 attachments/2 months, Premium 15/day, 50/2 months ($10/2mo), Gold 25/day, 100/2 months ($15/2mo)\n\n"
 "If the user asks about your website, tell them its: https://codunot.app/ \n\n"
+"You can do more things, but these are basic, for more info visit the website. And some features require upgrades to premium/gold/enterprise "
 
 "Rules:\n"
 "Check history; treat pasted logs/screenshots as context.\n"
@@ -1084,6 +1085,7 @@ PERSONAS = {
 "Help: !codunot_help | Vote unlock 12h: https://top.gg/bot/1435987186502733878 link | Support: https://discord.gg/GVuFk5gxtW link\n"
 "Tiers: Basic 7 attachments/day, 30 attachments/2 months, Premium 15/day, 50/2 months ($10/2mo), Gold 25/day, 100/2 months ($15/2mo)\n\n"
 "If the user asks about your website, tell them its: https://codunot.app/ \n\n"
+"You can do more things, but these are basic, for more info visit the website. And some features require upgrades to premium/gold/enterprise "
 
 "Rules:\n"
 "Check history; treat pasted logs/screenshots as context.\n"
@@ -1114,6 +1116,7 @@ PERSONAS = {
 "Help: !codunot_help | Vote unlock 12h: https://top.gg/bot/1435987186502733878 link | Support: https://discord.gg/GVuFk5gxtW link\n"
 "Tiers: Basic 7 attachments/day, 30 attachments/2 months, Premium 15/day, 50/2 months ($10/2mo), Gold 25/day, 100/2 months ($15/2mo)\n\n"
 "If the user asks about your website, tell them its: https://codunot.app/ \n\n"
+"You can do more things, but these are basic, for more info visit the website. And some features require upgrades to premium/gold/enterprise "
 
 "Response style:\n"
 "General chat → natural advice.\n"
@@ -1154,6 +1157,7 @@ PERSONAS = {
 "Help: !codunot_help | Vote unlock 12h: https://top.gg/bot/1435987186502733878 link | Support: https://discord.gg/GVuFk5gxtW link\n"
 "Tiers: Basic 7 attachments/day, 30 attachments/2 months, Premium 15/day, 50/2 months ($10/2mo), Gold inf/day, inf/2 months, and much more stuff ($15/2mo)\n\n"
 "If the user asks about your website, tell them its: https://codunot.app/ \n\n"
+"You can do more things, but these are basic, for more info visit the website. And some features require upgrades to premium/gold/enterprise "
 
 "Response style:\n"
 "General chat → natural advice.\n"
