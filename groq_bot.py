@@ -583,7 +583,7 @@ async def test_llama(ctx: commands.Context, mode: str = "funny", *, message: str
 
 		response = await call_groq(
 			prompt=prompt,
-			model="meta-llama/llama-4-scout-17b-16e-instruct",
+			model=IMAGE_REQUIRED_MODEL,
 			temperature=1.3 if mode == "roast" else 0.7,
 		)
 
@@ -627,6 +627,7 @@ async def test_provider(ctx: commands.Context, provider: str = None, *, message:
 # ---------------- MODELS ----------------
 PRIMARY_MODEL = "openai/gpt-oss-120b"
 FALLBACK_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+IMAGE_REQUIRED_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 PRIMARY_COOLDOWN_UNTIL = None
 PRIMARY_COOLDOWN_DURATION = timedelta(minutes=10)
@@ -1595,8 +1596,8 @@ async def extract_image_bytes(message) -> bytes | None:
 async def handle_image_message(message, mode):
 	"""
 	Handles images sent by the user, including replies.
-	Sends the image directly to the Groq vision model.
-	Returns the model's response as a string, or a fallback message.
+	Runs OCR first, then sends extracted text + user request to the
+	currently selected channel model; falls back to direct vision if no text is extracted.
 	"""
 
 	is_dm = isinstance(message.channel, discord.DMChannel)
@@ -1620,30 +1621,90 @@ async def handle_image_message(message, mode):
 
 	try:
 		persona = PERSONAS.get(mode, PERSONAS["serious"])
-		prompt = (
+		selected_model = memory.get_channel_model(chan_id)
+		if selected_model != IMAGE_REQUIRED_MODEL:
+			return (
+				"🖼️ For image analysis, please switch this chat model to **Llama 4 Scout** first.\n"
+				"Use `/model` and select `meta-llama/llama-4-scout-17b-16e-instruct`, then send the image again."
+			)
+
+		ocr_prompt = (
+			"You are an OCR extraction assistant.\n"
+			"Extract ALL visible text from this image exactly as written.\n"
+			"Rules:\n"
+			"- Include every line, number, symbol, and equation you can read.\n"
+			"- Preserve original ordering and line breaks as much as possible.\n"
+			"- Do not summarize. Do not solve. Do not explain.\n"
+			"- If text is unreadable, mark it as [unclear].\n"
+			"- If there is no text, reply exactly: NO_TEXT"
+		)
+
+		print(f"[VISION OCR PROMPT] ({channel_id}) {ocr_prompt}")
+
+		extracted_text = await call_groq(
+			prompt=ocr_prompt,
+			model=IMAGE_REQUIRED_MODEL,
+			image_bytes=image_bytes,
+			temperature=0.1
+		)
+
+		user_request = (message.content or "").strip()
+		if not user_request:
+			user_request = "No extra user instruction was provided. Help based on the image."
+
+		if extracted_text:
+			extracted_text = extracted_text.strip()
+			print(f"[VISION OCR RESPONSE] {extracted_text}")
+		else:
+			extracted_text = ""
+			print(f"[VISION OCR RESPONSE] ({channel_id}) No OCR text returned")
+
+		# If OCR produced usable text, answer using the selected channel chat model.
+		if extracted_text and extracted_text.upper() != "NO_TEXT":
+			final_prompt = (
+				f"{persona}\n"
+				"The user sent an image. OCR text was extracted below.\n"
+				"Use this extracted text as the primary source and answer the user request directly.\n"
+				"If OCR contains [unclear], mention that limitation clearly.\n\n"
+				f"Extracted OCR text:\n{extracted_text}\n\n"
+				f"User request:\n{user_request}\n\n"
+				"Final answer:"
+			)
+
+			response = await call_groq_with_health(
+				prompt=final_prompt,
+				temperature=0.7,
+				mode=mode,
+				model_override=selected_model,
+			)
+
+			if response:
+				response = sanitize_model_output(response, selected_model)
+				print(f"[VISION FINAL RESPONSE] {response}")
+				return response.strip()
+
+		# OCR unavailable / no text detected: fall back to direct vision response.
+		vision_prompt = (
 			persona + "\n"
 			"You are an image analysis model.\n"
 			"Describe ONLY what is visually present in the image.\n"
 			"Do NOT assume identity, personality, or intent.\n"
 			"Do NOT roleplay or refer to yourself.\n"
 			"If the user asks a question, answer ONLY if it can be answered from the image.\n\n"
-			f"User message (for context):\n{message.content}\n\n"
-			"Image description:"
+			f"User message (for context):\n{user_request}\n\n"
+			"Image analysis:"
 		)
-
-		print(f"[VISION PROMPT] ({channel_id}) {prompt}")
-
-		# Call the unified Groq client
-		response = await call_groq(
-			prompt=prompt,
-			model="meta-llama/llama-4-scout-17b-16e-instruct",
+		print(f"[VISION FALLBACK PROMPT] ({channel_id}) {vision_prompt}")
+		vision_response = await call_groq(
+			prompt=vision_prompt,
+			model=IMAGE_REQUIRED_MODEL,
 			image_bytes=image_bytes,
-			temperature=0.7
+			temperature=0.7,
 		)
 
-		if response:
-			print(f"[VISION MODEL RESPONSE] {response}")
-			return response.strip()
+		if vision_response:
+			print(f"[VISION FALLBACK RESPONSE] {vision_response}")
+			return vision_response.strip()
 
 		return "🤔 I can't interpret this image right now, try again later."
 
