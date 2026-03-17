@@ -50,6 +50,14 @@ def _guild_cfg(data: dict, guild_id: int) -> dict:
             "anti_raid": False,
             "raid_joins": 10,
             "raid_seconds": 10,
+            "shadowban_enabled": False,
+            "shadowbanned_users": [],
+            "sticky_messages": {},
+            "adaptive_slowmode_enabled": False,
+            "adaptive_threshold_messages": 50,
+            "adaptive_threshold_seconds": 10,
+            "adaptive_slowmode_seconds": 10,
+            "adaptive_cooldown_seconds": 30,
         }
     return data["guilds"][gid]
 
@@ -67,6 +75,8 @@ COLOR_GREY    = 0x808080
 setup_sessions: dict[str, dict] = {}
 _spam_tracker: dict = defaultdict(lambda: defaultdict(lambda: deque(maxlen=25)))
 _raid_tracker: dict = defaultdict(lambda: deque(maxlen=40))
+_channel_msg_tracker: dict = defaultdict(lambda: deque(maxlen=300))
+
 
 def _parse_duration(s: str) -> Optional[timedelta]:
     m = re.match(r"^(\d+)([mhd])$", s.strip().lower())
@@ -166,10 +176,10 @@ def _perms_embed(guild: discord.Guild) -> discord.Embed | None:
 # EMBED BUILDERS  (one per wizard step)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _wizard_embed(step: int, title: str, description: str, color=COLOR_ORANGE) -> discord.Embed:
+def _wizard_embed(step: int, title: str, description: str, color=COLOR_ORANGE, total_steps: int = 7) -> discord.Embed:
     e = discord.Embed(title=title, description=description, color=color,
                       timestamp=datetime.now(timezone.utc))
-    e.set_footer(text=f"Moderation Setup  •  Step {step}/6  [{_progress_bar(step)}]")
+    e.set_footer(text=f"Moderation Setup  •  Step {step}/{total_steps}  [{_progress_bar(step, total=total_steps)}]")
     return e
 
 def emb_step1() -> discord.Embed:
@@ -240,9 +250,18 @@ def emb_step5() -> discord.Embed:
         "Click **Yes** to enable both with custom thresholds, or use the partial options."
     )
 
+def emb_step6() -> discord.Embed:
+    return _wizard_embed(6, "🧩 Step 6 — Premium/Enterprise Features",
+        "Configure extra moderation features:\n\n"
+        "1) **Shadowban** (Premium: 5, Gold: 20, Enterprise: unlimited)\n"
+        "2) **Sticky Messages** (Premium: 1, Gold: 5, Enterprise: unlimited)\n"
+        "3) **Adaptive Slowmode** (Gold+; Enterprise fully custom thresholds)\n\n"
+        "You can skip this and configure later using slash commands."
+    )
+
 def emb_summary(s: dict) -> discord.Embed:
     e = discord.Embed(
-        title="🛡️ Step 6 — Review & Confirm",
+        title="🛡️ Step 7 — Review & Confirm",
         description=(
             "Everything you configured is shown below.\n"
             "Click **✅ Confirm & Save** to activate moderation, "
@@ -304,11 +323,12 @@ def emb_summary(s: dict) -> discord.Embed:
             "`/warn` `/warns` `/clearwarns` `/case`\n"
             "`/ban` `/unban` `/modkick` `/mute` `/unmute`\n"
             "`/clear` `/slowmode` `/lock` `/unlock` `/userinfo`\n"
-            "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`"
+            "`/shadowban` `/sticky` `/adaptive-slowmode`\n"
+            "🌟 **Premium/Gold/Enterprise:** `/tempban` `/massban` `/modstats` `/note`"
         ),
         inline=False,
     )
-    e.set_footer(text=f"Step 6/6  [{_progress_bar(6)}]  •  Moderation Setup")
+    e.set_footer(text=f"Step 7/7  [{_progress_bar(7, total=7)}]  •  Moderation Setup")
     return e
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -368,7 +388,7 @@ class _ThresholdModalBase(discord.ui.Modal):
             await interaction.response.send_message("❌ Session expired.", ephemeral=True)
             return
         await interaction.response.defer()
-        await session["message"].edit(embed=emb_summary(session), view=SummaryView(self.sk))
+        await session["message"].edit(embed=emb_step6(), view=Step6View(self.sk))
 
 
 class SpamRaidModal(_ThresholdModalBase, title="⚡ AntiSpam & AntiRaid Settings"):
@@ -684,6 +704,13 @@ class Step5View(_WizardBase):
     async def skip_btn(self, interaction: discord.Interaction, _):
         s = setup_sessions[self.sk]
         s.update({"anti_spam": False, "anti_raid": False})
+        await interaction.response.edit_message(embed=emb_step6(), view=Step6View(self.sk))
+
+
+class Step6View(_WizardBase):
+    @discord.ui.button(label="⏭️ Skip Extras", style=discord.ButtonStyle.secondary, row=0)
+    async def skip_btn(self, interaction: discord.Interaction, _):
+        s = setup_sessions[self.sk]
         await interaction.response.edit_message(embed=emb_summary(s), view=SummaryView(self.sk))
 
 
@@ -728,8 +755,9 @@ class SummaryView(_WizardBase):
                 "Your server is protected. All mod commands are unlocked.\n\n"
                 "**Quick reference:**\n"
                 "`/warn` `/ban` `/mute` `/clear` `/lock` `/userinfo`\n"
+                "`/shadowban` `/sticky` `/adaptive-slowmode`\n"
                 "`/case` — lookup any mod action by case number\n"
-                "🌟 **Premium/Gold:** `/tempban` `/massban` `/modstats` `/note`\n\n"
+                "🌟 **Premium/Gold/Enterprise:** `/tempban` `/massban` `/modstats` `/note`\n\n"
                 "Use `/setup-moderation` any time to reconfigure."
             ),
             color=COLOR_SUCCESS,
@@ -757,6 +785,14 @@ class SummaryView(_WizardBase):
             "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
             "anti_spam": False, "spam_messages": 5, "spam_seconds": 5,
             "anti_raid": False, "raid_joins": 10, "raid_seconds": 10,
+            "shadowban_enabled": False,
+            "shadowbanned_users": [],
+            "sticky_messages": {},
+            "adaptive_slowmode_enabled": False,
+            "adaptive_threshold_messages": 50,
+            "adaptive_threshold_seconds": 10,
+            "adaptive_slowmode_seconds": 10,
+            "adaptive_cooldown_seconds": 30,
         }
         await interaction.response.edit_message(embed=emb_step1(), view=Step1View(self.sk))
 
@@ -1388,7 +1424,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             tier = get_tier_from_message(_Pseudo(guild, actor))
         except Exception:
             tier = "free"
-        if tier in ("premium", "gold"):
+        if tier in ("premium", "gold", "enterprise"):
             return True
         await channel.send("🌟 This action requires Premium/Gold.")
         return False
@@ -1399,7 +1435,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             tier = get_tier_from_message(interaction)
         except Exception:
             tier = "free"
-        if tier in ("premium", "gold"):
+        if tier in ("premium", "gold", "enterprise"):
             return True
         embed = discord.Embed(
             title="🌟 Premium / Gold Required",
@@ -1407,12 +1443,29 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
                 "This command is available for **Premium** and **Gold** subscribers.\n\n"
                 "🔵 **Premium** — $10 / 2 months\n"
                 "🟡 **Gold 👑** — $15 / 2 months\n\n"
+                "🏢 **Enterprise** — custom limits/features, contact for pricing\n\n"
                 "Contact `@aarav_2022` on Discord to upgrade!"
             ),
             color=COLOR_GOLD,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return False
+
+    def _get_tier(self, interaction_or_message) -> str:
+        try:
+            from usage_manager import get_tier_from_message
+            return get_tier_from_message(interaction_or_message)
+        except Exception:
+            return "basic"
+
+    def _get_feature_limit(self, tier: str, feature: str) -> int | None:
+        caps = {
+            "shadowban": {"premium": 5, "gold": 20, "enterprise": None},
+            "sticky": {"premium": 1, "gold": 5, "enterprise": None},
+        }
+        if feature not in caps:
+            return 0
+        return caps[feature].get(tier, 0)
 
     # ── auto-mod: on_message ─────────────────────────────────────────────────
 
@@ -1425,6 +1478,63 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             return
 
         cfg = self._cfg(message.guild.id)
+
+        if cfg.get("shadowban_enabled") and message.author.id in cfg.get("shadowbanned_users", []):
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return
+
+        sticky_cfg = cfg.get("sticky_messages", {}) or {}
+        sticky_state = sticky_cfg.get(str(message.channel.id)) if isinstance(sticky_cfg, dict) else None
+        if sticky_state and sticky_state.get("message"):
+            try:
+                last_id = sticky_state.get("last_message_id")
+                if last_id:
+                    old = message.channel.get_partial_message(int(last_id))
+                    await old.delete()
+            except Exception:
+                pass
+            try:
+                sent = await message.channel.send(sticky_state["message"])
+                sticky_state["last_message_id"] = sent.id
+                cfg["sticky_messages"][str(message.channel.id)] = sticky_state
+                self._save()
+            except Exception:
+                pass
+
+        if cfg.get("adaptive_slowmode_enabled"):
+            now_ts = datetime.now(timezone.utc).timestamp()
+            key = (message.guild.id, message.channel.id)
+            bucket = _channel_msg_tracker[key]
+            bucket.append(now_ts)
+            window = max(3, int(cfg.get("adaptive_threshold_seconds", 10)))
+            threshold = max(3, int(cfg.get("adaptive_threshold_messages", 50)))
+            recent = [t for t in bucket if now_ts - t <= window]
+            if len(recent) >= threshold:
+                delay = max(1, min(21600, int(cfg.get("adaptive_slowmode_seconds", 10))))
+                cooldown = max(10, int(cfg.get("adaptive_cooldown_seconds", 30)))
+                try:
+                    if getattr(message.channel, "slowmode_delay", 0) != delay:
+                        await message.channel.edit(slowmode_delay=delay, reason="Adaptive slowmode enabled")
+                        await message.channel.send(f"🐌 Adaptive slowmode enabled: {delay}s", delete_after=8)
+                    cfg.setdefault("_adaptive_last_trigger", {})[str(message.channel.id)] = now_ts
+                    cfg.setdefault("_adaptive_last_delay", {})[str(message.channel.id)] = delay
+                    cfg.setdefault("_adaptive_cooldown", {})[str(message.channel.id)] = cooldown
+                    self._save()
+                except Exception:
+                    pass
+
+            last_trigger = (cfg.get("_adaptive_last_trigger", {}) or {}).get(str(message.channel.id))
+            if last_trigger:
+                cooldown = int((cfg.get("_adaptive_cooldown", {}) or {}).get(str(message.channel.id), 30))
+                if now_ts - float(last_trigger) >= cooldown and len(recent) < max(1, threshold // 3):
+                    try:
+                        if getattr(message.channel, "slowmode_delay", 0) > 0:
+                            await message.channel.edit(slowmode_delay=0, reason="Adaptive slowmode disabled")
+                    except Exception:
+                        pass
         if not cfg.get("setup_complete") or not cfg.get("automod_enabled"):
             return
 
@@ -1516,6 +1626,7 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         cfg = self._cfg(member.guild.id)
+
         if not cfg.get("setup_complete") or not cfg.get("anti_raid"):
             return
         now_ts = datetime.now(timezone.utc).timestamp()
@@ -1650,6 +1761,14 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             "links_allowed_server": True, "link_allowed_channels": [], "link_allowed_roles": [],
             "anti_spam": False, "spam_messages": 5, "spam_seconds": 5,
             "anti_raid": False, "raid_joins": 10, "raid_seconds": 10,
+            "shadowban_enabled": False,
+            "shadowbanned_users": [],
+            "sticky_messages": {},
+            "adaptive_slowmode_enabled": False,
+            "adaptive_threshold_messages": 50,
+            "adaptive_threshold_seconds": 10,
+            "adaptive_slowmode_seconds": 10,
+            "adaptive_cooldown_seconds": 30,
         }
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -1673,6 +1792,128 @@ class ModerationCog(commands.Cog, name="ModerationCog"):
             )
         else:
             await interaction.response.send_message("⛔ **AutoMod disabled.**")
+
+    shadowban_group = app_commands.Group(name="shadowban", description="👻 [Premium/Gold/Enterprise] Configure shadowban users")
+
+    @shadowban_group.command(name="add", description="👻 [Premium/Gold/Enterprise] Shadowban a user")
+    @app_commands.describe(user="User to shadowban")
+    async def shadowban_add(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        tier = self._get_tier(interaction)
+        cap = self._get_feature_limit(tier, "shadowban")
+        cfg = self._cfg(interaction.guild.id)
+        users = cfg.setdefault("shadowbanned_users", [])
+        if user.id in users:
+            await interaction.response.send_message("ℹ️ User is already shadowbanned.", ephemeral=True)
+            return
+        if cap is not None and len(users) >= cap:
+            await interaction.response.send_message(f"❌ {tier.title()} shadowban cap reached ({cap}).", ephemeral=True)
+            return
+        cfg["shadowban_enabled"] = True
+        users.append(user.id)
+        self._save()
+        await interaction.response.send_message(f"✅ {user.mention} added to shadowban list.")
+
+    @shadowban_group.command(name="remove", description="👻 [Premium/Gold/Enterprise] Remove a user from shadowban")
+    async def shadowban_remove(self, interaction: discord.Interaction, user: discord.Member):
+        if not await self._gate(interaction):
+            return
+        cfg = self._cfg(interaction.guild.id)
+        users = cfg.setdefault("shadowbanned_users", [])
+        if user.id in users:
+            users.remove(user.id)
+            self._save()
+            await interaction.response.send_message(f"✅ Removed {user.mention} from shadowban list.")
+            return
+        await interaction.response.send_message("ℹ️ That user is not shadowbanned.", ephemeral=True)
+
+    @shadowban_group.command(name="list", description="👻 [Premium/Gold/Enterprise] Show shadowbanned users")
+    async def shadowban_list(self, interaction: discord.Interaction):
+        if not await self._gate(interaction):
+            return
+        cfg = self._cfg(interaction.guild.id)
+        users = cfg.get("shadowbanned_users", [])
+        if not users:
+            await interaction.response.send_message("No shadowbanned users.", ephemeral=True)
+            return
+        await interaction.response.send_message("\n".join(f"• <@{uid}> (`{uid}`)" for uid in users[:50]), ephemeral=True)
+
+    sticky_group = app_commands.Group(name="sticky", description="📌 [Premium/Gold/Enterprise] Sticky message management")
+
+    @sticky_group.command(name="set", description="📌 [Premium/Gold/Enterprise] Set sticky message for a channel")
+    async def sticky_set(self, interaction: discord.Interaction, channel: discord.TextChannel, message: str):
+        if not await self._gate(interaction):
+            return
+        tier = self._get_tier(interaction)
+        cap = self._get_feature_limit(tier, "sticky")
+        cfg = self._cfg(interaction.guild.id)
+        sticky = cfg.setdefault("sticky_messages", {})
+        if str(channel.id) not in sticky and cap is not None and len(sticky) >= cap:
+            await interaction.response.send_message(f"❌ {tier.title()} sticky cap reached ({cap}).", ephemeral=True)
+            return
+        sticky[str(channel.id)] = {"message": message[:1800], "last_message_id": None}
+        self._save()
+        await interaction.response.send_message(f"✅ Sticky message set for {channel.mention}.")
+
+    @sticky_group.command(name="clear", description="📌 [Premium/Gold/Enterprise] Remove sticky message from a channel")
+    async def sticky_clear(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await self._gate(interaction):
+            return
+        cfg = self._cfg(interaction.guild.id)
+        sticky = cfg.setdefault("sticky_messages", {})
+        if str(channel.id) in sticky:
+            sticky.pop(str(channel.id), None)
+            self._save()
+            await interaction.response.send_message(f"✅ Sticky cleared for {channel.mention}.")
+            return
+        await interaction.response.send_message("ℹ️ No sticky configured for that channel.", ephemeral=True)
+
+    @sticky_group.command(name="list", description="📌 [Premium/Gold/Enterprise] List sticky channels")
+    async def sticky_list(self, interaction: discord.Interaction):
+        if not await self._gate(interaction):
+            return
+        sticky = self._cfg(interaction.guild.id).get("sticky_messages", {}) or {}
+        if not sticky:
+            await interaction.response.send_message("No sticky messages configured.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            "\n".join(f"• <#{cid}>" for cid in list(sticky.keys())[:50]), ephemeral=True
+        )
+
+    @app_commands.command(name="adaptive-slowmode", description="🐌 [Gold/Enterprise] Configure adaptive slowmode")
+    async def adaptive_slowmode_slash(
+        self,
+        interaction: discord.Interaction,
+        enable: bool,
+        threshold_messages: int = 50,
+        threshold_seconds: int = 10,
+        slowmode_seconds: int = 10,
+        cooldown_seconds: int = 30,
+    ):
+        if not await self._gate(interaction):
+            return
+        tier = self._get_tier(interaction)
+        if tier not in {"gold", "enterprise"}:
+            await interaction.response.send_message("❌ Adaptive slowmode requires Gold or Enterprise.", ephemeral=True)
+            return
+        if tier != "enterprise" and (threshold_messages != 50 or threshold_seconds != 10 or slowmode_seconds != 10):
+            await interaction.response.send_message("❌ Custom adaptive thresholds are Enterprise-only.", ephemeral=True)
+            return
+        cfg = self._cfg(interaction.guild.id)
+        cfg["adaptive_slowmode_enabled"] = enable
+        if tier == "enterprise":
+            cfg["adaptive_threshold_messages"] = max(3, min(500, threshold_messages))
+            cfg["adaptive_threshold_seconds"] = max(3, min(120, threshold_seconds))
+            cfg["adaptive_slowmode_seconds"] = max(1, min(21600, slowmode_seconds))
+            cfg["adaptive_cooldown_seconds"] = max(10, min(600, cooldown_seconds))
+        self._save()
+        await interaction.response.send_message(
+            f"✅ Adaptive slowmode {'enabled' if enable else 'disabled'}\n"
+            f"• Trigger: **{cfg.get('adaptive_threshold_messages', 50)}** msgs in **{cfg.get('adaptive_threshold_seconds', 10)}s**\n"
+            f"• On trigger: set slowmode to **{cfg.get('adaptive_slowmode_seconds', 10)}s**\n"
+            f"• Auto-off cooldown: **{cfg.get('adaptive_cooldown_seconds', 30)}s** of quieter chat"
+        )
 
     # ──────────────────────────────────────────────────────────────────────────
     # WARN SYSTEM
