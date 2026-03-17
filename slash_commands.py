@@ -493,6 +493,7 @@ guild_saved_queue:         dict[int, list]           = {}
 guild_recent_titles:       dict[int, "deque"]        = {}
 guild_recent_ids:          dict[int, "deque"]        = {}
 guild_prefetched_autoplay: dict[int, Optional[dict]] = {}
+guild_skip_next_autoplay: set[int] = set()
 
 _RECENT_TITLES_LIMIT = 10
 
@@ -576,7 +577,7 @@ AUDIO_FILTERS = {
 	"normal": "",
 	"bass": "bass=g=10,dynaudnorm",
 	"nightcore": "asetrate=48000*1.25,aresample=48000,atempo=1.06",
-	"slowed": "asetrate=48000*0.8,aresample=48000,atempo=0.9",
+	"slowed": "asetrate=48000*0.88,aresample=48000,atempo=0.95",
 	"8d": "apulsator=hz=0.125",
 	"treble": "treble=g=8",
 	"lofi": "asetrate=48000*0.94,aresample=48000,lowpass=f=3000",
@@ -1648,6 +1649,8 @@ class PlaylistManageView(discord.ui.View):
 				def _after_cb(error):
 					if error:
 						print(f"[PLAYLIST PLAY] {error}")
+					if self.cog._should_suppress_auto_advance(interaction.guild.id):
+						return
 					asyncio.run_coroutine_threadsafe(
 						self.cog._ytdl_auto_advance(interaction.guild.id),
 						self.cog.bot.loop,
@@ -2423,6 +2426,8 @@ class Codunot(commands.Cog):
 	# ── Music controls ────────────────────────────────────────────────────────
 
 	async def _music_pause(self, interaction: discord.Interaction):
+		guild_id = interaction.guild.id
+		guild_skip_next_autoplay.add(guild_id)
 		player: wavelink.Player = interaction.guild.voice_client
 		if player and isinstance(player, wavelink.Player):
 			if player.playing and not player.paused:
@@ -2438,9 +2443,11 @@ class Codunot(commands.Cog):
 			vc.pause()
 			await interaction.followup.send("⏸️ Paused.", ephemeral=False)
 		else:
+			guild_skip_next_autoplay.discard(guild_id)
 			await interaction.followup.send("❌ Nothing is playing.", ephemeral=False)
 
 	async def _music_resume(self, interaction: discord.Interaction):
+		guild_skip_next_autoplay.discard(interaction.guild.id)
 		player: wavelink.Player = interaction.guild.voice_client
 		if player and isinstance(player, wavelink.Player):
 			if player.paused:
@@ -2458,7 +2465,20 @@ class Codunot(commands.Cog):
 		else:
 			await interaction.followup.send("❌ Nothing is paused.", ephemeral=False)
 
+	def _should_suppress_auto_advance(self, guild_id: int) -> bool:
+		guild = self.bot.get_guild(guild_id)
+		voice_client = guild.voice_client if guild else None
+		if voice_client and hasattr(voice_client, "is_paused") and voice_client.is_paused():
+			print(f"[AUTOPLAY DEBUG] Suppressing auto-advance for paused guild {guild_id}")
+			return True
+		if guild_id in guild_skip_next_autoplay:
+			guild_skip_next_autoplay.discard(guild_id)
+			print(f"[AUTOPLAY DEBUG] Suppressing one auto-advance callback for guild {guild_id}")
+			return True
+		return False
+
 	async def _music_stop(self, interaction: discord.Interaction):
+		guild_skip_next_autoplay.discard(interaction.guild.id)
 		player: wavelink.Player = interaction.guild.voice_client
 		if player and isinstance(player, wavelink.Player):
 			player.queue.clear()
@@ -2482,6 +2502,7 @@ class Codunot(commands.Cog):
 			await interaction.followup.send("⏹️ Stopped and disconnected.", ephemeral=False)
 
 	async def _music_next(self, interaction: discord.Interaction):
+		guild_skip_next_autoplay.discard(interaction.guild.id)
 		player: wavelink.Player = interaction.guild.voice_client
 		if not player or not isinstance(player, wavelink.Player):
 			# yt-dlp fallback skip
@@ -2732,6 +2753,8 @@ class Codunot(commands.Cog):
 			def _after_playback(error):
 				if error:
 					print(f"[YTDL] Playback error: {error}")
+				if self._should_suppress_auto_advance(interaction.guild.id):
+					return
 				asyncio.run_coroutine_threadsafe(
 					self._ytdl_auto_advance(interaction.guild.id),
 					self.bot.loop
@@ -2801,6 +2824,8 @@ class Codunot(commands.Cog):
 		def _after_playback(error):
 			if error:
 				print(f"[YTDL] Playback error: {error}")
+			if self._should_suppress_auto_advance(interaction.guild.id):
+				return
 			asyncio.run_coroutine_threadsafe(
 				self._ytdl_auto_advance(interaction.guild.id),
 				self.bot.loop
@@ -3001,6 +3026,8 @@ class Codunot(commands.Cog):
 			if error:
 				print(f"[YTDL] Playback error: {error}")
 			print(f"[AUTOPLAY DEBUG] _after_playback fired guild={guild_id} error={error}")
+			if self._should_suppress_auto_advance(guild_id):
+				return
 			asyncio.run_coroutine_threadsafe(
 				self._ytdl_auto_advance(guild_id),
 				self.bot.loop
