@@ -73,6 +73,16 @@ python groq_bot.py
 
 For local runs the code also supports `YTDL_COOKIE_CONTENT` (instead of `YTDL_COOKIES_CONTENT` used in GitHub Actions).
 
+### Why `mod_data.json` looks like `gAAAAA...` instead of JSON
+
+This is expected. Moderation data is encrypted with **Fernet** before being saved.
+
+- `mod_commands.py` saves/loads moderation data via `save_encrypted(...)` and `load_encrypted(...)`.
+- `encryption.py` uses your `ENCRYPTION_KEY` to encrypt on write and decrypt on read.
+- Fernet tokens usually begin with `gAAAAA...`, so the file will not be human-readable plain JSON.
+
+If you open `mod_data.json` directly, you'll see ciphertext. The bot decrypts it automatically at runtime.
+
 ## 🧩 Communities data (Discord API export)
 
 To refresh `website/communities.json` from the Discord API:

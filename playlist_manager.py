@@ -70,12 +70,14 @@ def add_tracks(
     guild_id: int,
     playlist_id: str,
     tracks: list[dict],
+    max_tracks: Optional[int] = None,
 ) -> tuple[int, int]:
     gid = str(guild_id)
     pl = _data["playlists"].get(gid, {}).get(playlist_id)
     if not pl:
         return 0, len(tracks)
-    available = MAX_TRACKS_PER_PLAYLIST - len(pl["tracks"])
+    limit = MAX_TRACKS_PER_PLAYLIST if max_tracks is None else max_tracks
+    available = max(limit - len(pl["tracks"]), 0)
     to_add = tracks[:available]
     skipped = len(tracks) - len(to_add)
     pl["tracks"].extend(to_add)

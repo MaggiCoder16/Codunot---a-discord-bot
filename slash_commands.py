@@ -624,6 +624,17 @@ def _get_ytdl_options(tier: str, allow_playlist: bool = False, with_cookies: boo
 def _get_quality_label(tier: str) -> str:
 	return "320kbps" if tier in {"premium", "gold"} else "HD"
 
+
+def _get_playlist_track_limit(tier: str) -> int | None:
+	tier_lower = (tier or "basic").lower()
+	limits = {
+		"basic": 20,
+		"premium": 35,
+		"gold": 60,
+		"enterprise": None,
+	}
+	return limits.get(tier_lower, 20)
+
 def _get_ffmpeg_options(filter_name: str = "normal") -> dict:
 	"""Get FFmpeg options with optional audio filter."""
 	audio_filter = AUDIO_FILTERS.get(filter_name, "")
@@ -1424,9 +1435,13 @@ class PlaylistCreateModal(discord.ui.Modal, title="🎵 Create New Playlist"):
 		if not queries:
 			await interaction.response.send_message("❌ No songs provided.", ephemeral=True)
 			return
+		tier = get_tier_from_message(interaction)
+		limit = _get_playlist_track_limit(tier)
+		query_cap = len(queries) if limit is None else min(len(queries), limit)
+
 		await interaction.response.defer()
 		msg = await interaction.followup.send(
-			content=f"🎵 Creating **{name}** — resolving {min(len(queries), 50)} song(s)…",
+			content=f"🎵 Creating **{name}** — resolving {query_cap} song(s)…",
 			wait=True,
 		)
 		pid, err = playlist_manager.create_playlist(
@@ -1435,9 +1450,8 @@ class PlaylistCreateModal(discord.ui.Modal, title="🎵 Create New Playlist"):
 		if err:
 			await msg.edit(content=f"❌ {err}")
 			return
-		tier     = get_tier_from_message(interaction)
-		resolved = await self.cog._resolve_songs(queries[:50], tier)
-		added, skip = playlist_manager.add_tracks(interaction.guild.id, pid, resolved)
+		resolved = await self.cog._resolve_songs(queries[:query_cap], tier)
+		added, skip = playlist_manager.add_tracks(interaction.guild.id, pid, resolved, max_tracks=limit)
 		embed = discord.Embed(title="✅ Playlist Created", color=0x1DB954,
 							  timestamp=datetime.now(timezone.utc))
 		embed.add_field(name="Name",         value=name,       inline=True)
@@ -1449,7 +1463,8 @@ class PlaylistCreateModal(discord.ui.Modal, title="🎵 Create New Playlist"):
 			value=f"Run `/playlist` → select **{name}** → press **▶ Play**",
 			inline=False,
 		)
-		embed.set_footer(text=f"Playlist ID: {pid} • max {playlist_manager.MAX_TRACKS_PER_PLAYLIST} tracks")
+		limit_label = "unlimited" if limit is None else str(limit)
+		embed.set_footer(text=f"Playlist ID: {pid} • max {limit_label} tracks")
 		await msg.edit(content=None, embed=embed)
 
 
@@ -1478,14 +1493,27 @@ class PlaylistAddSongsModal(discord.ui.Modal):
 		if not pl:
 			await interaction.response.send_message("❌ Playlist not found.", ephemeral=True)
 			return
+		tier = get_tier_from_message(interaction)
+		limit = _get_playlist_track_limit(tier)
+		remaining = len(queries)
+		if limit is not None:
+			remaining = max(limit - len(pl.get("tracks", [])), 0)
+		query_cap = min(len(queries), remaining)
+		if query_cap <= 0:
+			limit_label = "unlimited" if limit is None else str(limit)
+			await interaction.response.send_message(
+				f"❌ This playlist already reached your tier limit ({limit_label} tracks).",
+				ephemeral=True,
+			)
+			return
+
 		await interaction.response.defer()
 		status = await interaction.followup.send(
-			content=f"🔍 Resolving {min(len(queries), 50)} song(s)…",
+			content=f"🔍 Resolving {query_cap} song(s)…",
 			wait=True,
 		)
-		tier     = get_tier_from_message(interaction)
-		resolved = await self.cog._resolve_songs(queries[:50], tier)
-		added, skip = playlist_manager.add_tracks(self.guild_id, self.playlist_id, resolved)
+		resolved = await self.cog._resolve_songs(queries[:query_cap], tier)
+		added, skip = playlist_manager.add_tracks(self.guild_id, self.playlist_id, resolved, max_tracks=limit)
 		pl    = playlist_manager.get_playlist(self.guild_id, self.playlist_id)
 		embed = self.cog._build_playlist_manage_embed(pl, self.playlist_id)
 		result_msg = (f"✅ Added **{added}** track(s) to **{self.playlist_name}**."
