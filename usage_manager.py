@@ -23,7 +23,6 @@ def is_owner(message_or_interaction) -> bool:
 		return message_or_interaction.user.id in OWNER_IDS
 	return False
 
-# daily limits
 
 LIMITS = {
 	"basic": {
@@ -48,7 +47,7 @@ LIMITS = {
 TOTAL_LIMITS = {
 	"basic": 30,
 	"premium": 75,
-	"gold": 200,
+	"gold": 120,
 	"enterprise": float("inf"),
 }
 
